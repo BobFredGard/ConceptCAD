@@ -266,7 +266,10 @@ function faoShadowShape(mesh,planes,B,r,gstep){
       const k=ch.cle;
       if(!S.keys[k]){S.keys[k]=1;ch.pi=S.pl.length;S.chains.push(ch);}
     });
-    S.pl.push({chains:chains,bb:bb});
+    // V0.99.79 : m = mémoire du plan (mem) — ses index de parité (yb) et d'arêtes (eh) ne
+    // dépendent que de ses contours : calculés une fois par opération au lieu d'une fois
+    // par niveau (des centaines de Mo jetés à chaque niveau : 16 cœurs saturaient la page)
+    S.pl.push({chains:chains,bb:bb,m:CC?mem:null});
     const hs=[];
     segs.forEach(function(s,si){
       const k=mem.sk[si];
@@ -324,6 +327,7 @@ function faoChainParity(ch,x,y){
    par chaîne — exact, la condition d'arête est re-testée mot pour mot. */
 function faoPlaneYB(P){
   if(P.yb)return P.yb;
+  if(P.m&&P.m.yb){P.yb=P.m.yb;return P.yb;}
   const step=0.5,chs=P.chains,E=[];
   let y0=1/0,y1=-1/0;
   for(let k=0;k<chs.length;k++){
@@ -350,6 +354,7 @@ function faoPlaneYB(P){
     }
   }
   P.yb={y0:y0,step:step,rows:rows,n:n,E:E};
+  if(P.m)P.m.yb=P.yb;
   return P.yb;
 }
 /* Grille exacte de parité (2026-10-09-004) : une cellule jamais traversée
@@ -466,9 +471,11 @@ function faoSegSegD2(ax,ay,bx,by,cx,cy,dx,dy){
 function faoPlaneEdgeHash(P){
   // Arêtes de parité du plan, indexées (cellule 1 mm), une fois par plan
   if(P.eh)return P.eh;
+  if(P.m&&P.m.eh){P.eh=P.m.eh;return P.eh;}
   const E=faoPlaneYB(P).E,segs=[];
   for(let i=0;i<E.length;i+=4)segs.push([E[i],E[i+1],E[i+2],E[i+3]]);
   P.eh=faoHashSegs(faoHashBuild(1),segs);
+  if(P.m)P.m.eh=P.eh;
   return P.eh;
 }
 function faoChainNearPlane(ch,P,eps){
@@ -1587,18 +1594,23 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
         const Qv=voidWayC(ax,ay);
         if(Qv){ arriveVoidC(Qv.x,Qv.y); pushCut(ax,ay); return 1; }
       }
+      // V0.99.88 : rampe en ZIGZAG sur le début du morceau (2·Ø au plus, arcs suivis point par
+      // point), un aller-retour = un tour de « Rampe : descente / tour » ; fin au départ, à la cote.
       const hS=Math.max(faoHelixSpot(mesh,ax,ay,0,r,z,brutTop,planes),hFloor);
-      if(Math.abs(hS-z)>1e-9)moves.push({r:0,ent:1,x:rnd(ax),y:rnd(ay),z:hS});
-      const nUse=Math.max(1,Math.min(seq.length-1,Math.ceil((hS-z)/2)));
-      const dz=(hS-z)/nUse;
-      for(let i=1;i<=nUse;i++){
-        const q=seq[i];
-        const m={r:0,ent:1,x:rnd(ch.mv?q.x:q[0]),y:rnd(ch.mv?q.y:q[1]),
-                 z:Math.round((hS-dz*i)*1000)/1000};
-        if(ch.mv&&q.arc)m.arc=q.arc;
-        moves.push(m);
+      if(!(hS>z+1e-9)){ moves.push({r:0,ent:1,x:rnd(ax),y:rnd(ay),z:z}); return 1; }
+      moves.push({r:0,ent:1,x:rnd(ax),y:rnd(ay),z:hS});
+      const pz=[[ax,ay]];let Lz=0;
+      for(let i=1;i<seq.length&&Lz<2*D;i++){
+        const q=seq[i],p=pz[pz.length-1],qx=ch.mv?q.x:q[0],qy=ch.mv?q.y:q[1];
+        if(ch.mv&&q.arc){
+          const pa=faoCircArcPts({sx:seq[i-1].x,sy:seq[i-1].y,cx:seq[i-1].x+q.arc.i,cy:seq[i-1].y+q.arc.j,cw:q.arc.cw},qx,qy);
+          if(pa)for(let k=1;k<pa.length;k++){Lz+=Math.hypot(pa[k][0]-pz[pz.length-1][0],pa[k][1]-pz[pz.length-1][1]);pz.push(pa[k]);}
+        }else{Lz+=Math.hypot(qx-p[0],qy-p[1]);pz.push([qx,qy]);}
       }
-      return nUse+1;
+      const zz=faoZigzag(pz,hS,z,faoRampTour(D),2*D,rnd);
+      if(zz){ zz[zz.length-1].x=rnd(ax); zz[zz.length-1].y=rnd(ay); zz.forEach(function(m){moves.push(m);}); }
+      else moves.push({r:0,ent:1,x:rnd(ax),y:rnd(ay),z:z});
+      return 1;
     };
     if(ch.mv){
       const seq=ch.mv;
@@ -1872,19 +1884,33 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
   if(entOK){
     // entrée en ligne droite émise — le tour enchaîne en liaison directe.
   }else if(tang){
-    const zG=gotoXY(tang.sx,tang.sy);
-    const hs=Math.max(faoHelixSpot(mesh,tang.sx,tang.sy,0,r,z,brutTop,planes),hFloor);
-    if(Math.abs(zG-hs)>1e-9)moves.push({r:0,x:rnd(tang.sx),y:rnd(tang.sy),z:hs});
-    moves.push({r:0,x:rnd(tang.px),y:rnd(tang.py),z:z});
+    // V0.99.88 : plus de diagonale S → P — zigzag sur P–S (un aller-retour = un tour de
+    // « Rampe : descente / tour »), fin en P à la cote : la passe part de là.
+    const zG=gotoXY(tang.px,tang.py);
+    const hs=Math.max(faoHelixSpot(mesh,tang.sx,tang.sy,0,r,z,brutTop,planes),
+      faoHelixSpot(mesh,tang.px,tang.py,0,r,z,brutTop,planes),hFloor);
+    if(Math.abs(zG-hs)>1e-9)moves.push({r:0,x:rnd(tang.px),y:rnd(tang.py),z:hs});
+    const zz=(hs>z+1e-9)?faoZigzag([[tang.px,tang.py],[tang.sx,tang.sy]],hs,z,faoRampTour(D),2*D,rnd):null;
+    if(zz){ zz[zz.length-1].x=rnd(tang.px); zz[zz.length-1].y=rnd(tang.py); zz.forEach(function(m){moves.push(m);}); }
+    else moves.push({r:0,x:rnd(tang.px),y:rnd(tang.py),z:z});
   }else if(hx!==null){
     const zG=gotoXY(hx,hy);
     if(Math.abs(zG-hStart)>1e-9)moves.push({r:0,x:rnd(hx),y:rnd(hy),z:hStart});
     faoHelixEntry(hx,hy,hStart,z,hr,D).slice(1).forEach(function(m){moves.push(m);});
   }else if(ramp&&(fmode==='ramp'||(!hasTroch&&Math.max(elen,yRun)>=D*0.5))){
-    gotoXY(ramp.x0,ramp.y0);
-    // 2026-10-08-005 : la rampe G1 d'attaque (coupe diagonale en biseau) est
-    // une entrée — étiquetée ent (tracé bleu, comme l'hélice et l'arc circ).
-    moves.push({r:0,ent:1,x:rnd(ramp.x1),y:rnd(ramp.y1),z:z});
+    // 2026-10-08-005 : la rampe d'attaque est une entrée — étiquetée ent (tracé bleu).
+    // V0.99.88 : plus de diagonale en biseau — zigzag sur le segment (un aller-retour = un tour
+    // de « Rampe : descente / tour »), depuis 2 mm au-dessus de la matière restante.
+    const zG=gotoXY(ramp.x0,ramp.y0);
+    const hs=Math.min(zG,Math.max(faoHelixSpot(mesh,ramp.x0,ramp.y0,0,r,z,brutTop,planes),
+      faoHelixSpot(mesh,ramp.x1,ramp.y1,0,r,z,brutTop,planes),hFloor));
+    // disque de la fraise entièrement dans l'air (hors brut) ou déjà balayé : descente droite,
+    // un zigzag n'y couperait que de l'air
+    const libre=faoPlungeClear(ramp.x0,ramp.y0,moves,z,D,airCv);
+    if(!libre&&Math.abs(zG-hs)>1e-9)moves.push({r:0,x:rnd(ramp.x0),y:rnd(ramp.y0),z:hs});
+    const zz=(!libre&&hs>z+1e-9)?faoZigzag([[ramp.x0,ramp.y0],[ramp.x1,ramp.y1]],hs,z,faoRampTour(D),2*D,rnd):null;
+    if(zz){ zz[zz.length-1].x=rnd(ramp.x0); zz[zz.length-1].y=rnd(ramp.y0); zz.forEach(function(m){moves.push(m);}); }
+    else moves.push({r:0,ent:1,x:rnd(ramp.x0),y:rnd(ramp.y0),z:z});
   }else{
     // 2026-10-08-006 : première attaque sans région ouverte — JAMAIS de
     // plongée à plat dans la matière (fraise à cheval sur la phase) : hélice

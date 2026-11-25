@@ -50,6 +50,29 @@ function faoWorkpieceBox(job,ox,oy,oz){
     faoFmtXYZ(v[3]-ox)+','+faoFmtXYZ(v[4]-oy)+','+faoFmtXYZ(v[0]-ox)+','+faoFmtXYZ(v[1]-oy)+')';
 }
 function faoToday(){ try{ return new Date().toISOString().slice(0,10); }catch(e){ return ''; } }
+/* ----- V0.99.92 : usinage grande vitesse HSC du Fagor (G501 / G500) -----
+   Comme le post Fusion fagor 8065 (« Use HSC high speed machining » Automatique / Arrêt et
+   « Smoothing contouring acceleration ») : réglages du posage (hsc, hscAccel), défaut de la fiche
+   machine (hsc, hscAccel), sinon Automatique et 60 %. Chaque opération de fraisage commence par
+   G501 A<accélération %> E<tolérance × 1,2> J100 M1 ; G500 avant un changement d'outil, un perçage
+   (jamais de HSC dans un cycle) et la fin du programme. Tolérance des défauts Fusion : ébauches
+   (Ébauche 3D, poche adaptative) 0,1 mm, autres opérations 0,01 mm. */
+function faoHscReglage(job,post){
+  if(!post||post.kind!=='fagor')return {on:false,accel:60};
+  const m=(job&&(job.hsc==='auto'||job.hsc==='off'))?job.hsc:(post.hsc==='off'?'off':'auto');
+  const a=(job&&+job.hscAccel>0)?+job.hscAccel:(+post.hscAccel>0?+post.hscAccel:60);
+  return {on:m==='auto',accel:Math.max(30,Math.min(200,a))};
+}
+function faoHscTol(op){
+  if(op&&(op.type==='rough3d'||faoPocketAdapt(op)))return 0.1;
+  return 0.01;
+}
+function faoHscBloc(R,op){
+  // ligne G501 de l'opération, ou null : pas de HSC (réglage Arrêt, perçage en cycle)
+  if(!R||!R.on||!op||(op.type==='drill'&&op.cycle!=='helix'))return null;
+  const f=function(v,d){ return String(+(+v).toFixed(d)); };
+  return 'G501 A'+f(R.accel,2)+' E'+f(faoHscTol(op)*1.2,5)+' J100 M1';
+}
 
 function faoArcWords(m,ox,oy,oz){
   // Bloc G2/G3 complet, IJK incrémental (centre relatif au départ).
@@ -143,6 +166,8 @@ function faoPost(job,postId){
   const fw=function(v){ v=String(v); if(v===fCur)return ''; fCur=v; return ' F'+v; };
   const CO=post.coolant;
   const cool=(job.coolant==='off')?null:(job.coolant==='through'?CO.through:CO.flood);
+  const HSC=faoHscReglage(job,post); // V0.99.92 : G501 / G500 du Fagor
+  let hscCur=null; // ligne G501 en vigueur, null = G500
   // G40 (annule la compensation d'outil) + G80 (annule les cycles en canneau) en
   // entête : programme démarré proprement, jamais laissé d'un usage précédent.
   if(fag){
@@ -203,6 +228,7 @@ function faoPost(job,postId){
       if(qb&&qb.on!==false){ retrCur=faoClearAbs(qb,job); break; }
     }
     if(gi>0){ nc(CO.off);
+      if(hscCur){ nc('G500'); hscCur=null; } // post Fusion : HSC coupé avant le dégagement du changement d'outil
       if(c800&&swUsed&&swCur!=='0,0,0')faoPostLines(post.swivelRetract,{}).forEach(nc); // plan incliné : retrait machine
       else nc('G0 Z'+faoFmtXYZ(retrPrev-oz)); }
     if(c800)swCur=null; // V0.89.0 : plan recommandé après CHAQUE changement d'outil, à plat compris (post Fusion)
@@ -214,7 +240,7 @@ function faoPost(job,postId){
     faoPostLines(post.toolChange,{T:t.num||1,NAME:name}).forEach(nc);
     faoPostLines(post.spindle,{S:S}).forEach(nc);
     if(cool)nc(cool);
-    let sCur=S;
+    let sCur=S, bInG=0;
     g.blocks.forEach(function(b){
       // 2026-10-15-010 : conditions de coupe de CETTE opération (fiche outil ou
       // surcharge de l'opération). Par défaut identiques au groupe → sortie inchangée.
@@ -224,6 +250,21 @@ function faoPost(job,postId){
       // V0.95.3 : copie d'une répétition — origine propre (G55…) et libellé
       if(b.xf&&b.xf.wcs&&b.xf.wcs!==wcsCur){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(b.xf.wcs); wcsCur=b.xf.wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
       else if(!(b.xf&&b.xf.wcs)&&wcsCur!==wcs){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(wcs); wcsCur=wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
+      // V0.99.92 : HSC Fagor de l'opération. Changement avec le même outil : dégagement d'abord
+      // (le post Fusion remonte avant G500 / G501), puis G500 et le nouveau G501.
+      if(fag){
+        const hW=faoHscBloc(HSC,b.op);
+        if(hW!==hscCur){
+          if(bInG>0&&prev){
+            const zr=Math.max(b.op?faoClearAbs(b.op,job):retr,+prev.z);
+            nc('G0 Z'+faoFmtXYZ(zr-OZ)); prev={x:prev.x,y:prev.y,z:zr};
+          }
+          if(hscCur)nc('G500');
+          if(hW)nc(hW);
+          hscCur=hW;
+        }
+      }
+      bInG++;
       cmt(faoOpLabel(b.op,job)+(b.n>1?(' - copie '+(b.k+1)+'/'+b.n+(b.xf?' ('+b.xf.lab+')':'')):''));
       // 2026-10-13-007 : #MSG par opération sur Fagor (rétro-ingénierie
       // cav.txt : N60 #MSG["OPT1: Paroies"]) — l'opérateur voit l'opération
@@ -423,6 +464,7 @@ function faoPost(job,postId){
   });
   // 3+2 : annuler la transformation AVANT les coordonnées machine de fin (SUPA/park).
   if(traOn)nc('TRAFOOF');
+  if(hscCur)nc('G500'); // V0.99.92 : HSC coupé en fin de programme (post Fusion : onClose)
   nc(CO.off);
   if(c800&&swCur!=='0,0,0')swOut({a:0,b:0,c:0}); // table remise à plat (post Fusion : onClose)
   // fin de la fiche machine (Fagor : retrait + #MSG[""] qui efface le message op — cav.txt N243150 ;
@@ -443,7 +485,9 @@ function faoOpLabel(op,job){
   if(!op)return '?';
   const t=op.type;
   const tool=job?faoToolById(job,op.toolId):null;
-  const tag=tool?(' [T'+tool.num+' D'+tool.d+']'):'';
+  // V0.99.96 : correction de Ø (outil + opération) rappelée dans le libellé et le programme
+  const dc=(tool&&typeof faoOpDCor==='function')?faoOpDCor(op,tool):0;
+  const tag=tool?(' [T'+tool.num+' D'+tool.d+(dc?(' corr '+(dc>0?'+':'')+dc):'')+']'):'';
   const off=(op&&op.on===false)?' (désactivée)':'';
   const RA=faoRA(op||{});
   const ra=((op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='facing'))&&(RA.radial>0||RA.axial>0))?(' R'+RA.radial+' A'+RA.axial):'';
@@ -457,7 +501,12 @@ function faoOpLabel(op,job){
   if(t==='facing')return 'Surfaçage Z='+op.z+tag+off+ra+lim;
   if(t==='pocket'&&faoPocketAdapt(op))return 'Poche adaptative '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(bord à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='pocket')return 'Poche ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
+  if(t==='slotcut')return faoSlotCutLabel(op,job)+tag+off; // V0.99.86
   if(t==='chamfer')return 'Chanfrein '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(arêtes à sélectionner) ')+(+op.w||0.5)+' mm'+tag+off;
+  if(t==='contour'&&faoContourProfil(op)&&faoToolIsSlot(tool)){ // rainure : du Bas (+ décalage) sur sa hauteur, Haut non utilisé
+    const sg=faoSlotGeom(op,tool),fz=function(z){return +(+z).toFixed(3);};
+    return 'Contour 3 tailles '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(profil à sélectionner) ')+'rainure '+fz(sg.z0)+' -> '+fz(sg.z1)+ra+tag+off;
+  }
   if(t==='contour'&&faoContourProfil(op))return 'Contour '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(profil à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='contour')return 'Contour ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
   if(t==='drill')return 'Perçage '+((op.src==='model'&&op.holes)?op.holes:(op.pts||[])).length+' trou(s) '+op.ztop+' -> '+op.zbot+((+op.peck)>0?' Q'+op.peck:'')+tag+off+lim;
@@ -474,6 +523,7 @@ let faoPrevWanted=false; // 'full'/'lecture' : travail reporte jusqu'a la fin de
 let faoGenBtnEl=null;   // refs RÉELLES des boutons (lecture par id ambiguë sous stub)
 let faoExportBtnEl=null;
 function faoClearPreview(){
+  try{ if(typeof faoSurvolOublie==='function')faoSurvolOublie(); }catch(e){} // V0.99.86 : survol de l'arbre
   try{
     if(faoPrevGroup&&typeof scene!=='undefined'&&scene){
       faoDel3D(faoPrevGroup);
@@ -520,7 +570,9 @@ function faoPrevSigSame(a,b){
 function faoPrevOpEntry(op){
   if(!faoPrevOps)faoPrevOps=new Map();
   let e=faoPrevOps.get(op);
-  if(!e){ e={g:null,parts:[],n:0}; faoPrevOps.set(op,e); }
+  // src : mouvements de l'opération (séquence de l'aperçu, rapides et zone compris), relus
+  // par le survol de l'arbre (src/88-fao-61) — des références, rien n'est copié
+  if(!e){ e={g:null,parts:[],n:0,src:[]}; faoPrevOps.set(op,e); }
   return e;
 }
 function faoPrevOpGroup(op,group){
@@ -728,7 +780,7 @@ function faoRefreshPreview(mode){
       const mv=b.tail?b.moves.concat(b.tail):b.moves; // tail : remontée avant un changement d'outil
       const clip=b.xf?null:faoSegClipper(op,job); // copie d'une répétition : la zone de la source ne la borne pas
       if(!mv||!mv.length)return;
-      const e=faoPrevOpEntry(op); e.n+=b.moves.length;
+      const e=faoPrevOpEntry(op); e.n+=b.moves.length; e.src.push({b:b,clip:clip});
       // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde : mises de côté,
       // dessinées au premier « Afficher » (faoPrevToggleFast)
       if(op&&op.hidden===true){ e.parts.push({mv:mv,clip:clip}); return; }

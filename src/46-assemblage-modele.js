@@ -583,9 +583,31 @@ function asmFromSerial(a){
   // la vue d'assemblage demande les instantanés de tous les composants : rétablie après le
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser
   asm._wantAsm=t.wantAsm;
+  try{asmLinkNomsRepare();}catch(e){}
   asmResolve();
   try{if(typeof asmHistView!=='undefined')asmHistView=null;if(typeof asmHistReset==='function')asmHistReset();}catch(e){} // historique (48-assemblage-historique)
   return true;
+}
+function asmLinkNomsRepare(){
+  // V0.99.83 : composant lié qui porte le nom de l'assemblage hôte → nom de son fichier source.
+  // Avant V0.99.83, rouvrir un assemblage enregistré pendant qu'on modifiait une de ses pièces
+  // donnait à cette pièce le nom du fichier hôte (90-50 bundleNomFichier) ; le document de la pièce
+  // le gardait (asmNamesSync le recopiait), et la source réécrite aussi. → composants renommés
+  if(!asm)return 0;
+  const r=asmComp(asm.root);if(!r)return 0;
+  const hote=new Set([r.name,r.doc&&r.doc.name].filter(s=>typeof s==='string'&&s.trim()).map(s=>s.trim()));
+  let n=0;
+  asm.comps.forEach(c=>{
+    if(c===r||!c.link)return;
+    const f=String(c.link.rel||c.link.name||'').split(/[\\/]/).pop();
+    const base=f.replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'').trim();
+    const old=String(c.name||'').trim();
+    if(!base||base===old||!hote.has(old))return;
+    c.name=base;if(c.doc)c.doc.name=base;
+    asmCompOccs(c.id).forEach(q=>{if(String(q.name).startsWith(old))q.name=base+String(q.name).slice(old.length);});
+    n++;
+  });
+  return n;
 }
 function asmAllDocs(){
   // Tous les documents de composant (pièce seule : [doc]) — trajectoires FAO, imports du bundle
@@ -637,6 +659,9 @@ function asmExtStale(){
   asm.comps.forEach(c=>{if(out.includes(c))return;
     if((c.doc.cgeo||[]).some(el=>(el&&el.refs||[]).some(r=>{
       if(!r||(r.k!=='xf'&&r.k!=='xe'))return false;const s=asmXfSig(r,c.id);return s!=null&&s!==r.sig;})))out.push(c);});
+  // V0.99.94 : « jusqu'à » une face, une arête ou un sommet d'un autre composant (extrusion, perçage — 48-assemblage-jusqua)
+  asm.comps.forEach(c=>{if(out.includes(c))return;
+    if((c.doc.features||[]).some(f=>asmUptoRefs(f).some(r=>{const s=asmXfSig(r,c.id);return s!=null&&s!==r.sig;})))out.push(c);});
   // V0.8.1 : arêtes d'autres composants projetées dans une esquisse
   asm.comps.forEach(c=>{if(out.includes(c))return;
     if((c.doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>{
@@ -677,10 +702,12 @@ function asmSkExtLists(){
   if(!asm||!asmOn())return [];
   const out=[],P=asm.path;
   const hidden=path=>{let c=asmRoot();for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
+  const occNom=path=>{let c=asmRoot(),o=null;for(const id of path){o=c&&c.occ.find(q=>q.id===id);if(!o)return '';c=asmComp(o.comp);}return o&&o.name||'';};
   asmInstances(asm.root).forEach(inst=>{
     if(inst.comp===asm.active||hidden(inst.path))return;
     const x={ctx:P.slice(),path:inst.path.slice()},ed=asmSkExtEdges(x);
-    if(ed&&ed.length)out.push({edges:ed,ext:x,name:(asmComp(inst.comp)||{}).name||''});
+    // inst : nom de l'instance (« Socle:2 »), pour l'appui long de Projeter (50-esquisse-1 projectEdgesAt)
+    if(ed&&ed.length)out.push({edges:ed,ext:x,name:(asmComp(inst.comp)||{}).name||'',inst:occNom(inst.path)});
   });
   return out;
 }

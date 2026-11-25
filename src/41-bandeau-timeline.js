@@ -84,7 +84,7 @@ function tlbSteps(){
       if(sk.at!==undefined)key=Math.max(support==null?-1:support,4*cgPos(sk)+3);
       else key=support==null?4*F.length:support;                                 // fichier ancien : place inconnue
     }
-    S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:!!skFacePerdue(sk)}); // face perdue : double-clic = la resélectionner
+    S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:!!lpResume(sk)}); // face ou arête perdue : double-clic = fenêtre des liens perdus (50-esquisse-97)
   });
   S.sort((a,b)=>(a.key-b.key)||(a.sub-b.sub));
   S.forEach(s=>{s.off=m>=0&&s.key>4*m;});
@@ -236,7 +236,7 @@ function tlbClick(s,ev){
 }
 function tlbDbl(s){
   // Double-clic = édition : esquisse, congé/chanfrein exact, dépouille, coque, construction
-  if(s.kind==='sketch'){if(skFacePerdue(s.o))skRedefStart(s.id);else openSketch(s.id);return;} // face perdue : la resélectionner
+  if(s.kind==='sketch'){if(lpResume(s.o))lpOuvrir(s.id);else openSketch(s.id);return;} // V0.99.82 : liens perdus → leur fenêtre (50-esquisse-97)
   if(s.kind==='cg'){if(!cgMode)cgEdit(s.id);return;}
   const f=s.o;
   sel={kind:'feature',id:f.id};treeSel=[];
@@ -399,7 +399,7 @@ function renderTimeline(){
     d.innerHTML='<span>'+tlbIcon(s)+'</span>'+(s.warn?'<span class="w">⚠</span>':'');
     const perdu=s.warn&&(s.kind==='sketch'||(s.o&&((s.o._perdues&&s.o._perdues.length)||(s.o._m&&s.o._m.m<s.o._m.t))));
     const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:
-      (perdu?' — ⚠ '+(s.kind==='sketch'?skFacePerdue(s.o):'face ou arête perdue')+' : double-clic pour la resélectionner':(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
+      (perdu?' — ⚠ '+(s.kind==='sketch'?lpResume(s.o)+' : double-clic pour les réparer':'face ou arête perdue : double-clic pour la resélectionner'):(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
     d.title=tlbName(s)+why+(s.off?' — hors rejeu (au-delà du marqueur)':'')+(vis?'':' — masqué')+
       '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps (avec son esquisse)':(tlbDragFeatOf(s)?' · glisser = déplacer avec sa fonction':''))+repWhy(s);
     d.onclick=ev=>tlbClick(s,ev);

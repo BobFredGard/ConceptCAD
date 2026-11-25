@@ -46,7 +46,7 @@ function skRedefApply(sk,s){
     const limH=tlIdx();
     try{host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);}catch(e){host=null;}
   }
-  sk.plane='FACE';delete sk.cg;
+  sk.plane='FACE';delete sk.cg;delete sk.planFige; // planFige : lien coupé (50-esquisse-97) — reposée, elle suit de nouveau
   sk.origin=[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)];
   sk.axU=[u.x,u.y,u.z];sk.axV=[v.x,v.y,v.z];sk.axN=[n.x,n.y,n.z];
   const nm=(sk.host&&sk.host.name)||(sk.hostFace&&sk.hostFace.name)||null;
@@ -67,15 +67,17 @@ function skRedefPickAt(e){
   markDirty();rebuild();
   try{renderTree();renderProps();}catch(err){}
   faceEl.textContent='« '+sk.name+' » posée sur '+sketchFaceLabel(sk)+' : elle suivra cette face.';
+  try{lpRetour();}catch(err){} // V0.99.82 : venue de la fenêtre des liens perdus → elle revient (50-esquisse-97)
 }
 window.addEventListener('keydown',e=>{
   if(e.key!=='Escape'||!skRedef)return;
   skRedefEnd();
   faceEl.textContent='Changer de face : annulé.';
+  try{lpRetour();}catch(err){}
 });
 function skFacePerdue(sk){
   // Raison d'une face d'esquisse perdue (panneau, ⚠ de l'arbre), ou null
-  if(!sk||sk.fao)return null;
+  if(!sk||sk.fao||sk.planFige)return null; // planFige : lien coupé à la demande (50-esquisse-97)
   if(sk.plane==='CG'){const el=sk.cg&&cgGet(sk.cg.id);return el&&sk.axN?null:'son plan de construction n’existe plus';}
   if(sk.plane!=='FACE')return null;
   try{const m=NOMS_PERTES_ESQ.get(sk.id+'/face');if(m)return m.replace(/^[^:]*: /,'');}catch(e){}

@@ -84,6 +84,59 @@ const vm=require('vm');
     const rc=await asmLinksCheck(false);
     att(rc&&!rc.updated.length&&!rc.warn.length&&lk.every(c=>c.link.st!=='warn'),'14 : sources copiées à jour ('+JSON.stringify(rc)+')');
     att(packCnList().length===0,'15 : aucune pièce avec FAO : pas de programme');
+    // ── V0.99.79 : sources des Dérivées copiées aussi (demande de Fred) ──
+    // Base ← Barquette (dérive de Base) ← Moule (dérive de Barquette ET de l'assemblage Presse,
+    // qui le lie : cycle) ; Presse dérive aussi de Base (empreinte en retard) et d'un fichier absent.
+    const dv=(id,rel,sig,src,name,value)=>({id,rel,key:null,name:rel.split('/').pop(),sig,auto:false,params:[{src,name,value}]});
+    docResetEmpty();doc.name='Base';doc.params=[{name:'E',expr:'5',value:5}];
+    FS['Cotes/Base.miniFusion']=serialise();
+    docResetEmpty();doc.name='Barquette';doc.params=[{name:'L',expr:'120',value:120}];
+    doc.derive=[dv('dvB','Cotes/Base.miniFusion',asmHash(FS['Cotes/Base.miniFusion']),'E','E',5)];
+    FS['Cotes/Barquette.miniFusion']=serialise();
+    docResetEmpty();doc.name='Moule';
+    doc.derive=[dv('dvQ','Cotes/Barquette.miniFusion',asmHash(FS['Cotes/Barquette.miniFusion']),'L','L',120),
+      dv('dvH','Atelier/Presse.miniFusion','ancienne','P','P',3)];
+    FS['Pieces/Moule.miniFusion']=serialise();
+    docResetEmpty();doc.name='Presse';doc.params=[{name:'P',expr:'3',value:3}];
+    doc.derive=[dv('dvE','Cotes/Base.miniFusion','vieille','E','E2',5),dv('dvX','Cotes/Absente.miniFusion','x','Z','Z',1)];
+    asmEnsure();
+    const M=await asmLinkInsert(mkFile('Pieces/Moule.miniFusion'),FS['Pieces/Moule.miniFusion'],'Moule.miniFusion');
+    mffHandle=mkFile('Atelier/Presse.miniFusion');FS['Atelier/Presse.miniFusion']=serialise();
+    att(M&&M.doc.derive&&M.doc.derive.length===2,'16 : pièce liée avec ses deux dérivées');
+    const orig2={};Object.keys(FS).forEach(k=>orig2[k]=FS[k]);
+    b=await packRun(mkDir('Copie2/','Copie2'),{cn:false});
+    const C2=k=>FS['Copie2/'+k];
+    att(b&&b.host==='Atelier/Presse.miniFusion'&&b.parts.length===1&&b.derived.length===2
+      &&b.derived.includes('Cotes/Barquette.miniFusion')&&b.derived.includes('Cotes/Base.miniFusion'),'17 : sources des dérivées copiées, de proche en proche ('+JSON.stringify(b)+')');
+    att(b&&b.failed.length===1&&/source de dérivée « Absente/.test(b.failed[0]),'18 : source introuvable signalée ('+(b&&b.failed)+')');
+    att(packBilanCourt(b).includes('1 pièce(s) liée(s), 2 pièce(s) source(s) de dérivée')&&packBilanLong(b).includes('pièce source de dérivée : Cotes/Base'),'19 : bilan ('+packBilanCourt(b)+')');
+    att(Object.keys(orig2).every(k=>FS[k]===orig2[k]),'20 : originaux inchangés');
+    att(C2('Cotes/Base.miniFusion')===FS['Cotes/Base.miniFusion'],'21 : source sans lien copiée à l octet près');
+    const bq=JSON.parse(C2('Cotes/Barquette.miniFusion')),lb=(bq.doc||bq).derive[0];
+    att(lb.rel==='Copie2/Cotes/Base.miniFusion'&&lb.name==='Base.miniFusion'&&lb.sig===asmHash(C2('Cotes/Base.miniFusion')),'22 : dérivée d une source → sa copie');
+    const mo=JSON.parse(C2('Pieces/Moule.miniFusion')),dq=(mo.doc||mo).derive;
+    const q1=dq.find(L=>L.id==='dvQ'),q2=dq.find(L=>L.id==='dvH');
+    att(q1&&q1.rel==='Copie2/Cotes/Barquette.miniFusion'&&q1.sig===asmHash(C2('Cotes/Barquette.miniFusion')),'23 : à jour avec l original → à jour avec la copie');
+    att(q2&&q2.rel==='Copie2/Atelier/Presse.miniFusion'&&q2.sig==='ancienne','24 : dérivée de l assemblage (écrit après) → sa copie, empreinte gardée');
+    const hd=JSON.parse(C2('Atelier/Presse.miniFusion'));const hdoc=hd.doc||hd;
+    const e1=hdoc.derive.find(L=>L.id==='dvE'),e2=hdoc.derive.find(L=>L.id==='dvX');
+    att(e1&&e1.rel==='Copie2/Cotes/Base.miniFusion'&&e1.sig==='vieille','25 : en retard avec l original → reste en retard (mise à jour à l ouverture)');
+    att(e2&&e2.rel==='Cotes/Absente.miniFusion'&&e2.sig==='x','26 : source introuvable : lien laissé tel quel');
+    const mc=hdoc.asm.comps.find(c=>c.link);
+    const mcd=mc&&mc.doc&&(mc.doc.derive||[]).find(L=>L.id==='dvQ');
+    att(mc&&mc.link.rel==='Copie2/Pieces/Moule.miniFusion'&&mcd&&mcd.rel==='Copie2/Cotes/Barquette.miniFusion','27 : copie de la pièce gardée dans l assemblage : dérivée vers la copie');
+    // hors du dossier de projets : handle mémorisé (même pour l'assemblage, écrit après) + chemin relatif
+    b=await packRun(Object.assign(mkDir('USB2/','Clé 2'),{_d:undefined}),{cn:false});
+    const mo2=JSON.parse(FS['USB2/Pieces/Moule.miniFusion']),d2=(mo2.doc||mo2).derive;
+    const k1=d2.find(L=>L.id==='dvQ'),k2=d2.find(L=>L.id==='dvH');
+    att(b&&b.outside&&k1&&k1.key&&IDB.get(k1.key)&&IDB.get(k1.key)._p==='USB2/Cotes/Barquette.miniFusion'&&k1.rel==='Cotes/Barquette.miniFusion','28 : hors du dossier de projets : handle + chemin relatif');
+    att(k2&&k2.key&&IDB.get(k2.key)&&IDB.get(k2.key)._p==='USB2/Atelier/Presse.miniFusion','29 : handle de l assemblage mémorisé (écrit après la pièce)');
+    {const r=await asmLinkHandle({link:k1},false,'read');att(r.h&&r.h._p==='USB2/Cotes/Barquette.miniFusion','30 : la copie retrouve la source copiée, pas l originale');}
+    // la pièce copiée rouverte : ses dérivées lisent les copies, la source à jour n'est pas relue
+    {const o=JSON.parse(C2('Pieces/Moule.miniFusion'));docResetEmpty();await deserialise(JSON.stringify(o.bundle===1?o.doc:o),{rebuild:false});}
+    const rd=await derCheck(false);
+    const lq=doc.derive.find(L=>L.id==='dvQ'),lh=doc.derive.find(L=>L.id==='dvH');
+    att(rd&&!rd.warn.length&&!rd.updated.length&&lq.st==='ok'&&lh.st==='ok'&&parValueNow('L')===120&&parValueNow('P')===3,'31 : copie rouverte : dérivées à jour depuis les copies ('+JSON.stringify(rd)+')');
     if(ATT.length){p('ECHECS ('+ATT.length+') :');ATT.forEach(m=>p('  x '+m));}
     else p('TOUT EST CONFORME');
     return P.join(String.fromCharCode(10));

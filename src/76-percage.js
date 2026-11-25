@@ -481,7 +481,9 @@ function holeLatheGeo(R,n){
 }
 function holePlaneSuit(pl,base){
   // Fin de trou « jusqu'à la face » : la face garde son nom (20-05), le plan mémorisé la suit.
-  if(!pl||!pl.p||!pl.n||!base)return;
+  // V0.99.94 : une cible prise sur une autre pièce (pl.x) suit cette pièce (asmUptoHoleSync, 48),
+  // jamais une face de la pièce qui serait dans le même plan
+  if(!pl||!pl.p||!pl.n||!base||pl.x)return;
   let h=null,all=null;
   try{
     if(pl.nom){h=nomsRefFace(base,pl);if(!h)return;}
@@ -504,7 +506,10 @@ function holePlaneDist(pl,P,D){
   const dn=D.x*pl.n[0]+D.y*pl.n[1]+D.z*pl.n[2];
   if(Math.abs(dn)<1e-6)return null;
   const t=((pl.p[0]-P.x)*pl.n[0]+(pl.p[1]-P.y)*pl.n[1]+(pl.p[2]-P.z)*pl.n[2])/dn;
-  return t>0.01?t:null;
+  if(!(t>0.01))return null;
+  // V0.99.94 : décalage (pl.off) — + = plus loin que la face, − = avant
+  const u=t+(+pl.off||0);
+  return u>0.01?u:null;
 }
 function holeNextExit(sh,P,D){
   // « Jusqu'à la prochaine face » : distance le long de l'axe jusqu'à la PREMIÈRE
@@ -536,25 +541,71 @@ let holeFacePick=null; // {fid, which:'end'|'thread'}
 function holeFacePickStart(fid,which){
   holeFacePick={fid:fid,which:which};
   try{renderer.domElement.style.cursor='crosshair';}catch(e){}
-  try{faceEl.textContent='Perçage : cliquez une face PLANE de la pièce ('+(which==='thread'?'fin du filetage':'fin du trou')+') — Échap pour annuler.';}catch(e){}
+  const autres=typeof asmUptoDispo==='function'&&asmUptoDispo();
+  try{faceEl.textContent='Perçage : cliquez une face PLANE de la pièce'+(autres?', ou une face plane, une arête, un sommet d’une autre pièce':'')+' ('+(which==='thread'?'fin du filetage':'fin du trou')+') — Échap pour annuler.';}catch(e){}
 }
-function holeFacePickCancel(){holeFacePick=null;try{renderer.domElement.style.cursor='default';}catch(e){}}
+function holeFacePickCancel(){holeFacePick=null;try{renderer.domElement.style.cursor='default';}catch(e){}try{if(typeof asmUptoHlClear==='function')asmUptoHlClear();}catch(e){}}
+function holeUptoDir(f){
+  // Direction de perçage [x,y,z] (cibles prises sur une autre pièce, 48-assemblage-jusqua) ; null sans esquisse
+  const sk=f&&doc.sketches.find(function(s){return s.id===f.sketchId;});if(!sk)return null;
+  try{const A=holeAxis(f,sk);return {D:[A.dir.x,A.dir.y,A.dir.z],A:A};}catch(e){return null;}
+}
+function holeUptoPick(){
+  // Saisie de la face de fin (trou ou filetage) en cours → {f} ; sinon null (perçage sur cylindre…)
+  if(typeof holeFacePick==='undefined'||!holeFacePick||(holeFacePick.which!=='end'&&holeFacePick.which!=='thread'))return null;
+  const f=doc.features.find(function(x){return x.id===holeFacePick.fid;});
+  return f?{f:f}:null;
+}
 function holeFacePickAt(e){
   if(!holeFacePick)return false;
   if(/^cyl/.test(holeFacePick.which))return holeCylPickAt(e); // perçage sur cylindre (76-percage-cylindre)
   const f=doc.features.find(function(x){return x.id===holeFacePick.fid;});
   if(!f){holeFacePickCancel();return false;}
-  const h=pick(e);if(!h){try{faceEl.textContent='Perçage : aucune face sous le curseur.';}catch(e2){}return true;}
-  let G=null;try{G=occFaceGeom(h.object,h.faceIndex);}catch(e2){G=null;}
-  if(!G||G.kind!=='plan'){try{faceEl.textContent='Perçage : choisissez une face PLANE.';}catch(e2){}return true;}
-  const pl={p:[G.p.x,G.p.y,G.p.z],n:[G.n.x,G.n.y,G.n.z]};
+  const thr=holeFacePick.which==='thread';
+  const old=thr?(f.thread&&f.thread.uptoPlane):f.uptoPlane,off=old&&+old.off||0; // le décalage reste quand la face change
+  const h=pick(e);
+  // V0.99.94 : face plane, arête ou sommet d'une AUTRE pièce de l'assemblage, si elle est devant
+  const U=holeUptoDir(f);let X=null;
+  try{if(U&&typeof asmUptoPickAt==='function')X=asmUptoPickAt(e,U.D,h?h.distance:null);}catch(e2){X=null;}
+  if(X&&X.err){try{faceEl.textContent='Perçage : '+X.err;}catch(e2){}return true;}
+  let pl=null,nom='face';
+  if(X&&X.ref){
+    const q=asmUptoPlane(X.ref,U.D);
+    if(!q){try{faceEl.textContent='Perçage : cible de l’autre pièce illisible.';}catch(e2){}return true;}
+    const r6=function(v){return v.map(function(a){return +(+a).toFixed(6);});};
+    pl={p:r6(q.p),n:r6(q.n),x:X.ref};nom=X.ref.name;
+    const P=U.A.pts[0];
+    if(P&&holePlaneDist({p:pl.p,n:pl.n},P,U.A.dir)===null){try{faceEl.textContent='Perçage : '+nom+' est derrière le début du trou (ou parallèle à son axe) — choisissez-en une autre, ou inversez le sens.';}catch(e2){}return true;}
+  }else{
+    if(!h){try{faceEl.textContent='Perçage : aucune face sous le curseur.';}catch(e2){}return true;}
+    let G=null;try{G=occFaceGeom(h.object,h.faceIndex);}catch(e2){G=null;}
+    if(!G||G.kind!=='plan'){try{faceEl.textContent='Perçage : choisissez une face PLANE.';}catch(e2){}return true;}
+    pl={p:[G.p.x,G.p.y,G.p.z],n:[G.n.x,G.n.y,G.n.z]};
+  }
+  if(off)pl.off=off;
   docPushUndo('perçage : face');
-  if(holeFacePick.which==='thread'){if(!f.thread)f.thread={};f.thread.uptoPlane=pl;f.thread.lenMode='upto';}
+  if(thr){if(!f.thread)f.thread={};f.thread.uptoPlane=pl;f.thread.lenMode='upto';}
   else{f.uptoPlane=pl;f.end='upto';}
   holeFacePickCancel();
   f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();
-  try{faceEl.textContent='Perçage : face retenue.';}catch(e2){}
+  try{faceEl.textContent='Perçage : '+(nom==='face'?'face':nom)+' retenue.';}catch(e2){}
   return true;
+}
+function holeUptoRow(p,pl,set,go){
+  // Sous « Sélectionner la face » : la cible retenue (une autre pièce : son nom ; ⚠ si perdue) et
+  // le décalage (V0.99.94 : + = plus loin que la face, − = avant), qui reste quand la face change
+  const mk=function(tag,cls,txt){const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  if(pl&&pl.x){const n=mk('div','pnl-note holeUptoCible',(pl.perdu?'⚠ '+pl.x.name+' introuvable — dernière position gardée':'🎯 '+pl.x.name));p.appendChild(n);}
+  if(!pl)return;
+  const r=mk('div','pnl-row');r.appendChild(mk('label',null,'Décalage (mm)'));
+  const off0=+pl.off||0,txt=off0?(off0>0?'+':'')+String(off0).replace('.',','):'0';
+  const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.className='holeUptoOff';i.style.width='70px';i.value=txt;
+  i.title='+ : le trou va plus loin que la face ; − : il s’arrête avant (par exemple +1 ou -1).';
+  const c=function(){const v=asmUptoOff(i.value);if(!isFinite(v)){i.value=txt;return;}if(Math.abs(v-off0)<1e-9)return;
+    docPushUndo('perçage : décalage');set(Math.abs(v)<1e-9?0:+v.toFixed(4));go();};
+  i.addEventListener('change',c);i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
+  i.addEventListener('click',function(e){e.stopPropagation();});
+  r.appendChild(i);p.appendChild(r);
 }
 /* ----- création ----- */
 function askHole(presetSketchId,pre){
@@ -688,7 +739,8 @@ function renderHoleProps(p,f){
       f.thread.lenMode=v;if(v==='upto'&&!f.thread.uptoPlane)setTimeout(function(){holeFacePickStart(f.id,'thread');},0);}));
     const tm=f.thread.lenMode||'len';
     if(tm==='len')pRow('Longueur (mm)',num(f.thread.len||f.depth,function(v){f.thread.len=v;},0,f.thread,'len'));
-    else if(tm==='upto')pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'thread');}]]);
+    else if(tm==='upto'){pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'thread');}]]);
+      holeUptoRow(p,f.thread.uptoPlane,function(v){if(v)f.thread.uptoPlane.off=v;else delete f.thread.uptoPlane.off;},go);}
     if(f._thLen)pNote('Longueur filetée effective : '+String(f._thLen).replace('.',',')+' mm');
     if(!threadInfo(f.thread.size).model)pNote('Filet '+(threadInfo(f.thread.size).cone?'conique ':'')+'cosmétique seulement (profil non modélisé) ; Ø de perçage du taraud selon les tables usuelles.');
     else pRow('Filet',sel([['model','Modélisé — profil ISO dans le corps'],['cosmetic','Cosmétique (dessin seul, trou lisse)']],f.thread.model?'model':'cosmetic',function(v){
@@ -711,10 +763,11 @@ function renderHoleProps(p,f){
   if(f.kind==='csink'){pRow('Ø fraisure',num(f.csD,function(v){f.csD=v;},0,f,'csD'));pRow('Angle (°)',sel([['90','90°'],['82','82° (UNC)'],['100','100°'],['120','120°']],String(f.csA||90),function(v){f.csA=+v;}));}
   /* fin */
   // V0.8.0 : fin en icônes
-  pRow('Fin',extSeg([['blind','📏','Borgne','Profondeur donnée (flèche dans la vue)'],['upto','🎯','Jusqu’à la face','S’arrête sur une face choisie'],
+  pRow('Fin',extSeg([['blind','📏','Borgne','Profondeur donnée (flèche dans la vue)'],['upto','🎯','Jusqu’à la face','S’arrête sur une face choisie'+(typeof asmUptoDispo==='function'&&asmUptoDispo()?', ou sur une face plane, une arête, un sommet d’une autre pièce de l’assemblage':'')],
     ['next','⤓','Débouchant','Jusqu’à la prochaine face'],['through','⤴','Tout','Traverse tout']],f.end||'blind',
     function(v){docPushUndo('perçage');f.end=v;if(v==='upto'&&!f.uptoPlane)setTimeout(function(){holeFacePickStart(f.id,'end');},0);go();}));
-  if(f.end==='upto')pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'end');}]]);
+  if(f.end==='upto'){pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'end');}]]);
+    holeUptoRow(p,f.uptoPlane,function(v){if(v)f.uptoPlane.off=v;else delete f.uptoPlane.off;},go);}
   if(!f.end||f.end==='blind'){
     pRow('Profondeur (plein Ø)',num(f.depth,function(v){f.depth=v;},0,f,'depth'));
     pRow('Fond',sel([['118','Pointe 118°'],['135','Pointe 135°'],['140','Pointe 140°'],['90','Pointe 90°'],['0','Fond plat']],String(f.tip===0?0:(f.tip||118)),function(v){f.tip=+v;}));

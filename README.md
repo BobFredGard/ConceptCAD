@@ -12,59 +12,157 @@ Ou installez-le depuis le site, dans Chrome ou Edge : icône d’installation de
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Version actuelle : **V0.99.78** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+Version actuelle : **V1.0.0** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+
+> **V1.0.0, la première version stable.** Les programmes d'usinage ont été essayés sur une vraie machine, une **Fagor 8065**. Les dernières versions n'ont corrigé que de tous petits défauts relevés pendant ces essais.
 
 ## De l'idée à la pièce usinée
 
-Un seul logiciel et un seul fichier `.conceptcad` pour dessiner la pièce, l'assembler, l'usiner, la mettre en plan et en faire une belle image. Une cote change : le solide, les parcours d'outil et les plans suivent.
+Un seul logiciel et un seul fichier `.conceptcad` pour tout le parcours :
+1. **CAO** : dessiner la pièce ;
+2. **Assemblage** : la monter avec les autres ;
+3. **FAO** : l'usiner ;
+4. **PLAN** : la mettre en plan ;
+5. **RENDU** : en faire une belle image.
 
-### CAO
+Une cote change : le solide, les parcours d'outil et les plans suivent.
 
-![Espace CAO : plaque à perçages](docs/captures/cao-percages.png)
+## Les menus
 
-- Esquisses contraintes et cotées, splines, paramètres et formules.
-- Solides à historique : extrusion, révolution, balayage, perçages taraudés, congés exacts, répétitions.
-- Import STEP et STL, export STEP, STL, OBJ et FreeCAD.
+![Le ruban de l'espace CAO, avec la liste « Créer » ouverte : chaque fonction, son raccourci et son épingle](docs/captures/cao-menus.png)
+
+- **Bandeau du haut** :
+  - les quatre espaces **CAO**, **FAO**, **PLAN** et **RENDU** ;
+  - annuler, rétablir et les fichiers (nouveau, ouvrir, récents, enregistrer, dossier de projets) ;
+  - la **recherche de commandes** (`Ctrl+K`), **Régénérer**, le nom du document et la version.
+- **Ruban** propre à chaque espace, rangé en groupes comme dans Fusion 360 :
+  - le **nom d'un groupe** (Créer ▾, Modifier ▾…) ouvre la liste de toutes ses fonctions, avec leur raccourci clavier ;
+  - l'**épingle 📌** choisit celles qui restent aussi dans le ruban.
+- **Arborescence** à gauche (Modèle, Usinage, Plan), **panneau Paramètres** flottant à droite, **timeline** en bas de la vue 3D.
+
+| Espace | Groupes du ruban |
+|---|---|
+| **CAO** | Esquisse · Créer · Construire · Modifier · Ensembles · Fichier · Composants |
+| **Assemblage** (bouton Assembler) | Modéliser · Composant · Occurrence · Relations · Répétition · Inspecter · Depuis corps · Normalisés · Aimants · Insérer |
+| **FAO** | Posage · Limites · Opérations · Simulation · Calcul · Export |
+| **PLAN** | Planches · Vues · Dessin · Cotes · Filigrane · Tolérances · Axes · Sortie |
+| **RENDU** | Atelier en plein écran : moteur, ambiance, fond et sol, appareil photo, image finale |
+
+Autres repères :
+- **Partout** :
+  - **Ctrl+Z / Ctrl+Y** annule et rétablit dans tous les espaces ;
+  - un **clic long** liste tout ce qui est sous la souris, même caché.
+- **Recalcul** : il se fait en arrière-plan, et la vue continue de tourner.
+- **Apparence** :
+  - **cinq thèmes** de couleurs ;
+  - **quatre styles d'icônes** ;
+  - des **fiches illustrées** qui s'animent au survol des icônes.
+
+Manuel : [Interface](docs/manuel/interface.md) · [Souris, clavier et doigts](docs/manuel/raccourcis.md)
+
+## CAO
+
+![Espace CAO : plaque à perçages taraudés, lamés et fraisés](docs/captures/cao-percages.png)
+
+- **Esquisses** contraintes et cotées : le bandeau de choix guide le tracé, comme dans Fusion 360. On y trouve lignes, rectangles, cercles, arcs tangents, oblongs, splines et **texte** (toutes les polices).
+- **Paramètres et formules** (ƒx) dans tous les champs : CAO, FAO et plan.
+- **Fonctions à historique** :
+  - extrusion, révolution et balayage ;
+  - **perçages** lisses, lamés, fraisés et taraudés, aussi sur un cylindre ;
+  - rainure de clavette et **gorge de joint torique** automatiques ;
+  - **congés exacts**, à rayon constant ou variable, et chanfreins ;
+  - coque, dépouille, filetage, scission, déplacement ou suppression de faces ;
+  - **répétitions** linéaires, en grille, circulaires, en symétrie ou suivant un profil.
+- **Géométrie de construction** : plans, axes, points, repères.
+- **Timeline** façon Fusion 360 : on glisse une fonction, on revient en arrière, et la pièce se recalcule en arrière-plan.
+- **Échanges de fichiers** :
+  - import **STEP**, **IGES** et STL ;
+  - export STEP, STL, OBJ et **FreeCAD** ;
+  - assemblage complet vers un dossier.
 
 Manuel : [Esquisse](docs/manuel/esquisse.md) · [Fonctions 3D](docs/manuel/fonctions-3d.md) · [Fichiers](docs/manuel/fichiers.md)
 
-### Assemblage
+## Assemblage
 
-- Tout est composant, comme dans Fusion 360 : pièces, sous-ensembles, fichiers liés.
-- Visserie, goupilles, clavettes, rondelles et engrenages normalisés, posés d'un clic sur les trous.
-- Liaisons animées, interférences, masse et centre de gravité.
+![Assemblage : paire d'engrenages hélicoïdaux, couronne et crémaillère, ruban des composants](docs/captures/assemblage-engrenages.png)
+
+- **Tout est composant**, comme dans Fusion 360 : pièces, sous-ensembles, fichiers liés ou dérivés, à n'importe quelle profondeur.
+- **Relations entre faces** : face contre face, cylindre dans cylindre, tangente, angle, parallèle. Elles sont gardées dans un historique d'étapes qu'on peut modifier.
+- **Dessiner d'après les autres pièces** :
+  - projeter leurs arêtes dans une esquisse ;
+  - extruder ou percer **jusqu'à** une de leurs faces, arêtes ou sommets, avec un décalage + / −.
+- **Normalisés**, posés d'un clic dans tous les trous identiques :
+  - vis ISO et ANSI, bouchons, goupilles, clavettes, rondelles ;
+  - douilles Ensat, joints toriques, quadrilobes et racleurs ;
+  - **engrenages** à vraie développante : roue, couronne, crémaillère, paire au bon entraxe.
+- **Aimants** réels avec leurs lignes de champ.
+- **Liaisons animées**, interférences, masse et centre de gravité.
 
 Manuel : [Assemblage](docs/manuel/assemblage.md)
 
-### FAO
+## FAO
 
-![Espace FAO : simulation du programme taillé dans le brut](docs/captures/fao-simulation.png)
+![Espace FAO : programme complet taillé dans le brut, avec l'outil réel](docs/captures/fao-simulation.png)
 
-- Posages, opérations 2,5D et 3D, perçage reconnu sur le modèle, usinage 3+2.
-- Simulation de la matière enlevée, avec l'outil réel et le vrai brut.
-- G-code Siemens 840D et Fagor 8065.
+- **Posages** : repère d'usinage sur un des 27 points du brut ou du modèle. Brut en boîte, en cylindre ou en vrai corps. Usinage **3+2**.
+- **Opérations** :
+  - Surfaçage, Chanfrein, Contour et Découpe 3 tailles ;
+  - **Perçage**, avec la gamme automatique des trous reconnus sur le modèle ;
+  - **Ébauche 3D** (Escargot, Contours, brut restant), **Finition** à crêtes constantes et Géodésique ;
+  - **Répétition** d'opérations.
+- **Liaisons soignées** :
+  - entrées et sorties en arc ;
+  - congés en **G2 / G3** ;
+  - la fraise reste en bas d'un niveau à l'autre ;
+  - plus de rapides dans le vide.
+- **Simulation** de la matière enlevée, avec l'outil réel et le vrai brut, contrôle des collisions et temps estimé.
+- **G-code Siemens 840D et Fagor 8065**, avec usinage grande vitesse HSC sur la Fagor. Les essais sur machine ont été faits sur une **Fagor 8065**.
+- Les calculs se répartissent sur **tous les cœurs** du PC : l'écran ne se fige pas.
 
 Manuel : [FAO](docs/manuel/fao.md)
 
-### PLAN
+## PLAN
 
-![Espace PLAN : planche A4 du Crochet](docs/captures/plan-crochet.png)
+![Espace PLAN : planche A4 du Crochet, vues, cotes, perçages et vue 3D](docs/captures/plan-crochet.png)
 
-- Planches A4 à A0, cartouche, nomenclature.
-- Vues, coupes et détails aux arêtes exactes ; cotes qui suivent la pièce.
-- Tolérances ISO, états de surface, sorties PDF, DXF et SVG.
+- **Planches** A4 à A0, cartouche dessiné, nomenclature.
+- **Vues aux arêtes exactes**, calculées sur plusieurs cœurs : face, projections, ISO, caméra, auxiliaire, **coupe** (même brisée), détail, coupe locale. On peut aussi importer un DXF.
+- **Cotes qui suivent la pièce** : Ø, longueurs, angles, perçages cotés automatiquement, ordonnées, notes.
+- **Tolérances et marques** :
+  - tolérances géométriques ISO 1101 et références ISO 5459 ;
+  - états de surface ;
+  - filigranes « Bon pour fabrication » ou « Annulé ».
+- **Sorties** PDF, DXF, SVG et impression.
 
 Manuel : [PLAN](docs/manuel/plan.md)
 
-### RENDU
+## RENDU
 
-![Atelier RENDU](docs/captures/rendu-atelier.png)
+![Atelier RENDU : moteur, ambiance, fond et sol, appareil photo](docs/captures/rendu-atelier.png)
 
 - Images réalistes en 1920×1080 ou en 4K.
-- Deux moteurs : rapide, ou lancer de rayons.
-- Matériaux, patine, ambiances, 80 sols, appareil photo réglable.
+- **Deux moteurs** : rapide, ou lancer de rayons (reflets entre pièces, vrai verre).
+- Matériaux choisis au clic droit sur chaque pièce, reliefs (brossé, sablé, moleté), patine, ambiances, 80 sols, appareil photo réglable.
+- **Rendu direct** : la vue CAO ou FAO prend les matériaux de l'atelier, en temps réel.
 
 Manuel : [RENDU](docs/manuel/rendu.md)
+
+## Faire dessiner par l'IA
+
+Branché sur Claude (MCP), ConceptCAD dessine la pièce qu'on lui décrit, par exemple « une bride 80 × 50 × 12, congés R6, quatre trous lamés M6 ». Il se sert des mêmes fonctions que vous : tout reste modifiable à la souris, et un seul `Ctrl+Z` annule la demande.
+
+Manuel : [Scripts et pilotage par Claude (MCP)](docs/manuel/scripts-mcp.md)
+
+## Sur téléphone et tablette
+
+Sur un petit écran tactile, ConceptCAD passe tout seul en **interface téléphone** :
+- vue 3D plein écran ;
+- panneau translucide ;
+- gestes au doigt : pincer pour zoomer, glisser à deux doigts pour déplacer.
+
+C'est le même fichier `.conceptcad` que sur PC.
+
+Manuel : [Téléphone et tablette](docs/manuel/telephone.md)
 
 ## Choisir sa version
 
@@ -77,7 +175,7 @@ C'est le même logiciel partout, et les fichiers passent d'une version à l'autr
 | **Windows** | Vraies fenêtres Ouvrir et Enregistrer, double-clic sur un fichier | [Installateur](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Windows-setup.exe) (≈ 22 Mo) |
 | **Mac** | macOS 12 ou plus récent | [DMG](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Mac.dmg) (≈ 45 Mo) |
 
-Les applications Windows et Mac ne sont pas signées : le système peut afficher un avertissement au premier lancement. Détails et points pas encore vérifiés : [Démarrage](docs/manuel/demarrage.md).
+Les applications Windows et Mac proposent d'elles-mêmes la mise à jour quand une nouvelle version sort. Elles ne sont pas signées : le système peut afficher un avertissement au premier lancement. Détails et points pas encore vérifiés : [Démarrage](docs/manuel/demarrage.md).
 
 ## Premiers pas
 
@@ -85,9 +183,10 @@ Les applications Windows et Mac ne sont pas signées : le système peut afficher
 2. [Lancer ConceptCAD](https://bobfredgard.github.io/ConceptCAD/). Le premier lancement télécharge le noyau de calcul (≈ 43 Mo, de préférence en Wi-Fi).
 3. Ouvrir le fichier (`Ctrl+O`).
 4. Passer d'un espace à l'autre dans le bandeau du haut : **CAO**, **FAO**, **PLAN**, **RENDU**.
-5. Modifier un paramètre (bouton **ƒx**) et regarder la pièce suivre.
+5. Cliquer le nom d'un groupe du ruban (**Créer ▾**, **Opérations ▾**…) pour voir toutes ses fonctions.
+6. Modifier un paramètre (bouton **ƒx**) et regarder la pièce, les parcours et la planche suivre.
 
-D'autres projets à ouvrir sont dans le dossier [Exemples](Exemples) : Crochet, Support Pédale, Axe, Cavité Usinage, Malaxeur Retard, Engrenages.
+D'autres projets à ouvrir sont dans le dossier [Exemples](Exemples) : Crochet, Support Pédale, Axe, Engrenages, Cavité Usinage, Malaxeur Retard, Découpe 3 tailles.
 
 ## Le manuel
 
@@ -100,8 +199,9 @@ D'autres projets à ouvrir sont dans le dossier [Exemples](Exemples) : Crochet, 
 
 ## Sous le capot
 
-- Noyau géométrique exact : **OpenCascade 8 compilé en WebAssembly** par nos soins, multicœur quand le navigateur et le PC le permettent.
-- Affichage : three.js. Simulation et rendu sur la carte graphique (NVIDIA, AMD, Apple).
+- **Noyau géométrique exact** : OpenCascade 8, compilé en WebAssembly par nos soins. Il est multicœur quand le navigateur et le PC le permettent.
+- **Affichage** : three.js. La simulation et le rendu tournent sur la carte graphique (NVIDIA, AMD, Apple).
+- **Calculs FAO et mise en plan** répartis sur tous les cœurs du processeur.
 - Pour lancer depuis les sources, comprendre le dépôt ou livrer une version : [Développement](docs/manuel/developpement.md).
 
 ## Licences

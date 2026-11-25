@@ -153,4 +153,5 @@ function renderTree(){
   // L'arbre est construit par le modèle générique (42-arbre-modele.js : treeModel → treeDraw)
   treeRender();
   try{mfFaoGate();}catch(e){} // V0.21.11 : FAO grisé sans pièce active (97)
+  try{lpRafraichir();}catch(e){} // V0.99.82 : fenêtre des liens perdus à jour (50-esquisse-97)
 }

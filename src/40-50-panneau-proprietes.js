@@ -41,8 +41,8 @@ function renderProps(){
     const sk=doc.sketches.find(s=>s.id===sel.id);if(!sk){pNote('Esquisse supprimée.');return;}
     pH('Esquisse');
     pInfo(`<b>${sk.name}</b> · plan ${sketchFaceLabel(sk)} · ${sk.entities.length} entités`);
-    const perdue=skFacePerdue(sk);
-    if(perdue)pNote('⚠ '+perdue+' — « 🎯 Changer de face » pour la resélectionner.');
+    const perdue=lpResume(sk); // V0.99.82 : face ou éléments sans source (50-esquisse-97)
+    if(perdue){pNote('⚠ '+perdue+'.');pBtns([['⚠ Liens perdus…',()=>lpOuvrir(sk.id)]]);}
     pBtns([
       ['🔧 Éditer',()=>openSketch(sk.id)],
       ['🎯 Changer de face',()=>skRedefStart(sk.id)],

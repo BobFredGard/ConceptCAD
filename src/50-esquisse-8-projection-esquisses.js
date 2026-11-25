@@ -174,6 +174,10 @@ function skpNom(pr){return pr.type==='point'?'Point':pr.type==='circle'?'Cercle'
 function skpClic(T,x,y){
   // outil ⧉ : true si le clic a porté sur une autre esquisse
   const pr=skpHit(T,x,y);if(!pr)return false;
+  skpProjeter(T,pr);return true;
+}
+function skpProjeter(T,pr){
+  // pr : élément d'une autre esquisse (skpHit, ou choisi dans la liste de l'appui long)
   const dej=skpExistante(T,pr);
   if(dej){skStatus(skpNom(pr)+' de « '+pr.srcName+' » déjà projeté(e) ici.');return true;}
   skPushUndo();

@@ -86,11 +86,16 @@ function faoSanitiseOps(s){
   }else if(s.planes!==undefined)delete s.planes;
   if(s.liftMin!==undefined&&!(+s.liftMin>0))delete s.liftMin; // V0.61.0 : retrait minimum entre passes (mm)
   if(s.toolOrder!==undefined&&s.toolOrder!=='tool'&&s.toolOrder!=='num')delete s.toolOrder; // V0.99.76 : ordre d'usinage (absent = liste)
+  if(s.hsc!==undefined&&s.hsc!=='auto'&&s.hsc!=='off')delete s.hsc; // V0.99.92 : HSC Fagor (absent = fiche machine)
+  if(s.hscAccel!==undefined&&!(+s.hscAccel>0))delete s.hscAccel;
   if(s.fixture&&typeof s.fixture==='object'){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;
   }
+  // V0.99.96 : correction de Ø (outil, opération) — nombre non nul borné, sinon retirée
+  (s.tools||[]).forEach(function(t){ if(t&&t.dCor!==undefined){ const c=faoDCorVal(t.dCor); if(c)t.dCor=c; else delete t.dCor; } });
   (s.ops||[]).forEach(function(op){
+    if(op&&op.dCor!==undefined){ const c=faoDCorVal(op.dCor); if(c)op.dCor=c; else delete op.dCor; }
     if(!op.id)op.id=faoNewId('op');
     if(op.on===undefined)op.on=true;
     faoHtsClean(op); // V0.26.0 : références Haut/Bas
@@ -146,6 +151,10 @@ function faoSanitiseOps(s){
       if(isFinite(+op.entryR)&&+op.entryR>0)op.entryR=+op.entryR;
       else delete op.entryR;
     }
+    // V0.99.88 : plus de pente maxi des rampes (degrés) — rampTour = descente par tour (mm,
+    // absent = valeur proposée) ; l'angle d'un ancien fichier est retiré (aucun tour de référence)
+    delete op.rampAng; if(op.expr)delete op.expr.rampAng; if(op.pname)delete op.pname.rampAng;
+    if(op.rampTour!==undefined){const t=+op.rampTour;if(isFinite(t)&&t>0)op.rampTour=Math.max(0.01,Math.min(100,t));else delete op.rampTour;}
     // 2026-10-03-004 : mode trocoïdal unique — anciennes stratégies et passes
     // fines ap2 retirées du document à la lecture (migration, comme la laisse).
     delete op.strategy; delete op.ap2; delete op.radial2; delete op.axial2;
@@ -159,15 +168,47 @@ function faoSanitiseOps(s){
       if(op.cside!=='ext'&&op.cside!=='int')delete op.cside;
       ['nR','fin','leadR','overlap','tabN','tabW','tabH'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
       // V0.23.18 : descente « Pente » (absent = Paliers, documents inchangés)
-      if(op.descente==='pente'){const a=+op.pente;op.pente=isFinite(a)&&a>0?Math.max(0.5,Math.min(45,a)):5;}
-      else{delete op.descente;delete op.pente;}
+      // V0.99.88 : plus d'angle — penteTour = descente par tour (mm, absent = valeur proposée).
+      // Ancien fichier en degrés (op.pente) : converti une fois en mm/tour sur le périmètre du profil
+      // (périmètre × tan angle ; avec un maxi mm/tour de V0.99.84, le plus petit des deux).
+      if(op.descente==='pente'){
+        let tt=+op.penteTour;tt=isFinite(tt)&&tt>0?tt:0;
+        const a=+op.pente,lp=op.limit&&Array.isArray(op.limit.loop)?op.limit.loop:null;
+        if(isFinite(a)&&a>0&&lp&&lp.length>=3){
+          let L=0;for(let i=1;i<lp.length;i++)L+=Math.hypot(lp[i][0]-lp[i-1][0],lp[i][1]-lp[i-1][1]);
+          const a0=lp[0],a1=lp[lp.length-1];L+=Math.hypot(a0[0]-a1[0],a0[1]-a1[1]);
+          const conv=Math.round(L*Math.tan(Math.min(45,a)*Math.PI/180)*100)/100;
+          if(conv>0)tt=tt?Math.min(tt,conv):conv;
+        }
+        if(tt)op.penteTour=Math.max(0.01,Math.min(100,tt));else delete op.penteTour;
+      }
+      else{delete op.descente;delete op.penteTour;}
+      delete op.pente;
+      if(op.expr)delete op.expr.pente; if(op.pname)delete op.pname.pente;
       if(op.sautVide!==false)delete op.sautVide; // V0.99.18 : rapide dans le vide (absent = oui)
+      // V0.99.85 : fraise 3 tailles — hauteur et décalages de la rainure (absents = défauts)
+      if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
+      ['slotDz','slotDr'].forEach(function(k){if(k in op&&!isFinite(+op[k]))delete op[k];});
+      ['cutDir','cutSide','slotThru'].forEach(function(k){delete op[k];});
+      // V0.99.89 : entrée droite de la 3 tailles (absent = arc) et ses zones d'entrée / sortie
+      if(op.slotLead!=='droite'){delete op.slotLead;delete op.slotLin;delete op.slotLout;}
+      else ['slotLin','slotLout'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
+    }else if(op.type==='slotcut'){ // V0.99.86 : découpe 3 tailles (src/89-fao-decoupe-3tailles.js)
+      if(op.cutDir!=='Y'&&op.cutDir!=='edge')delete op.cutDir;
+      if(op.cutSide!=='+'&&op.cutSide!=='both')delete op.cutSide;
+      ['nR','fin'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
+      if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
+      if('slotDr' in op&&!isFinite(+op.slotDr))delete op.slotDr;
+      ['slotLin','slotLout'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
+      if(op.cutDir!=='edge')delete op.limit;
+      if(op.slotThru!==true||op.cutDir==='edge')delete op.slotThru; // V0.99.93 : à travers (absent = profondeur)
+      ['cside','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotDz','slotLead'].forEach(function(k){delete op[k];});
     }else if(op.type==='chamfer'){ // V0.7.9 : chanfrein — côté, entrées, recouvrement, largeur, décalage de pointe
       if(op.cside!=='ext'&&op.cside!=='int'&&op.cside!=='auto')delete op.cside;
       ['leadR','overlap','w','tipOff','z'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&(k==='z'||+op[k]>=0)))delete op[k];});
-      ['nR','fin','tabN','tabW','tabH','descente','pente'].forEach(function(k){delete op[k];});
+      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout','slotLead','slotThru'].forEach(function(k){delete op[k];});
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
-    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','c3d'].forEach(function(k){delete op[k];});
+    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout','slotLead','slotThru'].forEach(function(k){delete op[k];});
     if(!(op.type==='contour'&&op.strat==='profil'))delete op.sautVide;
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
@@ -209,7 +250,7 @@ function faoSanitiseOps(s){
     // 2026-10-08-003 : sens de passe — seuls 'avalant' et 'bidir' survivent,
     // et seulement sur l'Ebauche 3D et la finition géodésique (2026-10-13-007 :
     // rétro-ingénierie cav.txt — sens opposé alterné sur Crêtes constantes).
-    if(faoContourProfil(op)||op.type==='chamfer'){ if(op.sens!=='avalant'&&op.sens!=='opp')delete op.sens; }
+    if(faoContourProfil(op)||op.type==='chamfer'||op.type==='slotcut'){ if(op.sens!=='avalant'&&op.sens!=='opp')delete op.sens; }
     else if((op.type!=='rough3d'&&op.type!=='geofinish'&&op.type!=='geodesic'&&!faoPocketAdapt(op))||(op.sens!=='avalant'&&op.sens!=='bidir'))delete op.sens;
     // 2026-10-13-007 : direction des passes parallèles — 'auto'/'x'/'y'/'ang'
     // sur Crêtes constantes (+ angle fini si 'ang'), absent = auto (axe long).

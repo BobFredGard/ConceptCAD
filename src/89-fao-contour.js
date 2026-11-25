@@ -10,8 +10,10 @@
    - passes radiales (n, écart ae) puis finition à pleine hauteur
      (surépaisseur op.fin) ; descente en Z : « Paliers » (niveaux ap,
      défaut) ou « Pente » (V0.23.18, op.descente 'pente') — l'outil attaque
-     le contour en haut et descend en hélice le long de la boucle selon
-     l'angle op.pente (°) jusqu'au plan final, puis un tour à plat ;
+     le contour en haut et descend en hélice le long de la boucle
+     jusqu'au plan final, puis un tour à plat ;
+     V0.99.88 : plus d'angle (op.pente, °) — op.penteTour = descente par tour (mm),
+     proposée à 10 % du Ø (0,5 mm au moins), « Rampe » dans la fiche ;
    - sens avalant (matière à droite de l'avance, broche M3) ou opposé ;
    - entrée / sortie en quart de cercle tangent côté libre,
      recouvrement en fin de boucle ;
@@ -49,6 +51,16 @@ function faoGenContourProfil(mesh,loop0,o){
     if(Math.hypot(a[0]-b[0],a[1]-b[1])>1e-6)loop.push([a[0],a[1]]);}
   let ar=0;for(let i=0;i+1<loop.length;i++)ar+=loop[i][0]*loop[i+1][1]-loop[i+1][0]*loop[i][1];
   if(ar<0)loop=loop.slice().reverse();
+  // V0.99.96 : congés et arcs de la chaîne retrouvés et re-découpés sur le VRAI cercle avant le
+  // décalage ; leurs centres (et ceux des coins vifs) servent ensuite aux blocs G2 / G3
+  // (faoFitArcsMoves, src/89-fao-arcs.js) — o.arcs === false : boucle telle quelle
+  let arcC=null;
+  if(o.arcs!==false){
+    try{ const DA=faoLoopArcDense(loop); if(DA&&DA.loop&&DA.loop.length>=4){ loop=DA.loop; arcC=DA.centers; diag.arcsBoucle=DA.arcs; } }catch(e){ arcC=null; }
+  }
+  const arcCk=new Set();
+  const arcCAdd=function(c){ if(!arcC||!c)return; const k=c[0].toFixed(4)+','+c[1].toFixed(4); if(arcCk.has(k))return; arcCk.add(k); arcC.push({x:c[0],y:c[1],ex:1}); };
+  try{ moves.arcC=arcC; }catch(e){}
   // --- côté matière : section à mi-hauteur, parité de part et d'autre
   let side=o.side==='ext'||o.side==='int'?o.side:null;
   if(!side&&mesh){
@@ -117,7 +129,7 @@ function faoGenContourProfil(mesh,loop0,o){
   const overlap=isFinite(+o.overlap)&&+o.overlap>=0?+o.overlap:1;
   const zClear=Math.min(secu,Math.max(ztop,zbot)+2);
   const rnd=function(v){return Math.round(v*10000)/10000;};
-  let cur=null;
+  let cur=null,runEnd=null;
   const push=function(m){m.x=rnd(m.x);m.y=rnd(m.y);m.z=rnd(m.z);moves.push(m);cur=m;};
   // côté libre d'un point de passe (normale vers l'extérieur de la matière)
   // t = tangente unitaire de l'avance ; avalant : matière à droite, libre à gauche
@@ -129,6 +141,7 @@ function faoGenContourProfil(mesh,loop0,o){
     for(let k=0;k<=N;k++){const th=k/N*Math.PI/2;
       if(isIn)pts.push([C[0]-R*(t[0]*Math.cos(th)+nf[0]*Math.sin(th)),C[1]-R*(t[1]*Math.cos(th)+nf[1]*Math.sin(th))]);
       else pts.push([C[0]+R*(-nf[0]*Math.cos(th)+t[0]*Math.sin(th)),C[1]+R*(-nf[1]*Math.cos(th)+t[1]*Math.sin(th))]);}
+    pts.c=C; // V0.99.96 : centre de l'entrée / sortie (bloc G2 / G3)
     return pts;
   };
   const arcOK=function(pts,d){
@@ -140,19 +153,31 @@ function faoGenContourProfil(mesh,loop0,o){
   const emitRun=function(run,z,d,ramp){
     let pts=run.pts;
     // départ : point le plus proche de la position courante (boucle fermée)
-    if(run.closed&&cur){
-      let bi=0,bd=1/0;
-      for(let i=0;i+1<pts.length;i++){const q=(pts[i][0]-cur.x)*(pts[i][0]-cur.x)+(pts[i][1]-cur.y)*(pts[i][1]-cur.y);if(q<bd){bd=q;bi=i;}}
+    // V0.99.97 (Renfort : « Pourquoi l'entrée descend puis remonte pour aller chercher une autre
+    // entrée? ») : choisi au premier niveau, puis le MÊME à chaque niveau (comme Fusion) — avant,
+    // le départ glissait le long du congé d'un niveau à l'autre
+    if(run.closed&&(cur||run._bi!==undefined)){
+      let bi=run._bi;
+      if(bi===undefined){
+        let bd=1/0;bi=0;
+        for(let i=0;i+1<pts.length;i++){const q=(pts[i][0]-cur.x)*(pts[i][0]-cur.x)+(pts[i][1]-cur.y)*(pts[i][1]-cur.y);if(q<bd){bd=q;bi=i;}}
+      }
+      run._bi=bi;
       const body=pts.slice(bi,pts.length-1).concat(pts.slice(0,bi));
       pts=body.concat([[body[0][0],body[0][1]]]);
-    }
+    }else if(run.closed)run._bi=0;
     // Pente : hélice le long de la boucle de z0 à z (longueur (z0−z)/k), puis
     // un tour complet à plat + recouvrement ; pts portent leur z ([x,y,z])
     if(ramp&&run.closed&&ramp.z0>z+1e-9){
       const B=pts;let Lb=0;for(let i=1;i<B.length;i++)Lb+=Math.hypot(B[i][0]-B[i-1][0],B[i][1]-B[i-1][1]);
       if(Lb>1e-6){
-        const Lr=(ramp.z0-z)/ramp.k,total=Lr+Lb+overlap;
-        const zAt=function(t){return Math.max(z,ramp.z0-ramp.k*t);};
+        // V0.99.88 (« enlever la pente partout… et remplacer toutes ces pentes par des mm/tour ») :
+        // descente de ramp.tour mm à chaque tour de CETTE boucle (périmètre Lb), plus d'angle
+        const k=ramp.tour/Lb;
+        const Lr=(ramp.z0-z)/k,total=Lr+Lb+overlap;
+        const zAt=function(t){return Math.max(z,ramp.z0-k*t);};
+        // tours de la passe (la dernière émise = la plus proche de la paroi) pour la fiche
+        diag.rampe={tour:ramp.tour,tours:+(Lr/Lb).toFixed(1)};
         const P3=[[B[0][0],B[0][1],ramp.z0]];let t=0;
         while(t<total-1e-9){
           for(let i=1;i<B.length&&t<total-1e-9;i++){
@@ -182,16 +207,36 @@ function faoGenContourProfil(mesh,loop0,o){
     let lin=null,lout=null;
     for(let R=leadR;R>=0.5&&!lin;R*=0.6){const a=arcPts(pts[0],t0,nf0,R,true);if(arcOK(a,d))lin=a;}
     for(let R=leadR;R>=0.5&&!lout;R*=0.6){const a=arcPts(pts[pts.length-1],t1,nf1,R,false);if(arcOK(a,d))lout=a;}
+    if(lin)arcCAdd(lin.c);
+    if(lout)arcCAdd(lout.c);
     const S=lin?lin[0]:pts[0];
-    // approche : dégagement, rapide au-dessus du départ, plongée en avance
-    if(!cur){push({r:1,x:S[0],y:S[1],z:secu});if(zClear<secu-1e-9)push({r:1,x:S[0],y:S[1],z:zClear});}
-    else{
-      if(cur.z<zClear-1e-9)push({r:1,x:cur.x,y:cur.y,z:zClear});
-      push({r:1,x:S[0],y:S[1],z:zClear});
-    }
     const zS=ramp?ramp.z0:z;
     const zIn=(lin&&inTab(S[0],S[1])&&zS<tabZ)?tabZ:zS;
-    push({r:0,ent:1,x:S[0],y:S[1],z:zIn});
+    // V0.99.97 : niveau suivant juste après la sortie du niveau précédent — la fraise RESTE EN
+    // BAS (comme Fusion) : de la fin de la sortie au début de l'entrée à la même cote, dans le
+    // libre (contrôlé comme les arcs d'entrée), puis plongée sur place. Avant : remontée au
+    // dégagement, entrée ailleurs, redescente. Drapeau stay : jamais sauté par « Rapide dans le vide ».
+    let stay=false;
+    if(cur&&!cur.r&&cur===runEnd&&!ramp&&cur.z>=zIn-1e-9){
+      const L=Math.hypot(S[0]-cur.x,S[1]-cur.y);
+      if(L<=2*leadR+overlap+r+1e-6){
+        const n=Math.max(1,Math.ceil(L/0.5)),seg=[];
+        for(let k=0;k<=n;k++)seg.push([cur.x+(S[0]-cur.x)*k/n,cur.y+(S[1]-cur.y)*k/n]);
+        stay=arcOK(seg,d);
+      }
+    }
+    if(stay){
+      if(Math.hypot(S[0]-cur.x,S[1]-cur.y)>1e-6)push({r:0,ent:1,stay:1,x:S[0],y:S[1],z:cur.z});
+      if(cur.z>zIn+1e-9)push({r:0,ent:1,stay:1,x:S[0],y:S[1],z:zIn});
+    }else{
+      // approche : dégagement, rapide au-dessus du départ, plongée en avance
+      if(!cur){push({r:1,x:S[0],y:S[1],z:secu});if(zClear<secu-1e-9)push({r:1,x:S[0],y:S[1],z:zClear});}
+      else{
+        if(cur.z<zClear-1e-9)push({r:1,x:cur.x,y:cur.y,z:zClear});
+        push({r:1,x:S[0],y:S[1],z:zClear});
+      }
+      push({r:0,ent:1,x:S[0],y:S[1],z:zIn});
+    }
     // Pente : z varie à chaque point — bascule d'attache suivie par drapeau
     let clipOn=zIn>zS+1e-9,rawZ=zS;
     const cutRamp=function(x,y,ent,zp){
@@ -222,6 +267,8 @@ function faoGenContourProfil(mesh,loop0,o){
     if(lin)for(let k=1;k<lin.length;k++)cutPt(lin[k][0],lin[k][1],1,zS);
     for(let k=1;k<pts.length;k++)cutPt(pts[k][0],pts[k][1],0,ramp?pts[k][2]:z);
     if(lout)for(let k=1;k<lout.length;k++)cutPt(lout[k][0],lout[k][1],1,z);
+    runEnd=cur; // V0.99.97 : bout de la sortie — le niveau suivant peut partir d'ici sans remonter
+    if(stay)diag.resteEnBas=(diag.resteEnBas||0)+1;
     diag.passes++;
   };
   const levels=faoLevels(ztop,zbot+RA.axial,isFinite(+o.ap)&&+o.ap>0?+o.ap:5);
@@ -230,9 +277,10 @@ function faoGenContourProfil(mesh,loop0,o){
   if(o.descente==='pente'){
     // Pente : chaque passe latérale descend d'un trait jusqu'au plan final ;
     // un morceau OUVERT (profil coupé) ne peut pas tourner : repli en paliers
-    const ang=Math.max(0.5,Math.min(45,isFinite(+o.pente)&&+o.pente>0?+o.pente:5));
-    const ramp={z0:ztop,k:Math.tan(ang*Math.PI/180)},zf=zbot+RA.axial;
-    diag.pente=ang;
+    // V0.99.88 : o.penteTour = descente par tour (mm) ; absent = valeur proposée (faoPasTourAuto)
+    const tour=isFinite(+o.penteTour)&&+o.penteTour>0?Math.max(0.01,Math.min(100,+o.penteTour)):faoPasTourAuto(D);
+    const ramp={z0:ztop,tour:tour},zf=zbot+RA.axial;
+    diag.penteTour=tour;
     passes.forEach(function(runs,k){runs.forEach(function(run){
       if(run.closed)emitRun(run,zf,offs[k],ramp);
       else levels.forEach(function(z){emitRun(run,z,offs[k]);});
@@ -291,7 +339,7 @@ function faoContourTrimAir(mv,mat,D){
   // passe entièrement dans le vide : supprimée.
   if(!Array.isArray(mv)||mv.length<3||typeof mat!=='function')return mv;
   const st=0.5,mg=1,Lmid=Math.max(10,2*D),Lend=1;
-  const out=[];let nSaut=0,nVide=0;
+  const out=[];let nSaut=0,nVide=0,nPl=0;
   let i=0;
   while(i<mv.length){
     if(mv[i].r||i===0){out.push(mv[i]);i++;continue;}
@@ -305,7 +353,22 @@ function faoContourTrimAir(mv,mat,D){
         S.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t,d:cum+L*t,k:k,end:q===ns});}
       cum+=L;
     }
-    const air=S.map(function(q){return !mat(q.x,q.y,q.z);});
+    const airRaw=S.map(function(q){return !mat(q.x,q.y,q.z);});
+    // V0.99.97 : passage au niveau suivant en restant en bas (m.stay) : jamais sauté (un saut
+    // ferait remonter la liaison du posage) — V1.0.0 : seulement ENTRE deux coupes en matière ;
+    // avant la première ou après la dernière, il suit le vide (passe toute dans le vide =
+    // supprimée, niveau du dessus vide = approche directe au-dessus de l'entrée du suivant)
+    let m0=-1,m1=-1;airRaw.forEach(function(a,ix){if(!a){if(m0<0)m0=ix;m1=ix;}});
+    const air=airRaw.map(function(a,ix){const m=mv[S[ix].k];return a&&!(m&&m.stay&&ix>m0&&ix<m1);});
+    const airEnd={};S.forEach(function(q,ix){if(q.end)airEnd[q.k]=airRaw[ix];});
+    const put=function(m,k){
+      // plongée sur place (stay) dans le vide : rapide jusqu'à 1 mm au-dessus, puis avance
+      const pv=out.length?out[out.length-1]:null;
+      if(m.stay&&!m.r&&pv&&airEnd[k]&&Math.hypot(m.x-pv.x,m.y-pv.y)<=1e-9&&pv.z-m.z>1.5){
+        out.push({r:1,x:m.x,y:m.y,z:m.z+1});nPl++;
+      }
+      out.push(m);
+    };
     // intervalles sautés [s1, s2] en indices d'échantillons : coupe jusqu'à s1, rapide à s2
     const skips=[];const last=S.length-1;
     for(let a=0;a<=last;){
@@ -318,13 +381,18 @@ function faoContourTrimAir(mv,mat,D){
         if(d2-d1>=(lead||trail?Lend:Lmid)){
           let s1=a,s2=b;
           if(!lead){while(s1<b&&S[s1].d<d1)s1++;}else s1=0;
-          if(!trail){while(s2>s1&&S[s2].d>d2)s2--;}else s2=last;
+          if(!trail){while(s2>s1&&S[s2].d>d2)s2--;
+            // V1.0.0 : la matière commence au bas d'une plongée sur place (passage d'un niveau
+            // à l'autre) : le vide va jusqu'au haut de la plongée (pas de marge en longueur)
+            const nm=mv[S[b+1].k];
+            if(nm&&nm.stay&&!nm.r&&S[b+1].k!==S[b].k&&Math.hypot(nm.x-S[b].x,nm.y-S[b].y)<=1e-9)s2=b;
+          }else s2=last;
           if(s2>s1)skips.push([s1,s2,lead?'debut':(trail?'fin':'milieu')]);
         }
       }
       a=b+1;
     }
-    if(!skips.length){for(let k=i;k<j;k++)out.push(mv[k]);i=j;continue;}
+    if(!skips.length){for(let k=i;k<j;k++)put(mv[k],k);i=j;continue;}
     if(skips[0][2]==='tout'){nVide++;i=j;continue;}
     let si=0;
     for(let s=1;s<=last;s++){
@@ -333,20 +401,36 @@ function faoContourTrimAir(mv,mat,D){
         if(s===sk[1]){
           // fin du vide : rapide au-dessus, descente en avance (sauf fin de passe)
           if(sk[2]!=='fin'){const q=S[s];
-            out.push({r:1,x:q.x,y:q.y,z:q.z+1});
-            out.push({r:0,ent:1,x:q.x,y:q.y,z:q.z});}
+            // V0.99.97 : vide au début — l'approche (dégagement, rapides au-dessus du départ
+            // prévu) va DIRECTEMENT au-dessus de la vraie entrée. Avant : descente au départ
+            // prévu, remontée, puis rapide vers l'entrée en matière.
+            if(sk[2]==='debut'){
+              for(let t=out.length-1;t>=0&&out[t].r;t--)
+                if(Math.hypot(out[t].x-S[0].x,out[t].y-S[0].y)<=1e-6)out[t]=Object.assign({},out[t],{x:q.x,y:q.y});
+            }
+            // V1.0.0 : le vide finit juste avant la plongée sur place d'un niveau à l'autre
+            // (niveau du dessus vide) : rapide jusqu'à 1 mm au-dessus du niveau suivant, la
+            // plongée sur place fait le dernier millimètre en avance
+            const nx=s<last?mv[S[s+1].k]:null;
+            if(nx&&nx.stay&&!nx.r&&Math.hypot(nx.x-q.x,nx.y-q.y)<=1e-9&&q.z-nx.z>1.5){
+              out.push({r:1,x:q.x,y:q.y,z:Math.min(q.z+1,nx.z+1)});nPl++;
+            }else{
+              out.push({r:1,x:q.x,y:q.y,z:q.z+1});
+              out.push({r:0,ent:1,x:q.x,y:q.y,z:q.z});
+            }}
           nSaut++;si++;
         }
         continue;
       }
       const q=S[s],m=mv[q.k];
-      if(q.end)out.push(m);
+      if(q.end)put(m,q.k);
       else if(sk&&s===sk[0]){const o2={r:0,x:q.x,y:q.y,z:q.z};if(m.ent)o2.ent=m.ent;out.push(o2);}
     }
     i=j;
   }
   for(const k in mv)if(!/^\d+$/.test(k))out[k]=mv[k];
   out.vide={sauts:nSaut,passes:nVide};
+  if(nPl)out.vide.plongees=nPl;
   return out;
 }
 
@@ -354,6 +438,7 @@ function faoContourTrimAir(mv,mat,D){
 // sens, Entrée/sortie, Attaches, Matière à laisser.
 function faoContourRows(d,setup,op){
   const toolD=(function(){const t=faoToolById(setup,op.toolId);return t&&+t.d>0?+t.d:10;})();
+  const slot=faoToolIsSlot(faoToolById(setup,op.toolId)); // V0.99.85 : fraise 3 tailles → rainure
   d.appendChild(faoH('Profil'));
   const L=(op.limit&&op.limit.mode==='chain')?op.limit:null;
   const has=!!(L&&(L.loop||[]).length>=3);
@@ -363,7 +448,7 @@ function faoContourRows(d,setup,op){
   info.textContent=has
     ?(L.nEdges||'?')+' arête(s), boucle '+(L.closed?'fermée':'refermée')+
       (gd.side?' · outil '+(gd.side==='ext'?'à l’EXTÉRIEUR (bossage)':'à l’INTÉRIEUR (poche)'):'')
-    :'aucun profil — cliquez les arêtes du BAS de la paroi';
+    :(slot?'aucun contour — cliquez les arêtes du contour à rainurer (Bas = la plus basse)':'aucun profil — cliquez les arêtes du BAS de la paroi');
   rc.appendChild(info);
   const bs=document.createElement('button'); bs.textContent=has?'Re-sélectionner':'Sélectionner le profil';
   bs.style.fontSize='.72rem';
@@ -380,22 +465,37 @@ function faoContourRows(d,setup,op){
     d.appendChild(ws);
   }
   // Haut / Bas : onglet Hauteurs (faoPlanesCard)
+  if(slot)faoSlotRows(d,setup,op); // src/89-fao-contour-3tailles.js
   d.appendChild(faoH('Passes (mm)'));
-  const pente=op.descente==='pente';
+  const pente=!slot&&op.descente==='pente';
   const rD=faoRow();
   rD.appendChild(faoLab('Descente'));
   rD.appendChild(faoSel([
     ['paliers','Paliers','Niveaux successifs espacés de ap : un tour à plat par niveau.'],
-    ['pente','Pente','Attaque en haut du contour puis descente en hélice le long du profil, selon l’angle de pente, jusqu’au plan final (Bas) parcouru à plat.']],
-    pente?'pente':'paliers',function(v){ if(v==='pente'){op.descente='pente';if(!isFinite(+op.pente))op.pente=5;} else{delete op.descente;delete op.pente;} },
-    'Descente en Z : par paliers ou en pente continue.'));
+    ['pente','Rampe','Attaque en haut du contour puis descente en hélice le long du profil, d’un nombre de mm à chaque tour, jusqu’au plan final (Bas) parcouru à plat.']],
+    pente?'pente':'paliers',function(v){ if(v==='pente')op.descente='pente'; else{delete op.descente;delete op.penteTour;} },
+    'Descente en Z : par paliers ou en rampe continue le long du profil.'));
+  if(!slot)d.appendChild(rD);
+  // V0.99.88 : plus d'angle — descente par tour (mm), valeur proposée affichée (10 % du Ø)
   if(pente){
-    rD.appendChild(faoLab('pente °')); rD.appendChild(faoNumFx(op,'pente',isFinite(+op.pente)?+op.pente:5,function(v){op.pente=Math.max(0.5,Math.min(45,v));},44,0.5,
-      'Angle de la descente par rapport au plan horizontal (0,5 à 45°) : la profondeur gagnée par tour vaut périmètre × tan(angle).'));
+    const rT2=faoRow();
+    rT2.appendChild(faoLab('descente / tour'));
+    rT2.appendChild(faoNumFx(op,'penteTour',isFinite(+op.penteTour)&&+op.penteTour>0?+op.penteTour:+faoPasTourAuto(toolD).toFixed(2),
+      function(v){ if(isFinite(v)&&v>0)op.penteTour=Math.max(0.01,Math.min(100,v)); else delete op.penteTour; },44,0.1,
+      'Descente à chaque tour du contour (mm). Valeur proposée : 10 % du Ø de l’outil, 0,5 mm au moins ; changez-la à volonté (vide ou 0 = revenir à la valeur proposée).'));
+    d.appendChild(rT2);
+    const gr=(op.geoDiag||{}).rampe;
+    if(gr&&isFinite(+gr.tours)&&!op.stale){ // à régénérer : chiffres de l'ancien calcul, cachés
+      const ir=faoHelp(String(+(+gr.tours).toFixed(1)).replace('.',',')+' tour'+(+gr.tours>1?'s':'')+' jusqu’au Bas.');
+      ir.title='Passe la plus proche de la paroi, au dernier calcul.';
+      d.appendChild(ir);
+    }
   }
-  d.appendChild(rD);
   const rP=faoRow();
-  if(!pente){rP.appendChild(faoLab('ap')); rP.appendChild(faoNumFx(op,'ap',op.ap,function(v){op.ap=Math.max(0.2,v);},48,0.5,'Descente par passe en Z.'));}
+  if(slot){const ep=faoToolDims(faoToolById(setup,op.toolId)).lc.v;
+    rP.appendChild(faoLab('pas Z')); rP.appendChild(faoNumFx(op,'ap',Math.min(+op.ap>0?+op.ap:ep,ep),function(v){op.ap=Math.max(0.05,v);},48,0.1,
+      'Pas entre deux passes en hauteur, au plus l’épaisseur du disque ('+ep+' mm) : les passes vont du haut de la rainure vers le Bas.'));}
+  else if(!pente){rP.appendChild(faoLab('ap')); rP.appendChild(faoNumFx(op,'ap',op.ap,function(v){op.ap=Math.max(0.2,v);},48,0.5,'Descente par passe en Z.'));}
   rP.appendChild(faoLab('passes')); rP.appendChild(faoNumFx(op,'nR',isFinite(+op.nR)?+op.nR:1,function(v){op.nR=Math.max(1,Math.min(20,Math.round(v)));},36,1,
     'Passes latérales (ébauche) : de la plus éloignée vers la paroi, écartées de ae.'));
   rP.appendChild(faoLab('ae')); rP.appendChild(faoNumFx(op,'ae',isFinite(+op.ae)?+op.ae:+(toolD*0.4).toFixed(2),function(v){op.ae=Math.max(0.05,v);},48,0.1,'Écart entre deux passes latérales.'));
@@ -419,11 +519,41 @@ function faoContourRows(d,setup,op){
   d.appendChild(rS);
   d.appendChild(faoH('Entrée / sortie'));
   const rE=faoRow();
-  rE.appendChild(faoLab('rayon')); rE.appendChild(faoNumFx(op,'leadR',isFinite(+op.leadR)?+op.leadR:+Math.min(5,Math.max(1,toolD*0.6)).toFixed(2),function(v){op.leadR=Math.max(0.5,v);},44,0.5,
-    'Rayon des quarts de cercle tangents d’entrée et de sortie, côté libre.'));
+  // V0.99.89 : fraise 3 tailles — entrée en arc (défaut) ou droite (demande de Fred :
+  // « Entrée et sortie droite, pas de cercle d'entrée »), src/89-fao-contour-3tailles.js
+  const droite=slot&&op.slotLead==='droite';
+  if(slot){
+    rE.appendChild(faoLab('entrée'));
+    rE.appendChild(faoSel([
+      ['arc','Arc','Approche droite puis quart de cercle tangent au contour, et de même à la sortie.'],
+      ['droite','Droite','Tout droit, sans arc : dans le prolongement de la passe (zones d’entrée et de sortie) là où la place le permet, sinon perpendiculaire au contour.']],
+      droite?'droite':'arc',function(v){ if(v==='droite')op.slotLead='droite'; else delete op.slotLead; },'Forme de l’entrée et de la sortie du disque.'));
+  }
+  if(!droite){
+    rE.appendChild(faoLab('rayon')); rE.appendChild(faoNumFx(op,'leadR',isFinite(+op.leadR)?+op.leadR:+Math.min(5,Math.max(1,toolD*0.6)).toFixed(2),function(v){op.leadR=Math.max(0.5,v);},44,0.5,
+      'Rayon des quarts de cercle tangents d’entrée et de sortie, côté libre.'));
+  }
   rE.appendChild(faoLab('recouvrement')); rE.appendChild(faoNumFx(op,'overlap',isFinite(+op.overlap)?+op.overlap:1,function(v){op.overlap=Math.max(0,v);},44,0.5,
-    'Longueur parcourue au-delà du point de départ avant la sortie (pas de marque).'));
+    droite?'Entrée perpendiculaire seulement : longueur parcourue au-delà du point de départ avant la sortie. Dans le prolongement, le tour revient exactement au départ.'
+      :'Longueur parcourue au-delà du point de départ avant la sortie (pas de marque).'));
   d.appendChild(rE);
+  if(droite){
+    const zd=Math.round((toolD/2+10)*10)/10;
+    const rZ=faoRow();
+    rZ.appendChild(faoLab('zone d’entrée')); rZ.appendChild(faoNumFx(op,'slotLin',isFinite(+op.slotLin)?+op.slotLin:zd,function(v){op.slotLin=Math.max(0,v);},48,1,
+      'Distance entre le bord de la matière (la pièce, ou le brut qui dépasse : le disque le traverse) et le centre du disque quand il descend, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
+    rZ.appendChild(faoLab('zone de sortie')); rZ.appendChild(faoNumFx(op,'slotLout',isFinite(+op.slotLout)?+op.slotLout:zd,function(v){op.slotLout=Math.max(0,v);},48,1,
+      'Distance entre le bord de la matière (la pièce, ou le brut qui dépasse : le disque le traverse) et le centre du disque quand il remonte, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
+    d.appendChild(rZ);
+    const gdl=op.geoDiag||{};
+    if(gdl.slot&&!op.stale&&(gdl.lineN||gdl.perpN)){
+      const iz=document.createElement('div');iz.className='fao-meta';
+      iz.textContent=(gdl.lineN?gdl.lineN+' passe(s) entrée et sortie dans le prolongement':'')+(gdl.lineN&&gdl.perpN?' · ':'')+
+        (gdl.perpN?gdl.perpN+' passe(s) perpendiculaire(s) : pas de place dans le prolongement (allongez ou raccourcissez les zones, ou départ à un coin saillant)':'')+
+        (gdl.trav>0?' · traverse jusqu’à '+gdl.trav+' mm de brut avant la pièce':''); // V0.99.91
+      d.appendChild(iz);
+    }
+  }
   // V0.99.18 : rapide dans le vide
   const rV=faoRow();
   const cbV=document.createElement('input'); cbV.type='checkbox'; cbV.checked=op.sautVide!==false;
@@ -437,7 +567,8 @@ function faoContourRows(d,setup,op){
   const gdv=(op.geoDiag||{}).vide;
   if(cbV.checked&&gdv&&(gdv.sauts||gdv.passes)){const iv=document.createElement('span');iv.className='fao-meta';
     iv.textContent=' '+gdv.sauts+' saut(s)'+(gdv.passes?', '+gdv.passes+' passe(s) dans le vide retirée(s)':'');rV.appendChild(iv);}
-  d.appendChild(rV);
+  if(!slot)d.appendChild(rV);
+  if(!slot){
   d.appendChild(faoH('Attaches'));
   const rT=faoRow();
   rT.appendChild(faoLab('nombre')); rT.appendChild(faoNumFx(op,'tabN',isFinite(+op.tabN)?+op.tabN:0,function(v){op.tabN=Math.max(0,Math.min(50,Math.round(v)));},36,1,
@@ -445,6 +576,7 @@ function faoContourRows(d,setup,op){
   rT.appendChild(faoLab('largeur')); rT.appendChild(faoNumFx(op,'tabW',isFinite(+op.tabW)?+op.tabW:5,function(v){op.tabW=Math.max(0.5,v);},44,0.5,'Largeur d’une attache le long du profil.'));
   rT.appendChild(faoLab('hauteur')); rT.appendChild(faoNumFx(op,'tabH',isFinite(+op.tabH)?+op.tabH:2,function(v){op.tabH=Math.max(0.1,v);},44,0.5,'Hauteur de l’attache au-dessus du Bas.'));
   d.appendChild(rT);
+  }
   d.appendChild(faoH('Matière à laisser (mm)'));
   const rR=faoRow();
   rR.appendChild(faoLab('Parois')); rR.appendChild(faoNumFx(op,'radial',faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1,'Surépaisseur laissée sur la paroi (0 = à la cote).'));

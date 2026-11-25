@@ -17,5 +17,7 @@ faoMachine({
   coolant: { flood: 'M08', through: 'M08', off: 'M09' },  // arrosage, centre outil, arrêt
   toolChange: ['T{T} D1 M06'],   // changement d'outil (une ligne par élément)
   spindle: 'S{S} M03',           // mise en rotation
-  end: ['G0 Z{ZRETR}', '#MSG[""]', 'M30']   // fin : après l'arrêt d'arrosage (efface le message opération)
+  end: ['G0 Z{ZRETR}', '#MSG[""]', 'M30'],  // fin : après l'arrêt d'arrosage (efface le message opération)
+  hsc: 'auto',                   // HSC G501 / G500 : 'auto' (Automatique) ou 'off' (Arrêt) ; le posage peut le changer
+  hscAccel: 60                   // accélération de lissage A du G501 (%, 30 à 200)
 });

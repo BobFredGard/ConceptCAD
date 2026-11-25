@@ -12,7 +12,7 @@
    aucun parcours périmé). Un porte-outil identique à un porte-outil du posage est
    réutilisé au lieu d'être ajouté en double. */
 const FAO_TOOLS_FMT='conceptcad-outils';
-const FAO_TOOL_KINDS=['flat','bull','ball','chamfer','drill','spot','center','tap','ream'];
+const FAO_TOOL_KINDS=['flat','bull','ball','chamfer','slot','drill','spot','center','tap','ream'];
 function faoToolClean(t){
   // Fiche assainie : champs simples uniquement (nombre, texte, oui/non), Ø valide.
   if(!t||typeof t!=='object'||Array.isArray(t))return null;

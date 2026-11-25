@@ -236,7 +236,7 @@ function treePart(L){
   cgTreeModel(L); // 📐 Construction (79) : section + éléments en enfants
   const skVis=doc.sketches.filter(s=>!skIsRepCopy(s)&&!s.fao); // V0.23.20 : esquisses FAO jamais en CAO
   if(gfold('sk','✏️','Esquisses ('+skVis.length+')','Esquisses de la pièce',false)){
-    skVis.forEach(s=>{const pd=skFacePerdue(s);node(pd?'⚠':'✏️',s.name,'sketch',s.id,s.visible,()=>pd?skRedefStart(s.id):openSketch(s.id),sketchFaceLabel(s)+' · '+s.entities.length+' traits'+(pd?' — ⚠ '+pd+' : « 🎯 Changer de face » dans ses propriétés':''));});
+    skVis.forEach(s=>{const pd=lpResume(s);node(pd?'⚠':'✏️',s.name,'sketch',s.id,s.visible,()=>pd?lpOuvrir(s.id):openSketch(s.id),sketchFaceLabel(s)+' · '+s.entities.length+' traits'+(pd?' — ⚠ '+pd+' : double-clic pour les réparer (fenêtre des liens perdus)':''));});
   }
   if(tlMark!=null){
     const mi=tlIdx();

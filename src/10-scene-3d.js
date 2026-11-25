@@ -1462,7 +1462,7 @@ function resolveAllSketchHosts(){
   }
   // migration : anciennes esquisses FACE sans host (origines à 20mm figées) → infère
   for(const sk of (doc.sketches||[])){
-    if(sk.plane!=='FACE'||sk.host)continue;
+    if(sk.plane!=='FACE'||sk.host||sk.planFige)continue; // planFige : lien coupé à la demande (50-esquisse-97)
     if(!sk.origin||!isFinite(sk.origin[0]))continue;
     if(!sk.axN)continue;
     const pt=new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]);

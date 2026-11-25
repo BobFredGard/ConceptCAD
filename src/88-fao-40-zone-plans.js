@@ -23,7 +23,7 @@ function faoZoneCtx(op,job){
   // faoZoneCuts (clip extérieur exact, puis clip îlot).
   const lim=op&&op.limit, lim2=op&&op.limit2;
   if(!lim&&!lim2)return null;
-  if(op&&op.type==='chamfer')return null; // V0.7.9 : ses arêtes sont son profil, pas une zone
+  if(op&&(op.type==='chamfer'||op.type==='slotcut'))return null; // V0.7.9 : ses arêtes sont son profil, pas une zone
   const tool=faoToolById(job,op&&op.toolId);
   const D=(tool&&+tool.d>0)?+tool.d:10;
   // 2026-10-13-006 : rayon de garantie zone. Géofinish boule/torique : les
@@ -256,7 +256,7 @@ function faoPlaneEff(job,op){
 // référence est résolue dans le repère de l'opération et RÉÉCRIT op.ztop/op.zbot :
 // les générateurs ne lisent que ces deux nombres (clé de cache comprise).
 function faoHtsOps(op){
-  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish');
+  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish'||op.type==='slotcut');
 }
 function faoHtsClean(op){
   if(!op||op.hts===undefined)return;
@@ -328,6 +328,10 @@ function faoZoneStrip(moves,ctx,secu,job){
         return x>=sb.x0-1e-9&&x<=sb.x1+1e-9&&y>=sb.y0-1e-9&&y<=sb.y1+1e-9;
       };
       const br=[]; let prev=null, dropped=false;
+      const eng=new Set(); // V0.99.97 : descentes gardées au-dessus d'une plongée
+      // V0.99.97 : éléments qui suivent une série retirée — la re-jonction ne se fait QUE là
+      // (avant : remontée insérée entre TOUTES les coupes dès qu'une série était retirée)
+      const apres=new Set(); let jn=false;
       // 2026-10-10-002 : la PREMIÈRE série de rapides (engagement / retour
       // d'outil en tête d'op) est préservée — même règle que faoZoneStrip pour
       // la zone. Un outil doit pouvoir approcher depuis l'extérieur du brut.
@@ -346,8 +350,18 @@ function faoZoneStrip(moves,ctx,secu,job){
           //  - la jonction prev->next ne traverserait PAS la frontière du brut.
           const pr=(i>0)?moves[i-1]:null, nx=(j<moves.length)?moves[j]:null;
           if(!pr||!nx){ i=j; prev=nx||prev; continue; } // tête ou queue : préservée
-          if(!faoBoxCross(pr,nx,sb)){ dropped=true; i=j; prev=nx; continue; }
+          if(!faoBoxCross(pr,nx,sb)){
+            dropped=true;
+            // V0.99.97 : le dernier rapide de la série, juste au-dessus de la coupe suivante
+            // (descente avant une plongée), est gardé : sans lui la plongée partait du plan de
+            // sécurité, en avance (long trait vert de Renfort, 30 mm en avance dans le vide)
+            const lr=moves[j-1];
+            if(nx.r===0&&Math.hypot(lr.x-nx.x,lr.y-nx.y)<=1e-9&&+lr.z>+nx.z+1e-9){ eng.add(lr); apres.add(lr); br.push(lr); }
+            else jn=true;
+            i=j; prev=nx; continue;
+          }
         }
+        if(jn){ apres.add(m); jn=false; }
         br.push(m); prev=m; i++;
       }
       if(dropped&&br.length){
@@ -360,7 +374,12 @@ function faoZoneStrip(moves,ctx,secu,job){
           const m=br[i];
           // Transition coupe→coupe (rapide retiré entre les deux) : on remonte
           // d'abord en Z au point courant, puis on descend au point suivant.
-          if(prev&&prev.r===0&&m.r===0){
+          if(apres.has(m)&&prev&&prev.r===0&&m.r===0){
+            const zc=Math.max(prev.z,m.z,secu);
+            out2.push({r:1,x:prev.x,y:prev.y,z:zc});
+            out2.push({r:1,x:m.x,y:m.y,z:zc});
+          }else if(apres.has(m)&&prev&&prev.r===0&&eng.has(m)&&Math.hypot(m.x-prev.x,m.y-prev.y)>1e-9){
+            // descente gardée ailleurs : même retrait qu'avant, puis rapide jusqu'à elle
             const zc=Math.max(prev.z,m.z,secu);
             out2.push({r:1,x:prev.x,y:prev.y,z:zc});
             out2.push({r:1,x:m.x,y:m.y,z:zc});
@@ -399,9 +418,18 @@ function faoZoneStrip(moves,ctx,secu,job){
       const prev=a>0?moves[a-1]:null, next=b+1<moves.length?moves[b+1]:null;
       u++;
       if(!drop[u-1]){ for(let t=a;t<=b;t++)out.push(moves[t]); i=b; continue; }
+      // V0.99.97 : dernier rapide juste au-dessus de la plongée suivante : gardé (sinon plongée
+      // en avance depuis le plan de sécurité) ; descente sur place après une coupe au même XY
+      // (passage au niveau suivant en restant en bas) : gardée seule, sans remonter
+      const lr=moves[b];
+      const eng=!!(next&&next.r===0&&Math.hypot(lr.x-next.x,lr.y-next.y)<=1e-9&&+lr.z>+next.z+1e-9&&+lr.z<secu-1e-9);
+      if(eng&&prev&&prev.r===0&&Math.hypot(prev.x-lr.x,prev.y-lr.y)<=1e-9&&+prev.z>=+lr.z-1e-9){ out.push(lr); i=b; continue; }
       // jonction : jamais de G0 à z de coupe (retrait puis liaison en sécurité)
       if(prev&&prev.r===0)out.push({r:1,x:prev.x,y:prev.y,z:secu});
-      if(next&&next.r===0)out.push({r:1,x:next.x,y:next.y,z:secu});
+      if(next&&next.r===0){
+        out.push({r:1,x:next.x,y:next.y,z:secu});
+        if(eng)out.push(lr);
+      }
       i=b; continue;
     }
     out.push(moves[i]);
@@ -511,7 +539,7 @@ function faoZoneDone(op){
   // Zone déjà tenue par le générateur (bord exact, arcs d'entrée/sortie
   // tangents au bord) : ni re-clip à la génération, ni clip à l'affichage.
   return !!op&&((op.type==='geofinish'&&op.traj==='scallop')||op.type==='geodesic'||
-    (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer');
+    (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer'||op.type==='slotcut');
 }
 function faoSegClipper0(op,job){
   // -> fn(ax,ay,az,bx,by,bz,push) qui ne pousse que la partie DANS la zone,

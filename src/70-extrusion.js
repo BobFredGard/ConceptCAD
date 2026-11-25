@@ -89,10 +89,13 @@ function extName(f){
   if(f.kwKey)return f.name||'Clavette';
   const base=(f.op==='cut'?'Découpe ':'Extrusion ')+skName(f.sketchId);
   const suf=(f.flip?' ⇄':'')+((+f.draft||0)?' ∠'+(+f.draft)+'°':'');
+  const off=f.upto&&typeof asmUptoOffTxt==='function'?asmUptoOffTxt(f.upto.off):'';
+  // V0.99.94 : face, arête ou sommet d'une autre pièce de l'assemblage (48-assemblage-jusqua)
+  if(f.upto&&f.upto.x)return base+' → '+(f.upto.x.name||'autre pièce')+(off?' '+off:'')+suf;
   if(f.upto&&f.upto.ex){
     // face cliquée : « → face » (dans un corps fusionné, la fonction cible ne dit pas QUELLE face)
-    if(f.upto.faceProps)return base+' → face'+suf;
-    const t=doc.features.find(x=>x.id===f.upto.ex);return base+' → '+(t?t.name:'cible supprimée')+suf;
+    if(f.upto.faceProps)return base+' → face'+(off?' '+off:'')+suf;
+    const t=doc.features.find(x=>x.id===f.upto.ex);return base+' → '+(t?t.name:'cible supprimée')+(off?' '+off:'')+suf;
   }
   const d=+f.distance||0;
   if(f.mid)return base+' ±'+(Math.abs(d)/2)+'mm'+suf;
@@ -102,6 +105,8 @@ function resolveExtrudeUpto(f){
   // « Vers un objet » : l'extrusion s'arrête sur la FACE CLICKEE (triangle fi stocké).
   // Si le maillage a changé, fallback sur matching géométrique (faceProps) puis alignement.
   if(!f||f.type!=='extrude'||!f.upto)return false;
+  if(f.upto.x)return extUptoExt(f); // V0.99.94 : cible sur une autre pièce (48-assemblage-jusqua)
+  if(!f.upto.ex)return false;        // V0.99.94 : en attente du clic (assemblage, aucune fonction antérieure)
   const tgt=doc.features.find(x=>x.id===f.upto.ex);
   const fi=doc.features.indexOf(f),ti=tgt?doc.features.indexOf(tgt):-1;
   if(ti<0||fi<0||ti>=fi){f.upto=null;f.name=extName(f);return false;}
@@ -195,9 +200,32 @@ function resolveExtrudeUpto(f){
   // Plus de rejet avec dir — c'était la cause des « sens inversé » : une face inclinée a son
   // centre d'un côté du plan d'esquisse et son plan de l'autre, la garde repoussait la bonne
   // distance et l'extrusion retombait sur la valeur Distance.
+  return extUptoSetDist(f,t);
+}
+function extUptoSetDist(f,t){
+  // Course jusqu'à la cible (t signé), décalage compris (V0.99.94 : f.upto.off, + = plus loin que la
+  // cible, − = avant). Un décalage qui ferait repartir de l'autre côté du plan d'esquisse est refusé.
+  const off=+(f.upto&&f.upto.off)||0;
+  const d=off?t+Math.sign(t)*off:t;
+  if(!isFinite(d)||Math.abs(d)<1e-6||(off&&Math.sign(d)!==Math.sign(t))){if(f.upto)f.upto.err=off?'décalage':'nul';return false;}
+  if(f.upto)delete f.upto.err;
   const prev=f.distance;
-  f.distance=+t.toFixed(4);
+  f.distance=+d.toFixed(4);
   return Math.abs((+prev||0)-f.distance)>1e-6;
+}
+function extUptoExt(f){
+  // « Jusqu'à » une face, une arête ou un sommet d'une AUTRE pièce : le plan de la cible, lu dans
+  // la capture de l'autre composant (asmUptoPlane), coupe la normale de l'esquisse depuis son
+  // origine. Cible perdue : distance gardée, f.upto.perdu (⚠ dans la fenêtre).
+  const sk=doc.sketches.find(s=>s.id===f.sketchId);if(!sk)return false;
+  let B;try{B=sketchBasis(sk);}catch(e){return false;}
+  const n=[B.n.x,B.n.y,B.n.z],O=[B.o.x,B.o.y,B.o.z];
+  let pl=null;try{pl=typeof asmUptoPlane==='function'?asmUptoPlane(f.upto.x,n):null;}catch(e){pl=null;}
+  if(!pl){f.upto.perdu=1;return false;}
+  delete f.upto.perdu;
+  const t=asmUptoDist(pl,O,n);
+  if(t===null||Math.abs(t)<1e-6){f.upto.err='nul';return false;}
+  return extUptoSetDist(f,t);
 }
  function extDistSet(f,v){
   // Écriture de la course depuis le champ Distance : v = course signée le long de n.
@@ -230,7 +258,7 @@ function extPickHit(e){
   const ms=bodies.filter(b=>b.visible&&b.mesh&&!b.ghost&&b.mesh.visible!==false).map(b=>b.mesh);
   const h=rayc.intersectObjects(ms,false)[0];
   if(!h||!h.object.userData.bid)return null;
-  return {bid:h.object.userData.bid,mesh:h.object,fi:h.faceIndex,props:getFaceProps(h.object,h.faceIndex)};
+  return {bid:h.object.userData.bid,mesh:h.object,fi:h.faceIndex,dist:h.distance,props:getFaceProps(h.object,h.faceIndex)};
 }
 function extUptoTarget(f,bid){
   // fonction cible : la dernière fonction ANTÉRIEURE du corps cliqué, sinon la dernière antérieure
@@ -244,38 +272,52 @@ function extPickFaceCommit(e){
   const auto=extUptoAuto();
   const job=extPickFace||(auto?{f:auto}:null);extPickFace=null;
   try{renderer.domElement.style.cursor='';}catch(err){}
+  try{if(typeof asmUptoHlClear==='function')asmUptoHlClear();}catch(err){}
   if(!job)return;
   const f=doc.features.find(x=>x.id===job.f.id)||job.f;
   let picked=null;try{picked=extPickHit(e);}catch(err){}
-  if(!picked){faceEl.textContent='Jusqu\'à la face : cliquez sur une face d\'un corps.';return;}
   const sk=doc.sketches.find(s=>s.id===f.sketchId);
   let B=null;try{B=sk?sketchBasis(sk):null;}catch(err){}
-  // Côté déterminé par la POSITION de la face par rapport au plan d'esquisse (pas la normale)
-  const faceProps=picked.props||getFaceProps(picked.mesh,picked.fi);
-  let side=1;
-  if(B&&faceProps){
-    const c=faceProps.center;
-    side=((c.x-B.o.x)*B.n.x+(c.y-B.o.y)*B.n.y+(c.z-B.o.z)*B.n.z)>=0?1:-1;
-  }
-  const tgt=extUptoTarget(f,picked.bid);
-  if(!tgt){faceEl.textContent='Jusqu\'à la face : aucune fonction ANTÉRIEURE — créez d\'abord un volume avant cette extrusion.';return;}
+  // V0.99.94 : face plane, arête ou sommet d'une AUTRE pièce de l'assemblage, si elle est devant
+  let X=null;
+  try{if(B&&typeof asmUptoPickAt==='function')X=asmUptoPickAt(e,[B.n.x,B.n.y,B.n.z],picked?picked.dist:null);}catch(err){X=null;}
+  if(X&&X.err){faceEl.textContent='Jusqu’à : '+X.err;return;}
   const prevUpto=f.upto,prevDist=f.distance;
-  f.upto={ex:tgt.id,side,faceId:{fi:picked.fi,bid:picked.bid},faceProps};
-  let ok=false;try{ok=resolveExtrudeUpto(f);}catch(err){ok=false;}
-  if(!ok||!isFinite(f.distance)){
-    // Face non utilisable (parallèle au sens d'extrusion, dans le plan d'esquisse…) : rien ne change
+  const off=prevUpto&&+prevUpto.off||0; // le décalage reste quand on change de cible
+  if(X&&X.ref){
+    f.upto={x:X.ref,side:1};if(off)f.upto.off=off;
+  }else{
+    if(!picked){faceEl.textContent='Jusqu’à la face : cliquez sur une face d’un corps'+(typeof asmUptoDispo==='function'&&asmUptoDispo()?', ou une face plane, une arête, un sommet d’une autre pièce.':'.');return;}
+    // Côté déterminé par la POSITION de la face par rapport au plan d'esquisse (pas la normale)
+    const faceProps=picked.props||getFaceProps(picked.mesh,picked.fi);
+    let side=1;
+    if(B&&faceProps){
+      const c=faceProps.center;
+      side=((c.x-B.o.x)*B.n.x+(c.y-B.o.y)*B.n.y+(c.z-B.o.z)*B.n.z)>=0?1:-1;
+    }
+    const tgt=extUptoTarget(f,picked.bid);
+    if(!tgt){faceEl.textContent='Jusqu’à la face : aucune fonction ANTÉRIEURE — créez d’abord un volume avant cette extrusion.';return;}
+    f.upto={ex:tgt.id,side,faceId:{fi:picked.fi,bid:picked.bid},faceProps};if(off)f.upto.off=off;
+  }
+  f.distance=NaN; // seule une résolution réussie redonne une course
+  try{resolveExtrudeUpto(f);}catch(err){}
+  const bad=!f.upto||f.upto.err||f.upto.perdu||!isFinite(f.distance);
+  if(bad){
+    // Cible non utilisable (parallèle au sens d'extrusion, dans le plan d'esquisse, décalage trop grand…) : rien ne change
+    const why=f.upto&&f.upto.err==='décalage'?'le décalage ('+asmUptoOffTxt(off)+' mm) ferait repartir de l’autre côté de l’esquisse':'cible non utilisable (parallèle au sens d’extrusion, ou dans le plan de l’esquisse)';
     f.upto=prevUpto;f.distance=prevDist;
     f.name=extName(f);
-    faceEl.textContent='Jusqu\'à la face : face non utilisable (parallèle au sens d\'extrusion, ou dans le plan de l\'esquisse) — choisissez-en une autre.';
+    faceEl.textContent='Jusqu’à : '+why+' — choisissez-en une autre.';
     return;
   }
-  // une étape d'annulation par face choisie (l'état d'avant = prevUpto / prevDist)
+  // une étape d'annulation par cible choisie (l'état d'avant = prevUpto / prevDist)
   const now={upto:f.upto,distance:f.distance};
   f.upto=prevUpto;f.distance=prevDist;
-  docPushUndo('face cible de « '+f.name+' »');
+  docPushUndo('cible de « '+f.name+' »');
   f.upto=now.upto;f.distance=now.distance;
   f.name=extName(f);
   ghostHide=(f.op==='cut')?f.id:null;
   repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();
-  faceEl.textContent='Jusqu\'à la face : '+Math.abs(+f.distance||0)+' mm ('+(f.op==='cut'?'Poche':'Plot')+'). Cliquez une autre face pour changer.';
+  faceEl.textContent='Jusqu’à '+(f.upto.x?f.upto.x.name:'la face')+' : '+Math.abs(+f.distance||0)+' mm ('+(f.op==='cut'?'Poche':'Plot')+'). Cliquez une autre cible pour changer.';
 }
+

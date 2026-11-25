@@ -46,7 +46,7 @@ function extDynSet(label,fn){
   try{repSyncForFeature(f);}catch(e){}
   markDirty();rebuild();renderTree();renderProps();
 }
-function extDynClose(){extDyn=null;extDynHide();}
+function extDynClose(){extDyn=null;extDynHide();try{if(typeof asmUptoHlClear==='function')asmUptoHlClear();}catch(e){}}
 function extDynOk(){
   extDynClose();sel={kind:null,id:null};
   try{renderTree();renderProps();}catch(e){}
@@ -107,26 +107,53 @@ function extDynPanel(p,f){
     else extDynSet('direction de « '+f.name+' »',g=>{g.mid=(v==='mid');});
   }));
   // étendue
-  sec('Étendue',extSeg([['dist','📏','Distance','Une distance donnée'],['upto','🎯','Jusqu’à la face','S’arrête sur une face du corps cible'],['through','⤴','À travers tout','Traverse tout le solide']],
+  // V0.99.94 : dans un assemblage, une face plane, une arête ou un sommet d'une autre pièce sert aussi
+  // de cible, même sans fonction antérieure (48-assemblage-jusqua)
+  const autres=typeof asmUptoDispo==='function'&&asmUptoDispo();
+  sec('Étendue',extSeg([['dist','📏','Distance','Une distance donnée'],['upto','🎯','Jusqu’à la face','S’arrête sur une face du corps cible'+(autres?', ou sur une face plane, une arête, un sommet d’une autre pièce de l’assemblage':'')],['through','⤴','À travers tout','Traverse tout le solide']],
     f.upto?'upto':(f.through?'through':'dist'),v=>{
     if(v==='upto'){
       // V0.11.27 : l'icône active SUFFIT — tout clic court sur une face la désigne (extUptoAuto)
       if(!f.upto){
         const t=extUptoTarget(f,f.body);
-        if(!t){try{faceEl.textContent='Jusqu’à la face : aucune fonction ANTÉRIEURE — créez d’abord un volume.';}catch(e){}return;}
-        extDynSet('étendue de « '+f.name+' »',g=>{g.upto={ex:t.id,side:1};g.through=false;});
+        if(!t&&!autres){try{faceEl.textContent='Jusqu’à la face : aucune fonction ANTÉRIEURE — créez d’abord un volume.';}catch(e){}return;}
+        extDynSet('étendue de « '+f.name+' »',g=>{g.upto=t?{ex:t.id,side:1}:{side:1};g.through=false;});
       }
-      try{faceEl.textContent='Jusqu’à la face : cliquez une face dans la vue (autant de fois que voulu).';}catch(e){}
+      try{faceEl.textContent='Jusqu’à : cliquez une face dans la vue'+(autres?', ou une face plane, une arête, un sommet d’une autre pièce':'')+' (autant de fois que voulu).';}catch(e){}
     }else if(v==='through')extDynSet('étendue de « '+f.name+' »',g=>{g.upto=null;g.through=true;g.distance=null;});
     else extDynSet('étendue de « '+f.name+' »',g=>{g.upto=null;g.through=false;if(!isFinite(g.distance)||g.distance===null)g.distance=10*(g.op==='cut'?-1:1);});
   }));
   // distance / face cible
   if(f.upto){
     const w=mk('div','pnl-btns');w.style.cssText='align-items:center;gap:6px';
-    const fp=f.upto.faceProps;
-    w.appendChild(mk('span','pnl-note',fp&&fp.center?'🎯 face choisie — '+Math.abs(+f.distance||0)+' mm':'🎯 cliquez une face dans la vue'));
-    const tip=mk('div','pnl-note','Un clic sur une autre face la remplace.');tip.style.cssText='width:100%;opacity:.75';w.appendChild(tip);
-    sec('Face cible',w);
+    const fp=f.upto.faceProps,X=f.upto.x,mm=String(Math.abs(+f.distance||0)).replace('.',',')+' mm';
+    // V0.99.94 : cible prise sur une autre pièce (48-assemblage-jusqua) ; ⚠ si elle a disparu
+    const lab=X?(f.upto.perdu?'⚠ '+X.name+' introuvable — '+mm+' gardés':'🎯 '+X.name+' — '+mm):(fp&&fp.center?'🎯 face choisie — '+mm:'🎯 cliquez une cible dans la vue');
+    const st=mk('span','pnl-note extUptoCible',lab);w.appendChild(st);
+    const tip=mk('div','pnl-note','Un clic sur une autre '+(autres?'face, ou sur une face, une arête, un sommet d’une autre pièce, la remplace.':'face la remplace.'));tip.style.cssText='width:100%;opacity:.75';w.appendChild(tip);
+    sec('Cible',w);
+    // Décalage : + = plus loin que la cible, − = avant (« +1 », « -1 ») ; gardé quand la cible change
+    const off0=+f.upto.off||0,offTxt=off0?(off0>0?'+':'')+String(off0).replace('.',','):'0';
+    const io=document.createElement('input');io.type='text';io.inputMode='decimal';io.className='extUptoOff';io.style.width='70px';io.value=offTxt;
+    io.title='+ : la fonction va plus loin que la cible ; − : elle s’arrête avant (par exemple +1 ou -1).';
+    const cdO=()=>{
+      const v=asmUptoOff(io.value),old=+f.upto.off||0;
+      if(!isFinite(v)){io.value=offTxt;return;}
+      if(Math.abs(v-old)<1e-9)return;
+      // essai à blanc : refusé s'il ferait repartir de l'autre côté de l'esquisse (extUptoSetDist)
+      const u0=f.upto.off,d0=f.distance;
+      f.upto.off=v;f.distance=NaN;try{resolveExtrudeUpto(f);}catch(e){}
+      const trop=f.upto.err==='décalage'; // cible perdue ou pas encore choisie : le décalage est seulement retenu
+      if(u0===undefined)delete f.upto.off;else f.upto.off=u0;
+      f.distance=d0;delete f.upto.err;
+      if(trop){try{faceEl.textContent='Décalage refusé : la fonction repartirait de l’autre côté de l’esquisse.';}catch(e){}io.value=offTxt;return;}
+      extDynSet('décalage de « '+f.name+' »',g=>{if(Math.abs(v)<1e-9)delete g.upto.off;else g.upto.off=+v.toFixed(4);});
+    };
+    io.addEventListener('change',cdO);
+    io.addEventListener('keydown',e=>{if(e.key==='Enter'){cdO();io.blur();}e.stopPropagation();});
+    io.addEventListener('click',e=>e.stopPropagation());
+    const wo=mk('div','pnl-btns');wo.style.cssText='align-items:center;gap:6px';wo.appendChild(io);wo.appendChild(mk('span','pnl-note','mm (+ plus loin, − avant)'));
+    sec('Décalage',wo);
   }else if(!f.through){
     const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.className='extDynDist';inp.style.width='90px';
     inp.value=String(Math.abs(+f.distance||0)).replace('.',',');

@@ -100,7 +100,9 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     const ev=(type,x,y,extra)=>{const r=Object.assign({type:type,button:0,buttons:0,shiftKey:false,
       ctrlKey:false,altKey:false,detail:0,pointerId:1,preventDefault:function(){},stopPropagation:function(){}},extra||{});
       r.clientX=x;r.clientY=y;return r;};
-    const click=(wx,wy)=>{const p=C(wx,wy);svg.dispatchEvent(ev('pointerdown',p[0],p[1],{button:0,buttons:1,detail:1}));};
+    // V0.99.81 : l'outil Projeter projette au relâcher (l'appui long ouvre la liste, 90-15)
+    const click=(wx,wy)=>{const p=C(wx,wy);svg.dispatchEvent(ev('pointerdown',p[0],p[1],{button:0,buttons:1,detail:1}));
+      svg.dispatchEvent(ev('pointerup',p[0],p[1],{button:0,buttons:0,detail:1}));};
     const _live=occLive;
     occLive=null;
     skEdit._refs=[{x1:0,y1:0,x2:100,y2:0}];

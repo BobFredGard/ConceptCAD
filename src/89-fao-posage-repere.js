@@ -629,15 +629,17 @@ let faoFrameCur=null; // repère (monde) de l'opération en cours de calcul — 
 // V0.99.7 (« pouvoir régler les valeurs de rampe, d'hélice, de rayon d'entrée pour chaque opération ») :
 // réglages d'entrée de l'opération en cours de calcul (posés à chaque reprise du générateur, comme
 // faoFrameCur) — null = tout automatique, comme avant. helixPas = descente par tour (mm),
-// helixR = rayon d'hélice MAXI (mm : l'hélice reste dans la place libre trouvée), rampAng = pente maxi (°).
+// helixR = rayon d'hélice MAXI (mm : l'hélice reste dans la place libre trouvée).
+// V0.99.88 : rampAng (pente maxi, °) remplacé par rampTour = descente par tour des rampes (mm ; une
+// rampe en zigzag : un aller-retour = un tour) — absent = valeur proposée (faoPasTourAuto).
 let faoEntryCur=null;
 function faoEntryCfg(op){
   if(!op)return null;
   const v=function(k,lo,hi){const x=+op[k];return (isFinite(x)&&x>=lo&&x<=hi)?x:0;};
-  const c={helixPas:v('helixPas',0.05,50),helixR:v('helixR',0.1,500),rampAng:v('rampAng',0.5,60)};
-  return (c.helixPas||c.helixR||c.rampAng)?c:null;
+  const c={helixPas:v('helixPas',0.05,50),helixR:v('helixR',0.1,500),rampTour:v('rampTour',0.01,100)};
+  return (c.helixPas||c.helixR||c.rampTour)?c:null;
 }
-function faoRampTan(def){ const a=faoEntryCur&&faoEntryCur.rampAng; return a?Math.tan(a*Math.PI/180):def; }
+function faoRampTour(D){ const t=faoEntryCur&&faoEntryCur.rampTour; return t||faoPasTourAuto(D); }
 function faoOpFrameOf(setupId,opId){try{const s=faoSetup(setupId);const op=(s.ops||[]).filter(o=>o.id===opId)[0];return (op&&faoOpFrame(s,op))||faoFrame(s);}catch(e){return faoFrame(null);}}
 function faoOpFrame(job,op){
   // repère composé (directions MONDE) de l'opération ; null si = repère du posage
@@ -920,6 +922,7 @@ function faoTiltColIv(px,py,S,A,r,H,out){
   if(hi>lo)out.push([lo,hi]);
 }
 function faoMatterCarveTilt(g,a,b,r,ax,outCols,tp){
+  if(tp&&tp.slot)return []; // V0.99.85 : fraise 3 tailles — rien sous la matière dans une carte
   // tp (faoToolTipProfile) : pointe de foret / foret à centrer — sans lui, le corps entier
   // taillait à plat : un pointage sur la tranche creusait un cratère au Ø du corps.
   const out=[];

@@ -31,21 +31,52 @@ function faoToolKeyObj(t){
   // ajouter des champs aux fiches ne périme aucune trajectoire existante.
   const o={};if(!t)return o;
   FAO_TOOL_LEGACY.forEach(function(k){ if(t[k]!==undefined)o[k]=t[k]; });
+  // V0.99.85 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
+  // (fiches des autres outils : clé inchangée)
+  if(t.kind==='slot'){ const g=faoToolDims(t); o.ep=g.lc.v; o.col=g.dDeg.v; }
+  // V0.99.96 : fraise à chanfreiner / foret à pointer — l'angle et le Ø de pointe placent le
+  // chanfrein (avant, les changer ne refaisait pas le parcours : l'ancien restait servi)
+  if(t.kind==='chamfer'||t.kind==='spot'){ o.ang=faoToolAngle(t); if(t.kind==='chamfer')o.dt=isFinite(+t.dt)&&+t.dt>=0?+t.dt:0.5; }
+  // V0.99.96 : correction de Ø de la fraise (cylindrique, torique) — absente = clé inchangée
+  const dc=faoToolDCor(t); if(dc)o.dCor=dc;
   return o;
+}
+/* ----- V0.99.96 : CORRECTION DE Ø (demande de Fred : « dès que l'on parle de fraise
+   cylindrique/torique, il faut pouvoir ajouter un paramètre pour induire un diamètre de fraise
+   + grand ou - grand. cela se joue des fois à +/-0.035 », réglée « dans les deux » : l'outil et
+   l'opération, qui s'additionnent). Les parcours sont calculés avec Ø + correction (comme si la
+   fraise était plus grosse ou plus petite) : + = plus de matière laissée sur les parois.
+   Fraises cylindriques et toriques seulement ; l'affichage de l'outil garde le Ø de la fiche. */
+function faoToolDCorOk(t){ return !!(t&&(t.kind==='flat'||t.kind==='bull'||!t.kind)); }
+function faoDCorVal(v){ v=+v; return isFinite(v)&&Math.abs(v)>1e-9?Math.max(-2,Math.min(2,Math.round(v*10000)/10000)):0; } // ±2 mm au plus
+function faoToolDCor(t){ return faoToolDCorOk(t)?faoDCorVal(t.dCor):0; }
+function faoOpDCor(op,t){
+  // correction totale de l'opération (outil + opération) ; 0 hors fraise cylindrique / torique
+  if(!faoToolDCorOk(t))return 0;
+  return Math.round((faoToolDCor(t)+faoDCorVal(op&&op.dCor))*10000)/10000;
+}
+function faoOpToolD(op,t){
+  // Ø de calcul des parcours : Ø de la fiche + correction (au moins 0,1 mm)
+  const D=(t&&isFinite(+t.d)&&+t.d>0)?+t.d:10;
+  const c=faoOpDCor(op,t);
+  return c?Math.max(0.1,Math.round((D+c)*10000)/10000):D;
 }
 const faoR1=function(v){ return Math.round(v*10)/10; };
 function faoToolDims(t){
   // Géométrie complète, défauts plausibles (fraise carbure monobloc) si non saisis.
   // Foret à centrer : D = Ø du CORPS d2 (= la queue), coupe courte au-dessus du cône 60°.
   const D=faoToolBodyD(t), ctr=!!(t&&t.kind==='center');
+  // V0.99.85 : fraise 3 tailles — Lc = épaisseur du disque, Ø dégagement = Ø du col
+  const sl=!!(t&&t.kind==='slot');
   const num=function(k,def){ const v=t&&+t[k]; return (isFinite(v)&&v>0)?{v:v,def:false}:{v:def,def:true}; };
   const tp=ctr?faoToolTipProfile(t):null;
-  const lc=num('lc',ctr?faoR1(tp[tp.length-1][1]+D*0.4):faoR1(Math.max(D*2.5,3)));
-  const dDeg=num('dDeg',D);
-  const lDeg=num('lDeg',lc.v);
+  const lc=num('lc',ctr?faoR1(tp[tp.length-1][1]+D*0.4):(sl?faoR1(Math.max(1,D*0.12)):faoR1(Math.max(D*2.5,3))));
+  const dDeg=num('dDeg',sl?faoR1(Math.max(1,D*0.4)):D);
+  const lDeg=num('lDeg',sl?faoR1(lc.v+Math.max(5,D*0.6)):lc.v);
   const QS=[6,8,10,12,16,20,25,32]; // queues standard (mm)
-  const dq=num('dq',ctr?D:(QS.find(function(q){return q>=D;})||Math.ceil(D)));
-  const lsm=num('lsm',faoR1(Math.max(lDeg.v+Math.max(8,D),D*3.5)));
+  const dB=sl?dDeg.v:D; // queue d'une 3 tailles : au moins le col, pas le disque
+  const dq=num('dq',ctr?D:(QS.find(function(q){return q>=dB;})||Math.ceil(dB)));
+  const lsm=num('lsm',sl?faoR1(lDeg.v+Math.max(15,dq.v*1.5)):faoR1(Math.max(lDeg.v+Math.max(8,D),D*3.5)));
   const lt=num('lt',faoR1(Math.max(lsm.v+Math.max(25,dq.v*2.5),50)));
   const dPo=num('dPo',faoR1(dq.v+Math.max(12,dq.v)));
   // V0.90.0 : queue plus grosse que l'outil — cône de raccord (longueur le long de l'axe ;
@@ -156,8 +187,8 @@ function faoToolSvg(t,holder){
   p.push('L'+X(r).toFixed(1)+' '+Y(g.lc.v).toFixed(1)+'Z');
   parts.push('<path d="'+p.join(' ')+'" fill="rgba(255,159,10,.28)" stroke="#ff9f0a" stroke-width="1.4"/>');
   }
-  // hélices (décor)
-  for(let k=1;k<4;k++){const z=zFl+(g.lc.v-zFl)*k/4;parts.push('<path d="M'+X(-r).toFixed(1)+' '+Y(z).toFixed(1)+' L'+X(r).toFixed(1)+' '+Y(Math.min(g.lc.v,z+Math.min(D,g.lc.v/4))).toFixed(1)+'" stroke="rgba(255,159,10,.45)" stroke-width="1"/>');}
+  // hélices (décor) — pas sur le disque mince d'une fraise 3 tailles
+  if(!faoToolIsSlot(t))for(let k=1;k<4;k++){const z=zFl+(g.lc.v-zFl)*k/4;parts.push('<path d="M'+X(-r).toFixed(1)+' '+Y(z).toFixed(1)+' L'+X(r).toFixed(1)+' '+Y(Math.min(g.lc.v,z+Math.min(D,g.lc.v/4))).toFixed(1)+'" stroke="rgba(255,159,10,.45)" stroke-width="1"/>');}
   // cotes verticales à droite
   const dimV=function(z0,z1,x,txt,col){
     const a=Y(z0),b=Y(z1);
@@ -166,13 +197,14 @@ function faoToolSvg(t,holder){
     parts.push('<text x="'+(x+5)+'" y="'+((a+b)/2+4).toFixed(1)+'" fill="'+col+'" font-size="11">'+txt+'</text>');
   };
   const xr=X(Math.max(dHold,D)/2)+14;
-  dimV(0,g.lc.v,xr,'Lc '+g.lc.v,'#ff9f0a');
+  dimV(0,g.lc.v,xr,(faoToolIsSlot(t)?'ép. ':'Lc ')+g.lc.v,'#ff9f0a');
   if(g.lDeg.v>g.lc.v+1e-6)dimV(0,g.lDeg.v,xr+52,'Ldég '+g.lDeg.v,'#64d2ff');
   dimV(0,g.lsm.v,xr+(g.lDeg.v>g.lc.v+1e-6?104:52),'Lsm '+g.lsm.v,'#e9e9ec');
   // cote Ø au bout
   const yb=Y(0)+16;
   parts.push('<line x1="'+X(-r).toFixed(1)+'" y1="'+yb+'" x2="'+X(r).toFixed(1)+'" y2="'+yb+'" stroke="#ff9f0a" stroke-width="1"/>');
   parts.push('<text x="'+cx+'" y="'+(yb+13)+'" fill="#ff9f0a" font-size="11" text-anchor="middle">Ø'+D+(c2>0&&c2<r?(' R'+faoR1(c2)):'')+'</text>');
+  if(faoToolIsSlot(t))parts.push('<text x="'+cx+'" y="'+(yb+26)+'" fill="#64d2ff" font-size="10" text-anchor="middle">rainure ≤ '+faoR1((D-g.dDeg.v)/2)+' mm de profondeur (col Ø'+g.dDeg.v+')</text>');
   parts.push('<text x="'+cx+'" y="'+(Y(g.lsm.v+holderH)-6).toFixed(1)+'" fill="#8e8e93" font-size="10" text-anchor="middle">'+(hp?(String(holder.name||'Porte-outil').replace(/[<>&]/g,'')+' · nez Ø'+faoR1(hp.dNose)):('mandrin Ø'+g.dPo.v))+'</text>');
   return '<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="display:block">'+parts.join('')+'</svg>';
 }
@@ -267,7 +299,7 @@ function faoToolsElement(setup){
   iT.onchange=function(){faoSnapshot('nom d’outil');t.name=String(iT.value||t.name).slice(0,32);faoChanged();rerender();};pT.appendChild(iT);s1.appendChild(pT);
   const pK=document.createElement('label');pK.className='fao-tl-f';pK.innerHTML='<span>Type</span>';
   const sK=document.createElement('select');sK.className='fao-sel';
-  [['flat','Cylindrique'],['bull','Torique'],['ball','Boule'],['chamfer','Fraise à chanfreiner'],['drill','Foret'],['spot','Foret à pointer'],['center','Foret à centrer'],['tap','Taraud'],['ream','Alésoir']].forEach(function(o){const e=document.createElement('option');e.value=o[0];e.textContent=o[1];sK.appendChild(e);});
+  [['flat','Cylindrique'],['bull','Torique'],['ball','Boule'],['chamfer','Fraise à chanfreiner'],['slot','Fraise 3 tailles'],['drill','Foret'],['spot','Foret à pointer'],['center','Foret à centrer'],['tap','Taraud'],['ream','Alésoir']].forEach(function(o){const e=document.createElement('option');e.value=o[0];e.textContent=o[1];sK.appendChild(e);});
   sK.value=t.kind||'flat';
   sK.onchange=function(){faoSnapshot('type d’outil');t.kind=sK.value;if(t.kind==='ball')t.cornerR=t.d/2;else if(t.kind!=='bull')t.cornerR=0;
     if(faoToolIsDrill(t)&&!(+t.ang>0))t.ang=(t.kind==='spot'||t.kind==='ream')?90:118;
@@ -283,6 +315,12 @@ function faoToolsElement(setup){
   const s2=sec('Géométrie (mm) — valeurs grisées = défaut calculé, à préciser');
   field(s2,t.kind==='center'?'Ø pilote d1':'Ø coupe',t.d,false,function(v){set('d',Math.max(0.1,v),'Ø outil');if(t.kind==='ball')t.cornerR=t.d/2;},'Diamètre de coupe',0.1);
   if(t.kind==='bull')field(s2,'Rayon de coin',t.cornerR||0,false,function(v){set('cornerR',Math.min(v,t.d/2),'rayon de coin');},'Rayon du coin torique',0.1);
+  if(faoToolDCorOk(t)){ // V0.99.96 : correction de Ø (± , 0 accepté)
+    const iK=field(s2,'Correction Ø',faoToolDCor(t),!faoToolDCor(t),function(){},
+      'Correction du Ø pour le calcul des parcours (mm, + ou −), par exemple −0,035 pour une D10 qui mesure 9,965. + : la fraise est vue plus grosse, il reste plus de matière sur les parois ; − : elle est vue plus petite, elle en enlève plus. Vaut pour toutes les opérations de cet outil ; chaque opération peut en ajouter une autre (onglet Outil).',0.005);
+    iK.onchange=function(){const v=parseFloat(String(iK.value).replace(',','.'));if(!isFinite(v))return;
+      faoSnapshot('correction de Ø');const c=faoDCorVal(v);if(c)t.dCor=c;else delete t.dCor;faoChanged();rerender();};
+  }
   if(t.kind==='tap'){
     const pT=document.createElement('label');pT.className='fao-tl-f';pT.innerHTML='<span>Filet</span>';
     const sT=document.createElement('select');sT.className='fao-sel';
@@ -307,12 +345,19 @@ function faoToolsElement(setup){
   }
   if(t.kind==='chamfer'){ // V0.7.9
     field(s2,'Angle',faoToolAngle(t),!(+t.ang>0),function(v){set('ang',Math.min(150,Math.max(30,v)),'angle de la fraise à chanfreiner');},'Angle inclus du cône (°) : 90 pour un chanfrein à 45°, 60, 120…',1,'°');
-    field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive)',0.1);
+    const iDt=field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive). Le Z du chanfrein est donné au bout de l’outil : un Ø de pointe plus grand que le vrai donne un chanfrein plus petit.',0.1);
+    // V0.99.96 : 0 = pointe vive accepté (le champ commun refuse 0 : la pointe restait à Ø0,5 et le
+    // chanfrein de Renfort sortait à 0,05 au lieu de 0,3 — constat de Fred)
+    iDt.onchange=function(){const v=parseFloat(String(iDt.value).replace(',','.'));if(isFinite(v)&&v>=0){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');faoChanged();rerender();}};
   }
   field(s2,'Dents',t.flutes||2,false,function(v){set('flutes',Math.max(1,Math.round(v)),'nombre de dents');},'Nombre de dents (sert au calcul de F = fz × z × S)',1);
-  field(s2,'Long. de coupe Lc',g.lc.v,g.lc.def,function(v){set('lc',v,'longueur de coupe');},'Longueur de la partie coupante (hélices) depuis le bout',0.5);
-  field(s2,'Ø dégagement',g.dDeg.v,g.dDeg.def,function(v){set('dDeg',Math.min(v,t.d),'Ø de dégagement');},'Diamètre du col au-dessus de la coupe (≤ Ø coupe) : permet de plonger plus profond que Lc sans frotter',0.1);
-  field(s2,'Long. dégagée',g.lDeg.v,g.lDeg.def,function(v){set('lDeg',Math.max(v,g.lc.v),'longueur dégagée');},'Longueur depuis le bout jusqu’au début de la queue (profondeur atteignable sans que la queue frotte)',0.5);
+  const sl=faoToolIsSlot(t); // V0.99.85 : fraise 3 tailles — disque (épaisseur) au bout d'un col
+  field(s2,sl?'Épaisseur':'Long. de coupe Lc',g.lc.v,g.lc.def,function(v){set('lc',v,'longueur de coupe');},
+    sl?'Épaisseur du disque : hauteur de rainure taillée en une passe':'Longueur de la partie coupante (hélices) depuis le bout',sl?0.1:0.5);
+  field(s2,sl?'Ø du col':'Ø dégagement',g.dDeg.v,g.dDeg.def,function(v){set('dDeg',Math.min(v,t.d),'Ø de dégagement');},
+    sl?'Diamètre du col qui porte le disque : la rainure peut avoir au plus (Ø coupe − Ø col) / 2 de profondeur sans que le col frotte':'Diamètre du col au-dessus de la coupe (≤ Ø coupe) : permet de plonger plus profond que Lc sans frotter',0.1);
+  field(s2,sl?'Long. utile':'Long. dégagée',g.lDeg.v,g.lDeg.def,function(v){set('lDeg',Math.max(v,g.lc.v),'longueur dégagée');},
+    sl?'Longueur depuis le bas du disque jusqu’au début de la queue : hauteur de pièce que le col peut longer':'Longueur depuis le bout jusqu’au début de la queue (profondeur atteignable sans que la queue frotte)',0.5);
   field(s2,'Ø queue',g.dq.v,g.dq.def,function(v){set('dq',v,'Ø de queue');},'Diamètre de la queue (serrage)',0.5);
   if(g.dq.v>g.dDeg.v+1e-6){ // V0.90.0 : queue plus grosse que l'outil → cône de raccord possible
     const iC=field(s2,'Cône vers la queue',+t.lCq>0?+t.lCq:0,!(+t.lCq>0),function(){},'Longueur du cône qui raccorde l’outil à sa queue plus grosse (mm le long de l’axe). 0 = épaulement droit',0.5);
@@ -384,8 +429,26 @@ function faoOpToolSection(setup,op){
   r0.appendChild(faoMini('Fiche…',function(){ faoToolsOpenOn(op.toolId); },'Ouvrir la fiche de cet outil dans la bibliothèque'));
   box.appendChild(r0);
   const info=document.createElement('div');info.className='fao-meta';
-  info.textContent=faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')+' · '+(t.flutes||2)+' dents · Lc '+g.lc.v+' · sous mandrin '+g.lsm.v+' mm · Vc '+C.vc+' m/min';
+  info.textContent=faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')+' · '+(t.flutes||2)+' dents · '+(faoToolIsSlot(t)?('épaisseur '+g.lc.v+' · col Ø'+g.dDeg.v):('Lc '+g.lc.v))+' · sous mandrin '+g.lsm.v+' mm · Vc '+C.vc+' m/min';
   box.appendChild(info);
+  if(faoToolDCorOk(t)){
+    // V0.99.96 : correction de Ø de l'opération, ajoutée à celle de l'outil
+    const rK=faoRow();
+    rK.appendChild(faoLab('Correction Ø'));
+    rK.appendChild(faoNumFx(op,'dCor',faoDCorVal(op.dCor),function(v){const c=faoDCorVal(v);if(c)op.dCor=c;else delete op.dCor;},60,0.005,
+      'Correction du Ø pour CETTE opération (mm, + ou −), ajoutée à celle de la fiche de l’outil. + : la fraise est vue plus grosse, il reste plus de matière sur les parois ; − : elle est vue plus petite, elle en enlève plus (une paroi extérieure sort plus petite, un alésage plus grand).'));
+    const tc=faoToolDCor(t),tot=faoOpDCor(op,t),sg=function(v){return (v>0?'+':'')+(+v.toFixed(4));};
+    const tk=document.createElement('span');tk.className='fao-meta';
+    tk.textContent=(tc?'outil '+sg(tc)+' · ':'')+(tot?'Ø de calcul '+(+faoOpToolD(op,t).toFixed(4))+' ('+sg(tot)+')':'Ø de calcul '+t.d+' (aucune correction)');
+    if(tot)tk.style.color='#ff9f0a';
+    rK.appendChild(tk);
+    box.appendChild(rK);
+  }
+  if(faoToolIsSlot(t)&&!faoContourProfil(op)&&!faoSlotCut(op)){ // V0.99.85
+    const n3=document.createElement('div');n3.className='fao-alert';
+    n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) et en Découpe 3 tailles : cette opération ne produit aucun parcours avec elle.';
+    box.appendChild(n3);
+  }
   FAO_CUT_FIELDS.forEach(function(F){
     const r=faoRow();
     r.appendChild(faoLab(F[2]));
@@ -430,6 +493,6 @@ function faoOpReachWarn(op,setup,t,g){
   const prof=faoR1(top-zmin);
   if(prof>g.lsm.v)return '⚠ Profondeur usinée '+prof+' mm > longueur sous mandrin '+g.lsm.v+' mm : COLLISION du mandrin — sortez l’outil ou changez d’outil.';
   if(prof>g.lDeg.v)return '⚠ Profondeur usinée '+prof+' mm > longueur dégagée '+g.lDeg.v+' mm : la queue (Ø'+g.dq.v+') frotte sur les parois.';
-  if(prof>g.lc.v)return 'Profondeur usinée '+prof+' mm > longueur de coupe '+g.lc.v+' mm : vérifiez que le col dégagé (Ø'+g.dDeg.v+') passe.';
+  if(prof>g.lc.v&&!faoToolIsSlot(t))return 'Profondeur usinée '+prof+' mm > longueur de coupe '+g.lc.v+' mm : vérifiez que le col dégagé (Ø'+g.dDeg.v+') passe.';
   return null;
 }

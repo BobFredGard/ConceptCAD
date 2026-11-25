@@ -339,7 +339,7 @@ function faoHelixSpot(mesh,cx,cy,hr,r,z,brutTop,planes){
 // direct »).
 const faoHelixJeu=2;
 function faoHelixEntry(cx,cy,zFrom,zTo,radius,toolD){
-  let drop=Math.max(0.5,(isFinite(+toolD)&&+toolD>0?+toolD:10)*0.1);
+  let drop=faoPasTourAuto(toolD); // V0.99.88 : même valeur proposée partout (10 % du Ø, 0,5 mini)
   // V0.99.7 : réglages de l'opération (descente par tour ; rayon plafonné — même centre, donc
   // toujours dans la place libre trouvée)
   if(faoEntryCur){ if(faoEntryCur.helixPas)drop=faoEntryCur.helixPas; if(faoEntryCur.helixR&&radius>faoEntryCur.helixR)radius=faoEntryCur.helixR; }
@@ -1132,37 +1132,55 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   const s=Math.max(0.5,Math.min(Math.max(pitch,D*0.25),D*0.5));
   const thMax=2*Math.PI*nSp;
   let th=0,guard=0,atCut=false,prevIn=false,px=cx,py=cy;
-  // 007 : descente répartie le long de la spirale (rampL>0 = rampage actif)
-  let rampL=0,rampK=0,rampTot=0;
-  // V0.23.24 : cote du pas de rampe — paliers de ~2 mm (rampTot) ET pente
-  // ≤ 0,4 (≈ 22°) par rapport au point précédent : des échantillons serrés
-  // (petit rayon, π/6) donnaient 2 mm sur 0,9 mm, une descente à 60° dans la
-  // matière (MERLIN-23-001, bord du brut) ; le 1er pas, sur place, était vertical.
-  const rampZr=function(x,y){
-    const zf=Math.round((rampZ0+(z-rampZ0)*rampK/rampTot)*1000)/1000;
-    const P=moves.length?moves[moves.length-1]:null;
-    const zl=P?Math.round((P.z-Math.hypot(x-P.x,y-P.y)*faoRampTan(0.4))*1000)/1000:zf; // V0.99.7 : pente réglable
-    return Math.max(z,zf,zl);
-  };
-  // 2026-10-21-004 : FIN DE RAMPAGE ANTICIPÉE — un rampage ne continue QUE
-  // vers un point CONTIGU (échantillon précédent légal) et dégagé (segClear).
-  // Avant : après un trou (la spirale / le demi-anneau passe sous la pièce,
-  // hors zone légale) le rampage reliait l'échantillon légal suivant EN LIGNE
-  // DROITE — à travers la pièce (RETARD : allers-retours x −14 ↔ 60 sous la
-  // lentille, jusqu'à 115 mm de corps d'outil dans la matière). La descente
-  // est close au dernier point légal (micro-hélice, sinon plongée claire,
-  // sinon cote atteinte, sûre) et le point suivant reçoit une vraie entrée.
-  const finishRamp=function(){
-    if(rampL>0){
-      const zLast=moves.length?moves[moves.length-1].z:z;
-      if(zLast>z+1e-9){
-        let orbOk=true;
-        for(let k=0;k<8;k++){const a=k/8*2*Math.PI;if(!inside(px+0.5*Math.cos(a),py+0.5*Math.sin(a))){orbOk=false;break;}}
-        if(orbOk)faoHelixEntry(px,py,zLast,z,0.5,D).slice(1).forEach(function(m){moves.push(m);});
-        else if(plungeOK(px,py))moves.push({r:0,x:rnd(px),y:rnd(py),z:z});
-      }
+  // V0.99.88 : échantillons suivants de la spirale (même pas que la boucle), légaux et contigus
+  const spiralAhead=function(th0,x0,y0){
+    const out=[[x0,y0]];let t=th0,qx=x0,qy=y0,L=0;
+    for(let g=0;g<4000&&L<zigL;g++){
+      const Rt=pitch*t/(2*Math.PI);
+      t+=(Rt>1e-9)?Math.min(s/Rt,Math.PI/6):Math.PI/6;
+      if(t>thMax)break;
+      const R2=pitch*t/(2*Math.PI),nx2=cx+R2*Math.cos(t),ny2=cy+R2*Math.sin(t);
+      if(!inside(nx2,ny2)||!segClear(qx,qy,nx2,ny2))break;
+      L+=Math.hypot(nx2-qx,ny2-qy);out.push([nx2,ny2]);qx=nx2;qy=ny2;
     }
-    rampL=0;
+    return out;
+  };
+  // V0.99.88 (« enlever la pente partout… remplacer toutes ces pentes par des mm/tour ») : plus de
+  // rampe en pente (0,4 ≈ 22°, paliers de 2 mm, V0.23.24) — RAMPE EN ZIGZAG sur le début du trajet :
+  // un aller-retour = un tour, qui descend de « Rampe : descente / tour » (proposée à 10 % du Ø).
+  // Aller-retour sur au plus 2·Ø de trajet légal et contigu ; fin au point de départ, à la cote :
+  // la passe repart de là et reprend à la cote toute la portion de la rampe (une longue rampe le
+  // long de la spirale aurait laissé de la matière sous les tours faits en descendant).
+  const zigTour=faoRampTour(D),zigL=2*D;
+  // points légaux et contigus à partir de pts[i0] (f : élément -> [x,y]) ; libre : sans segClear
+  const aheadOf=function(pts,i0,f,libre){
+    const g=f||function(q){return q;};
+    const a0=g(pts[i0]),out=[[a0[0],a0[1]]];let L=0;
+    for(let k=i0+1;k<pts.length&&L<zigL;k++){
+      const b=g(pts[k]),a=out[out.length-1];
+      if(!libre&&!segClear(a[0],a[1],b[0],b[1]))break;
+      L+=Math.hypot(b[0]-a[0],b[1]-a[1]);out.push([b[0],b[1]]);
+    }
+    return out;
+  };
+  const zigRamp=function(pts){
+    // pts[0] = départ : l'outil y est déjà, à rampZ0 (entryTo a refusé) ; descend en zigzag
+    if(!(rampZ0>z+1e-9))return true;
+    const zz=faoZigzag(pts,rampZ0,z,zigTour,zigL,rnd);
+    if(!zz)return false;
+    zz[zz.length-1].x=rnd(zz[zz.length-1].x);zz[zz.length-1].y=rnd(zz[zz.length-1].y);
+    zz.forEach(function(m){moves.push(m);});
+    return true;
+  };
+  // départ de rampe : zigzag ; sans aucune place (< 0,05 mm) : micro-hélice, sinon plongée claire
+  // (sinon la cote atteinte est gardée, comme la fin de rampe anticipée)
+  const zigStart=function(x,y,pts){
+    if(zigRamp(pts))return;
+    if(!(rampZ0>z+1e-9))return;
+    let orbOk=true;
+    for(let k=0;k<8;k++){const a=k/8*2*Math.PI;if(!inside(x+0.5*Math.cos(a),y+0.5*Math.sin(a))){orbOk=false;break;}}
+    if(orbOk)faoHelixEntry(x,y,rampZ0,z,0.5,D).slice(1).forEach(function(m){moves.push(m);});
+    else if(plungeOK(x,y))moves.push({r:0,x:rnd(x),y:rnd(y),z:z});
   };
   while(spOn&&th<=thMax&&guard++<400000){
     const R=pitch*th/(2*Math.PI);
@@ -1173,34 +1191,16 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       // (R=0) : repli sur le pas de l'échantillon.
       let ex=-(y-cy), ey=(x-cx);
       if(Math.hypot(ex,ey)<1e-9){ ex=x-px; ey=y-py; }
-      if(rampL>0&&!(prevIn&&segClear(px,py,x,y)))finishRamp(); // 2026-10-21-004 : jamais de pont
-      if(rampL>0){
-        // 007 : on CONTINUE le rampage — la fraise descend en avançant sur la
-        // spirale (coupe progressive du croissant non balayé, centre légal).
-        rampK++;
-        const zr=rampZr(x,y);
-        moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
-        rampL--;if(!rampL&&zr>z+1e-9)rampL=1; // V0.23.24 : jusqu’à la cote
-      }else if(!atCut||!prevIn||!segClear(px,py,x,y)){
-        if(!entryTo(x,y,ex,ey)){
-          // 007 : aucune entrée sûre ici (pas d'ancre balayée, pas d'orbite
-          // tenable) -> RAMPAGE le long de la spirale : la fraise découpe en
-          // progressant, jamais à plat sur le brut restant.
-          rampTot=Math.max(2,Math.ceil((rampZ0-z)/2));
-          rampK=1; rampL=rampTot-1;
-          const zr=rampZr(x,y);
-          moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
-        }
+      if(!atCut||!prevIn||!segClear(px,py,x,y)){
+        // 007 : aucune entrée sûre ici (pas d'ancre balayée, pas d'orbite tenable) -> RAMPE
+        // sur la spirale ; V0.99.88 : en zigzag sur les échantillons suivants, fin ici à la cote
+        if(!entryTo(x,y,ex,ey))zigStart(x,y,spiralAhead(th,x,y));
       }
       else pushCut(x,y);
       atCut=true; prevIn=true; px=x; py=y;
     }else prevIn=false;
     th+=(R>1e-9)?Math.min(s/R,Math.PI/6):Math.PI/6;
   }
-  // 007 : fin de spirale pendant un rampage : on termine la descente au
-  // dernier point légal — hélice micro-orbite si elle tient, sinon plongée
-  // claire (disque déjà balayé), sinon on garde la cote atteinte (sûr).
-  finishRamp();
   // --- CÔTÉS (2026-10-11-001) : ARCS CONCENTRIQUES par côté — remplace le
   // zigzag DROIT de la 004 (demande « les passes après la spirale étaient de
   // type circulaire avant et maintenant elles sont droites — cela ne me plaît
@@ -1283,13 +1283,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         if(Math.hypot(ex,ey)<1e-9){ex=x-px;ey=y-py;}
         // début de morceau : enchaîné à la cote seulement vers la passe voisine (≤ 1,5·ae)
         if(i===0&&prevIn&&!linkNear(px,py,x,y))prevIn=false;
-        if(rampL>0&&!(prevIn&&segClear(px,py,x,y)))finishRamp(); // 2026-10-21-004 : jamais de pont
-        if(rampL>0){
-          rampK++;
-          const zr=rampZr(x,y);
-          moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
-          rampL--;if(!rampL&&zr>z+1e-9)rampL=1; // V0.23.24 : jusqu’à la cote
-        }else if(!atCut||!prevIn||!segClear(px,py,x,y)){
+        if(!atCut||!prevIn||!segClear(px,py,x,y)){
           // V0.99.43 : entrée DROITE depuis l'arc d'avant (déjà vidé), le long du rayon —
           // au lieu d'un point de vide pris au hasard autour (trait en biais à travers
           // les arcs faits)
@@ -1316,12 +1310,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
               pushCut(ax,ay);const P0=moves[moves.length-1];
               moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:z,arc:{i:rnd(hcx-P0.x),j:rnd(hcy-P0.y),cw:sg<0}});okC=true;}
             pushCut(x,y);}
-          else if(!entryTo(x,y,ex,ey)){
-            rampTot=Math.max(2,Math.ceil((rampZ0-z)/2));
-            rampK=1; rampL=rampTot-1;
-            const zr=rampZr(x,y);
-            moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
-          }
+          else if(!entryTo(x,y,ex,ey))zigStart(x,y,aheadOf(best.pts,i,function(q){return [q[1],q[2]];})); // V0.99.88 : zigzag
         }
         else pushCut(x,y);
         atCut=true; prevIn=true; px=x; py=y;
@@ -1329,7 +1318,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       }
       // V0.99.43 : sortie en quart de cercle vers le centre (côté déjà vidé), sauf si
       // le morceau suivant s'enchaîne à la cote
-      if(atCut&&rampL<=0&&best.pts.length){
+      if(atCut&&best.pts.length){
         const E=best.pts[best.pts.length-1],nx=Math.cos(E[0]),ny=Math.sin(E[0]);
         const ex=-ny*sg,ey=nx*sg,rhoL=[pitch/2,pitch/3,1.5];
         for(let ri=0;ri<rhoL.length;ri++){const rho=rhoL[ri];
@@ -1837,7 +1826,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
                 if(L<=LL){w.forEach(function(q2){pushCut(q2[0],q2[1]);});pushCut(qx,qy);
                   for(let k2=1;k2<way.length-1;k2++)pushCut(way[k2][0],way[k2][1]);
                   const lw2=way[way.length-2];atCut=true;prevIn=true;px=lw2[0];py=lw2[1];return true;}}}}
-          finishRamp();
           const zG=gotoXY(qx,qy);
           if(zG>z+1+1e-9)moves.push({r:1,x:rnd(qx),y:rnd(qy),z:rnd(z+1)});
           moves.push({r:0,ent:1,x:rnd(qx),y:rnd(qy),z:z});
@@ -1879,7 +1867,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         }};
       const emitHelix=function(s){
         if(!(s.hr>0))return;
-        finishRamp();
         const zG=gotoXY(s.x,s.y);
         const hS=remAdj(s.x,s.y,Math.max(faoHelixSpot(mesh,s.x,s.y,s.hr,r,z,brutTop,planes),hFloor));
         descend(s.x,s.y,zG,hS);
@@ -1898,7 +1885,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
           if(d<bd&&segClear(qx,qy,x,y)){bd=d;bq=q;}}
         if(bq<0)return;
         const qi=bq%nx,qx=gx0+qi*h,qy=gy0+((bq-qi)/nx)*h;
-        finishRamp();
         const zG=gotoXY(qx,qy);
         if(Math.abs(zG-z)>1e-9)moves.push({r:0,ent:1,x:rnd(qx),y:rnd(qy),z:z});
         pushCut(x,y);atCut=true;prevIn=true;px=x;py=y;};
@@ -2344,7 +2330,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         else{emitSeq(bEnd?R.pts.slice().reverse():R.pts);mark(best);}
       }
       if(ctr)contourPhase();
-      finishRamp();
     };
     if(oneE){oneEntryFronts();return;}
     Fld=G;regOK=function(rg){return rg>=0&&hasW[rg];};rings(Gmax);
@@ -2380,7 +2365,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       else if(bi<0)seq=seq.slice().reverse();
       emitSeq(seq);
     }
-    finishRamp();
   };
   // émission d'une suite de points de coupe (anneau, morceau, spirale) :
   // coupe continue, glissement vers la passe voisine, sinon entrée.
@@ -2394,24 +2378,13 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         const x=seq[i][0],y=seq[i][1];
         const q=seq[i+1]||seq[i-1];
         let ex=q?(seq[i+1]?q[0]-x:x-q[0]):0,ey=q?(seq[i+1]?q[1]-y:y-q[1]):0;
-        if(rampL>0&&!(i>0&&prevIn&&segClear(px,py,x,y)))finishRamp(); // jamais de pont
         const Pm=moves.length?moves[moves.length-1]:null;
         const atZ=!!(Pm&&!Pm.r&&Math.abs(Pm.z-z)<1e-9);
-        if(rampL>0){
-          rampK++;
-          const zr=rampZr(x,y);
-          moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
-          rampL--;if(!rampL&&zr>z+1e-9)rampL=1; // V0.23.24 : jusqu’à la cote
-        }else if(i>0&&atZ&&prevIn&&segClear(px,py,x,y))pushCut(x,y);
+        if(i>0&&atZ&&prevIn&&segClear(px,py,x,y))pushCut(x,y);
         else if(atZ&&linkNear(Pm.x,Pm.y,x,y)&&segClear(Pm.x,Pm.y,x,y))pushCut(x,y); // passe voisine : glissement
         else if(oneClrL&&atZ&&(wp=oneWay(Pm.x,Pm.y,x,y))){wp.forEach(function(q){pushCut(q[0],q[1]);});pushCut(x,y);} // V0.97.0 : dans le déjà-vidé
         else if(oneDrop&&oneDrop(x,y))pushCut(x,y); // V0.98.0 : rapide + descente dans le vidé
-        else if(!entryTo(x,y,ex,ey)){
-          rampTot=Math.max(2,Math.ceil((rampZ0-z)/2));
-          rampK=1; rampL=rampTot-1;
-          const zr=rampZr(x,y);
-          moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
-        }
+        else if(!entryTo(x,y,ex,ey))zigStart(x,y,aheadOf(seq,i)); // V0.99.88 : zigzag
         atCut=true; prevIn=true; px=x; py=y;
       }
   };
@@ -2523,9 +2496,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     }
     return P;
   };
-  // 007 : la descente éventuellement active est terminée par le bloc « fin de
-  // spirale pendant un rampage » ci-dessus — état clos avant les côtés.
-  rampL=0;
   // état réel au début des côtés : à cote z (sinon entryTo gère l'accostage
   // depuis la cote restante — même garde que la passe de faces, note 011).
   {
@@ -2558,7 +2528,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     // Direction d'attaque = premier maillon de la chaîne (sens de coupe).
     const ex2=(seq.length>1)?seq[1][0]-seq[0][0]:0;
     const ey2=(seq.length>1)?seq[1][1]-seq[0][1]:0;
-    let i0=1,rampN=0; // V0.99.7 : points de la rampe le long de la chaîne
     // 011 : P.z > z = fin de spiral en cours de rampage sans être redescendu
     // à la cote — ne JAMAIS accoster la chaîne depuis cette cote (une poussée
     // directe serait une plongée verticale non contrôlée) : entryTo (vide
@@ -2585,25 +2554,12 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       pushCut(sx,sy);
     }else if(!entryTo(sx,sy,ex2,ey2)){
       // 2026-10-08-007 : RAMPE le long de la chaîne de faces — la fraise
-      // descend EN COUPANT le croissant non balayé le long du mur (paliers
-      // bornés à ~2 mm, répartis sur les points disponibles), centre
+      // descend EN COUPANT le croissant non balayé le long du mur, centre
       // toujours à r du mur : aucune plongée à plat sur le brut restant,
-      // aucun gouge.
-      let nUse=Math.max(1,Math.min(seq.length-1,Math.ceil((rampZ0-z)/2)));
-      const dz=(rampZ0-z)/nUse;
-      if(faoEntryCur&&faoEntryCur.rampAng){
-        // V0.99.7 : pente réglée — descente au prorata de la longueur suivie (point de la chaîne
-        // où la cote est atteinte ; chaîne trop courte : dernier point à la cote)
-        const tn=faoRampTan(0.4);let zc=rampZ0,k=0;
-        while(k<seq.length-1&&zc>z+1e-9){k++;zc=Math.max(z,zc-Math.hypot(seq[k][0]-seq[k-1][0],seq[k][1]-seq[k-1][1])*tn);
-          moves.push({r:0,ent:1,x:rnd(seq[k][0]),y:rnd(seq[k][1]),z:Math.round((k===seq.length-1?z:zc)*1000)/1000});}
-        nUse=Math.max(1,k);
-      }else for(let i=1;i<=nUse;i++){
-        moves.push({r:0,ent:1,x:rnd(seq[i][0]),y:rnd(seq[i][1]),
-          z:Math.round((rampZ0-dz*i)*1000)/1000});
-      }
-      i0=nUse+1;
-      rampN=nUse;
+      // aucun gouge. V0.99.88 : en zigzag (un aller-retour = un tour, « Rampe :
+      // descente / tour »), fin au départ à la cote : la passe suit ensuite toute
+      // la chaîne à la cote, portion de la rampe comprise (plus de reprise à part).
+      zigStart(sx,sy,aheadOf(seq,0,null,true));
     }
     // V0.99.6 : croisement aux coupures (morceaux de splitFaces) — aller-retour le long de la
     // paroi au-delà de chaque bout, la passe repart du même point (ordre et liaisons inchangés)
@@ -2614,18 +2570,12 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     const doS=xS&&cutEnds.has(kS),doE=xE&&cutEnds.has(kE);
     if(!ch.closed){cutEnds.add(kS);cutEnds.add(kE);}
     const across=function(X,bx,by){if(!X||!X.length)return;for(let q=0;q<X.length;q++)pushCut(X[q][0],X[q][1]);for(let q=X.length-2;q>=0;q--)pushCut(X[q][0],X[q][1]);pushCut(bx,by);};
-    if(i0===1&&doS)across(xS,sx,sy);
-    // V0.99.7 (« il faut bien penser à passer partout ») : la rampe descend le long de la paroi
-    // AU-DESSUS de la cote — sa portion n'était jamais reprise à fond (chaîne ouverte : jamais ;
-    // fermée : retour au départ seulement) et laissait la matière contre la paroi sur ~2 mm de
-    // haut. Boucle (fermée, ou bouts confondus) : la passe continue sur la rampe à la cote ;
-    // sinon aller-retour à la cote sur la rampe juste après la descente.
-    const loopS=ch.closed||(seq.length>2&&Math.hypot(seq[0][0]-seq[seq.length-1][0],seq[0][1]-seq[seq.length-1][1])<=linkMax);
-    if(rampN&&!loopS){for(let q=rampN-1;q>=0;q--)pushCut(seq[q][0],seq[q][1]);for(let q=1;q<=rampN;q++)pushCut(seq[q][0],seq[q][1]);}
-    for(let i=i0;i<seq.length;i++)pushCut(seq[i][0],seq[i][1]);
+    // V0.99.88 : la rampe (zigzag) finit au départ, à la cote — la passe suit toute la chaîne à la
+    // cote, portion de la rampe comprise (la reprise à part de V0.99.7 n'a plus lieu d'être)
+    if(doS)across(xS,sx,sy);
+    for(let i=1;i<seq.length;i++)pushCut(seq[i][0],seq[i][1]);
     if(ch.closed)pushCut(seq[0][0],seq[0][1]);
     else if(doE){const e=seq[seq.length-1];across(xE,e[0],e[1]);}
-    if(rampN&&loopS){if(!ch.closed)pushCut(seq[0][0],seq[0][1]);for(let q=1;q<=rampN;q++)pushCut(seq[q][0],seq[q][1]);}
   }
   };
   if(opt&&opt.snail)snailRings();

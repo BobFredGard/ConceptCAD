@@ -6,7 +6,23 @@ function faoFacingAe(stock,D,np){
   if(!(np>=2)||!(H>0))return null;
   return Math.round((H/(np-1))*1000)/1000;
 }
-function faoFacingYs(stock,r,ae){
+// V0.99.90 (Fred : « des fois, une passe suffit ! Mais quand c'est le cas, le mini est à 2 ») :
+// la fraise couvre toute la largeur du brut (vue dans le sens d'usinage) → une seule ligne, au milieu.
+function faoFacingUne(stock,D){
+  const d=(isFinite(+D)&&+D>0)?+D:10;
+  const W=+stock.y1-+stock.y0;
+  return isFinite(W)&&W<=d+1e-9;
+}
+// Même question pour une opération (clé du cache) : pas en pilotage « Passes » d'un ancien document.
+function faoFacingUneOp(op,job){
+  if(!op||op.type!=='facing'||(isFinite(+op.np)&&Math.floor(+op.np)>=2))return false;
+  const t=faoToolById(job,op.toolId);
+  const D=(t&&isFinite(+t.d)&&+t.d>0)?+t.d:10;
+  return faoFacingUne(faoFacingStockDir((job&&job.stock)||faoStockDefault(),faoFacingDir(op)),D);
+}
+function faoFacingYs(stock,r,ae,une){
+  // une : une seule ligne au milieu du brut (faoFacingUne).
+  if(une){ const yc=(+stock.y0+(+stock.y1))/2; return {yA:yc,yB:yc}; }
   // Extrêmes du zigzag : la 1ʳᵉ (et la dernière) ligne MORDE dans la matière de la
   // valeur d'écart (plafonnée au rayon) — plus tangente à l'arête du brut.
   const a=(isFinite(+ae)&&+ae>0)?+ae:1;
@@ -20,7 +36,7 @@ function faoFacingCount(stock,D,ae){
   const d=(isFinite(+D)&&+D>0)?+D:10;
   const r=d/2;
   const a=(isFinite(+ae)&&+ae>0)?+ae:d*0.6;
-  const Y=faoFacingYs(stock,r,a);
+  const Y=faoFacingYs(stock,r,a,faoFacingUne(stock,d));
   let y=Y.yA,n=1,guard=0;
   while(y<Y.yB-1e-9&&guard++<100000){ y=Math.min(y+a,Y.yB); n++; }
   return n;
@@ -32,6 +48,58 @@ function faoFacingAp(stock,z,npz){
   const zTop=isFinite(+stock.z1)?+stock.z1:null;
   if(zTop==null||!(zTop-(+z)>1e-9))return null;
   return Math.round(((zTop-(+z))/npz)*1000)/1000;
+}
+// V0.99.88 (« enlever la pente partout… et remplacer toutes ces pentes par des mm/tour », « tu
+// proposes les valeurs que tu aurais mis en automatique et on peut les changer ») : descente par
+// tour proposée partout (rampes, hélices) = celle des hélices d'entrée, 10 % du Ø, 0,5 mm au moins.
+function faoPasTourAuto(D){ const d=isFinite(+D)&&+D>0?+D:10; return Math.max(0.5,Math.round(d*100)/1000); }
+// V0.99.88 : RAMPE EN ZIGZAG (plus de rampe en pente) sur le début d'un trajet pts (pts[0] = départ,
+// l'outil y est déjà à z0) : allers-retours sur au plus Lmax de trajet ; un aller-retour = un tour,
+// qui descend de « tour » mm ; fin exacte au départ, à la cote z — la passe repart de là.
+// Renvoie les mouvements (ent:1), ou null si le trajet fait moins de 0,05 mm.
+// pts[k][2] (facultatif) = cote du trajet en ce point (finition 3D) : la descente se fait alors
+// au-dessus de ce profil (hauteur restante + profil — jamais sous le trajet), fin en pts[0] à z.
+function faoZigzag(pts,z0,z,tour,Lmax,rnd){
+  const rd=rnd||function(v){return v;};
+  const bz=function(p){return (p.length>2&&isFinite(+p[2])&&pts[0].length>2)?(+p[2])-(+pts[0][2]):0;};
+  const Q=[[pts[0][0],pts[0][1],0]];let L=0;
+  for(let k=1;k<pts.length&&L<Lmax-1e-9;k++){
+    const a=Q[Q.length-1],b=pts[k],l=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    if(!(l>1e-9))continue;
+    if(L+l>Lmax){const u=(Lmax-L)/l;Q.push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,a[2]+(bz(b)-a[2])*u]);L=Lmax;break;}
+    Q.push([b[0],b[1],bz(b)]);L+=l;
+  }
+  if(!(L>=0.05))return null;
+  // points alignés fusionnés (trajets échantillonnés à 0,25 mm : 80 points sur 20 mm, répétés
+  // à chaque aller-retour) — écart toléré 0,002 mm en XY comme en cote du profil
+  if(Q.length>2){
+    const K=[Q[0]];let a=0;
+    for(let j=2;j<=Q.length;j++){
+      let ok=j<Q.length;
+      if(ok){
+        const A=Q[a],B=Q[j],dx=B[0]-A[0],dy=B[1]-A[1],l2=dx*dx+dy*dy;
+        for(let k=a+1;k<j&&ok;k++){
+          const P=Q[k];let u=l2>1e-18?((P[0]-A[0])*dx+(P[1]-A[1])*dy)/l2:0;
+          if(u<0||u>1){ok=false;break;}
+          const ex=A[0]+dx*u-P[0],ey=A[1]+dy*u-P[1],eb=A[2]+(B[2]-A[2])*u-P[2];
+          if(ex*ex+ey*ey>4e-6||Math.abs(eb)>0.002)ok=false;
+        }
+      }
+      if(!ok){K.push(Q[j-1]);a=j-1;}
+    }
+    Q.length=0;K.forEach(function(q){Q.push(q);});
+  }
+  const t=isFinite(+tour)&&+tour>0?+tour:0.5;
+  const nAR=Math.max(1,Math.ceil((z0-z)/t-1e-9)),kz=(z0-z)/(2*L*nAR),out=[];
+  let h=z0-z;
+  const go=function(a,b){h=Math.max(0,h-Math.hypot(b[0]-a[0],b[1]-a[1])*kz);
+    out.push({r:0,ent:1,x:rd(b[0]),y:rd(b[1]),z:Math.round((z+b[2]+h)*1000)/1000});};
+  for(let n=0;n<nAR;n++){
+    for(let q=1;q<Q.length;q++)go(Q[q-1],Q[q]);
+    for(let q=Q.length-2;q>=0;q--)go(Q[q+1],Q[q]);
+  }
+  const e=out[out.length-1];e.x=pts[0][0];e.y=pts[0][1];e.z=z; // fin exacte à la cote, au départ
+  return out;
 }
 function faoLevels(zTop,zBot,ap){
   const p=isFinite(+ap)&&+ap>0?+ap:5;
@@ -90,8 +158,9 @@ function faoGenFacing0(stock,o){
   // garantie, dernier aligné sur la lisière. np absent/null → pilotage par ae.
   const np=isFinite(+o.np)?Math.floor(+o.np):0;
   if(np>=2&&yB0>yA0)ae=Math.max(0.01,(yB0-yA0)/(np-1));
-  // Extrêmes avec mordant (l'écart morde dans la matière, plafonné au rayon).
-  const Y=faoFacingYs(stock,r,ae), yA=Y.yA, yB=Y.yB;
+  // Extrêmes avec mordant (l'écart morde dans la matière, plafonné au rayon) ;
+  // V0.99.90 : une seule ligne au milieu quand la fraise couvre toute la largeur.
+  const Y=faoFacingYs(stock,r,ae,np<2&&faoFacingUne(stock,D)), yA=Y.yA, yB=Y.yB;
   // Passes en Z (op.npz ≥ 2) : l'ébauche descend du dessus du brut (z1) jusqu'à
   // la cote z en npz passes égales → ap = (z1−z)/npz, dernière passe = cote.
   // npz absent/1, ou z ≥ z1 (rien à enlever) → une seule passe (historique).
@@ -271,29 +340,20 @@ function faoGenPocket(rect,zTop,zBot,o){
           if(last)moves.push({r:1,x:last.x,y:last.y,z:secu});
           moves.push({r:1,x:ax,y:ay,z:secu});
         }
-        // 2 côtés depuis le coin : le plus long porte la rampe (paliers <= 2 mm).
+        // 2 côtés depuis le coin : le plus long porte la rampe.
+        // V0.99.88 : rampe en ZIGZAG (allers-retours sur 2·Ø au plus du 1er côté, un aller-retour
+        // = un tour de « Rampe : descente / tour ») au lieu de la pente en paliers de 2 mm ; elle
+        // finit au coin, à la cote : le rectangle qui suit referme le 1er côté à la cote exacte
+        // (2026-10-12-001 : sinon bande de matière le long du mur d'entrée).
         let rx=bx-ax,ry=0;
         if(Math.abs(rx)<2&&Math.abs(by-ay)>=2){ rx=0; ry=by-ay; }
-        const L=Math.hypot(rx,ry);
         if(z0>z+1e-9)moves.push({r:0,ent:1,x:ax,y:ay,z:z0}); // air jusqu'a la face
-        if(L>=2&&z0>z+1e-9){
-          const nR=Math.max(2,Math.ceil((z0-z)/2));
-          for(let s=1;s<=nR;s++){
-            const f=s/nR;
-            moves.push({r:0,ent:1,x:ax+rx*f,y:ay+ry*f,z:z0+(z-z0)*f});
-          }
-        }else{
+        const zz=(z0>z+1e-9)?faoZigzag([[ax,ay],[ax+rx,ay+ry]],z0,z,faoRampTour(D),2*D):null;
+        if(zz)zz.forEach(function(m){moves.push(m);});
+        else{
           moves.push({r:0,ent:1,x:ax,y:ay,z:z0});
           moves.push({r:0,x:ax,y:ay,z:z});
         }
-        // 2026-10-12-001 : la RAMPE ne descend le 1er côté qu'en progressant
-        // (z0 -> z) — le fond sous la rampe restait +z0->z au-dessus de la
-        // cote finale (bande de matiere le long du MUR D'ENTREE, visible en
-        // parois/fond à 0 comme un gap pièce/usiné, jusqu'à ~ ap de haut).
-        // Re-point à (ax,ay) À PLAT à z : le rectangle partagé qui suit
-        // referme alors le 1er côté à la cote exacte (meme chose que les
-        // entrees circulaires, qui arrivent à (ax,ay)).
-        if(L>=2&&z0>z+1e-9)moves.push({r:0,x:ax,y:ay,z:z});
       }
       moves.push({r:0,x:bx,y:ay,z:z});
       moves.push({r:0,x:bx,y:by,z:z});
@@ -324,7 +384,7 @@ function faoGenContour(rect,zTop,zBot,o){
   // 2026-10-08-007 : l'extérieur d'un bossage n'est PAS de l'air — c'est du
   // brut (à moins qu'une ébauche ne l'ait déjà enlevé, que le contour ne
   // voit pas). La « descente à S » devient une RAMPE le long de l'arc tangent
-  // (interpolation hélicoïdale répartie en paliers ≤ 2 mm) : la fraise
+  // (V0.99.88 : en zigzag, un aller-retour = un tour de « Rampe : descente / tour ») : la fraise
   // découpe le brut en progressant, jamais à plat dessus. Le repli historique
   // (sans cercle) ramp le long du 1er côté du rectangle, comme la poche 006.
   const entryMode=o.entry||'auto';
@@ -336,43 +396,28 @@ function faoGenContour(rect,zTop,zBot,o){
   };
   const sideC=(entryMode==='circ')?faoCircEval(ax,ay,1,0,rhoCirc,outsideOK,moves,zTop,D,false):null;
   zs.forEach(function(z,li){
+    // V0.99.88 : plus de pente (paliers de 2 mm) — rampes en ZIGZAG, un aller-retour = un tour de
+    // « Rampe : descente / tour », depuis la cote du niveau précédent (déjà usinée le long du tracé).
+    const z0=(li>0)?zs[li-1]:+zTop;
     if(sideC){
+      // 007 : arc tangent — descente en zigzag sur l'arc S→P (cordes), fin en S à la cote,
+      // puis l'arc tangent à plat accoste le tracé en P.
       moves.push({r:1,x:sideC.sx,y:sideC.sy,z:secu});
-      // 007 : arc tangent RAMPE — descente répartie le long de l'arc (chaque
-      // sous-arc garde son centre IJK ; G2/G3 hélicoïdal = légal).
-      const Rr=Math.hypot(sideC.sx-sideC.cx,sideC.sy-sideC.cy);
-      let a0=Math.atan2(sideC.sy-sideC.cy,sideC.sx-sideC.cx);
-      let a1=Math.atan2(ay-sideC.cy,ax-sideC.cx);
-      let da=a1-a0;
-      if(sideC.cw){if(da>0)da-=2*Math.PI;}else if(da<0)da+=2*Math.PI;
-      const nR=Math.max(2,Math.ceil((zTop-z)/2));
-      let ppx=sideC.sx,ppy=sideC.sy;
-      for(let s=1;s<=nR;s++){
-        const f=s/nR,a=a0+da*f;
-        const xx=sideC.cx+Rr*Math.cos(a),yy=sideC.cy+Rr*Math.sin(a);
-        moves.push({r:0,ent:1,x:xx,y:yy,
-          z:Math.round((zTop+(z-zTop)*f)*1000)/1000,
-          arc:{i:sideC.cx-ppx,j:sideC.cy-ppy,cw:sideC.cw}});
-        ppx=xx;ppy=yy;
-      }
+      if(z0<secu-1e-9)moves.push({r:0,ent:1,x:sideC.sx,y:sideC.sy,z:z0});
+      const pa=faoCircArcPts(sideC,ax,ay);
+      const zz=(pa&&z0>z+1e-9)?faoZigzag(pa,z0,z,faoRampTour(D),2*D):null;
+      if(zz)zz.forEach(function(m){moves.push(m);});
+      else moves.push({r:0,ent:1,x:sideC.sx,y:sideC.sy,z:z});
+      moves.push({r:0,ent:1,x:ax,y:ay,z:z,arc:{i:sideC.cx-sideC.sx,j:sideC.cy-sideC.sy,cw:sideC.cw}});
     }else{
-      // 007 : repli = RAMPE le long du 1er côté (descente en coupant le brut,
-      // paliers ≤ 2 mm) — jamais de plongée/rapide à plat dans le brut.
-      const z0=(li>0)?zs[li-1]:+zTop;
+      // 007 : repli = rampe sur le 1er côté (en coupant le brut, jamais à plat dessus) ; fin au
+      // coin, à la cote : le rectangle qui suit referme le 1er côté à la cote exacte (2026-10-12-001).
       moves.push({r:1,x:ex,y:ey,z:secu});
       moves.push({r:1,x:ax,y:ay,z:secu});
       if(z0>z+1e-9)moves.push({r:0,ent:1,x:ax,y:ay,z:z0});
-      const nR=Math.max(2,Math.ceil((z0-z)/2));
-      for(let s=1;s<=nR;s++){
-        const f=s/nR;
-        moves.push({r:0,ent:1,x:ax+(bx-ax)*f,y:ay,
-          z:Math.round((z0+(z-z0)*f)*1000)/1000});
-      }
-      // 2026-10-12-001 : la RAMPE ne couvre le 1er côté qu'en descendant
-      // (z0 -> z) — bande de matière le long du côté d'entrée (gap visible
-      // en parois/fond à 0, cf. poche). Re-point à (ax,ay) À PLAT à z : le
-      // rectangle partagé qui suit referme le 1er côté à la cote exacte.
-      if(z0>z+1e-9)moves.push({r:0,x:ax,y:ay,z:z});
+      const zz=(z0>z+1e-9)?faoZigzag([[ax,ay],[bx,ay]],z0,z,faoRampTour(D),2*D):null;
+      if(zz)zz.forEach(function(m){moves.push(m);});
+      else moves.push({r:0,ent:1,x:ax,y:ay,z:z});
     }
     moves.push({r:0,x:bx,y:ay,z:z});
     moves.push({r:0,x:bx,y:by,z:z});
@@ -660,7 +705,9 @@ function faoLoopFromChains(edges,chains,multi){
     const a=pts[i-1];
     return Math.hypot(q[0]-a[0],q[1]-a[1])>1e-4;
   });
-  if(pts.length<3)return {loop:[],closed:false};
+  // V0.99.86 : trajet unique (contour, chanfrein, découpe) — une arête droite seule donne une
+  // boucle aller-retour [a,b,a] ouverte, d'aire nulle : seule la découpe 3 tailles l'accepte
+  if(pts.length<(multi?3:2))return {loop:[],closed:false};
   const closed=Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.5;
   if(!closed)pts.push([pts[0][0],pts[0][1],pts[0][2]]); // chaîne ouverte : refermée d'office
   const r3=function(v){return Math.round(v*1000)/1000;};
@@ -670,6 +717,11 @@ function faoLoopFromChains(edges,chains,multi){
 // V0.99.71 : ponts entre contours d'une même zone (cf. faoLoopFromChains) — segment i
 // (loop[i]→loop[i+1]) parcouru aussi dans l'autre sens. Uint8Array par indice, ou null.
 const faoPontsMemo=(typeof WeakMap!=='undefined')?new WeakMap():null;
+function faoLoopLineOK(op,res){
+  // V0.99.86 : découpe 3 tailles le long d'arêtes — une chaîne OUVERTE d'aire nulle (droite) est permise
+  return !!(op&&op.type==='slotcut'&&res&&!res.closed&&res.loop&&res.loop.length>=3&&
+    Math.hypot(res.loop[1][0]-res.loop[0][0],res.loop[1][1]-res.loop[0][1])>0.1);
+}
 function faoLoopPonts(loop){
   if(!Array.isArray(loop)||loop.length<4)return null;
   if(faoPontsMemo&&faoPontsMemo.has(loop))return faoPontsMemo.get(loop);
@@ -801,8 +853,8 @@ function faoChainRematch(op,edges,field){
     sel=all;
   }
   // 3) reconstruction de la boucle XY (ordre, clip de longueur, validation)
-  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||faoContourProfil(op)));
-  if(!res.loop.length||res.loop.length<3||faoLoopArea(res.loop)<1e-6)return fail(sel.length);
+  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||op.type==='slotcut'||faoContourProfil(op)));
+  if(!res.loop.length||res.loop.length<3||(faoLoopArea(res.loop)<1e-6&&!faoLoopLineOK(op,res)))return fail(sel.length);
   // Intégrité : chaque arête retenue doit avoir ses points SUR la boucle. Une
   // arête mal orientée à l'assemblage est partiellement sautée → son milieu
   // s'éloigne et la boucle gagne une corde parasite : le clip exclurait alors une

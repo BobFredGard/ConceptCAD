@@ -392,76 +392,30 @@ function cgPickOtherComp(e,draft,slot,bodyHit){
   // Face d'un AUTRE composant affiché autour de la pièce (mode Modéliser d'un assemblage) :
   // plan = face plane, axe = face cylindrique ou conique. Ces maillages ne sont pas cliquables
   // en temps normal (asmFill) : on les vise ici, pendant la saisie seulement. → ref 'xf' ou null
+  // (V0.99.94 : le calcul est partagé avec les « jusqu'à » — 48-assemblage-jusqua)
   if(typeof asm==='undefined'||!asm||!asmOn()||asmMode==='asm')return null;
   const type0=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
   if(type0!=='plane'&&type0!=='axis'&&type0!=='point'&&type0!=='dir')return null;
   const wP=type0==='plane'||type0==='dir',wA=type0==='axis'||type0==='dir',type=type0==='dir'?'axis':type0; // dir : arête, face plane ou cylindre
-  const G=scene.getObjectByName('asmCtx');if(!G)return null;
+  if(!scene.getObjectByName('asmCtx'))return null;
   try{
-    const r=renderer.domElement.getBoundingClientRect();
-    rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
-    G.updateMatrixWorld(true);
-    const hits=[];G.traverse(m=>{if(m.isMesh&&m.visible!==false)THREE.Mesh.prototype.raycast.call(m,rayc,hits);});
-    hits.sort((a,b)=>a.distance-b.distance);
-    const h=hits[0];
+    const h=asmOtherFaceHit(e);
     // arête ou sommet d'un autre composant à ≤ 7 px (non masqué par une surface plus proche)
     {const near=Math.min(h?h.distance:Infinity,bodyHit?bodyHit.distance:Infinity);
      const xe=cgPickOtherEdge(e,type,near);if(xe)return xe;}
     if(type==='point'||!h||!h.face)return null;
     if(bodyHit&&bodyHit.distance<h.distance-1e-6)return null; // la pièce active est devant
-    let g=h.object;while(g&&!(g.userData&&g.userData.path))g=g.parent;if(!g)return null;
-    const path=g.userData.path.slice(),T=asmPathComp(path),c=asmComp(T);
-    if(!c||T===asm.active)return null;
-    const Fs=c._snap&&c._snap.pfaces;
-    if(!Fs||!Fs.length){try{faceEl.textContent='« '+c.name+' » : faces exactes indisponibles (noyau exact requis, rejouez ce composant).';}catch(err){}return null;}
-    const ctx=asm.path.slice(),Fi=asmInverse(asmSkXf(ctx,path));
-    const p=asmApply(Fi,[h.point.x,h.point.y,h.point.z]);
-    const nw=h.face.normal.clone().transformDirection(h.object.matrixWorld);
-    const q=asmApply(Fi,[nw.x,nw.y,nw.z]),n=cgUnit([q[0]-Fi.o[0],q[1]-Fi.o[1],q[2]-Fi.o[2]]);
-    let best=null,bd=Infinity;
-    Fs.forEach(f=>{
-      if(wP&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
-        const d=Math.abs(cgDot(cgSub(p,f.plane.o),f.plane.n));if(d<bd){bd=d;best=f;}
-      }
-      if(wA&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
-        const w=cgSub(p,f.axis.o),t=cgDot(w,f.axis.d),dd=cgLen(cgSub(w,cgMul(f.axis.d,t)));
-        const d=f.axis.rad!=null?Math.abs(dd-f.axis.rad):dd;if(d<bd){bd=d;best=f;}
-      }
-    });
-    if(!best||bd>0.5)return null;
-    const nm=(asmOcc(path[path.length-1])||{}).name||c.name;
-    const loc=best.plane?{plane:best.plane}:{axis:best.axis};
-    return {k:'xf',ctx,path,ref:best.ref,loc,name:(best.plane?'Face':'Axe de face')+' · '+nm,sig:null};
+    const r=asmOtherFaceRef(h,wP,wA);
+    if(r&&r.err){try{faceEl.textContent=r.err;}catch(err){}return null;}
+    return r;
   }catch(err){return null;}
 }
 function cgPickOtherEdge(e,type,surfDist){
-  // Arête des autres instances (asmSkExtLists : arêtes exactes vues depuis l'instance active) sous
-  // le curseur → ref 'xe' : point = sommet (ou centre d'un cercle), axe = droite ou axe d'un
-  // cercle, plan = plan d'un cercle ; null sinon
-  const lists=asmSkExtLists();if(!lists.length)return null;
-  const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-  const v=new THREE.Vector3(),toS=p=>{v.set(p[0],p[1],p[2]).project(camera);return [(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z];};
-  let best=null,bd=7;
-  lists.forEach(Lx=>Lx.edges.forEach((E,ei)=>{
-    let a=toS(E.pts[0]);
-    for(let k=1;k<E.pts.length;k++){
-      const b=toS(E.pts[k]);
-      if(Math.abs(a[2])<1&&Math.abs(b[2])<1){
-        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9;
-        const t=Math.max(0,Math.min(1,((mx-a[0])*dx+(my-a[1])*dy)/L2));
-        const d=Math.hypot(mx-(a[0]+t*dx),my-(a[1]+t*dy));
-        if(d<bd){
-          const P0=E.pts[k-1],P1=E.pts[k],w=new THREE.Vector3(P0[0]+(P1[0]-P0[0])*t,P0[1]+(P1[1]-P0[1])*t,P0[2]+(P1[2]-P0[2])*t);
-          if(camera.position.distanceTo(w)<=surfDist*1.004+0.3){bd=d;best={Lx,E,ei};}
-        }
-      }
-      a=b;
-    }
-  }));
-  if(!best)return null;
-  const {Lx,E}=best,x=Lx.ext,Gm=cgEdgeGeom(E.pts);
-  const Fi=asmInverse(asmSkXf(x.ctx,x.path)),loc=p=>asmApply(Fi,p).map(a=>+a.toFixed(4));
-  const raw=asmComp(asmPathComp(x.path))._snap.pedges[best.ei];
+  // Arête des autres instances (asmOtherEdgeAt, 48-assemblage-jusqua) sous le curseur → ref 'xe' :
+  // point = sommet (ou centre d'un cercle), axe = droite ou axe d'un cercle, plan = plan d'un
+  // cercle ; null sinon
+  const A=asmOtherEdgeAt(e,surfDist);if(!A)return null;
+  const {Lx,E,raw,toS,mx,my}=A,x=Lx.ext,Gm=cgEdgeGeom(E.pts);
   let L=0;for(let i=1;i<raw.pts.length;i++)L+=Math.hypot(raw.pts[i][0]-raw.pts[i-1][0],raw.pts[i][1]-raw.pts[i-1][1],raw.pts[i][2]-raw.pts[i-1][2]);
   const mid=raw.mid||raw.pts[Math.floor(raw.pts.length/2)];
   const nm=(asmOcc(x.path[x.path.length-1])||{}).name||Lx.name;

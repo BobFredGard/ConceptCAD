@@ -75,7 +75,7 @@ function faoPocketFloor(mesh,loop,zMin){
 function faoPocketAdapt(op){ return !!(op&&op.type==='pocket'&&op.strat==='adaptive'); }
 // Opérations calculées sur le MAILLAGE du solide (clé de cache liée au solide).
 function faoMeshOp(op){ return !!(op&&(op.type==='rough3d'||op.type==='geofinish'||op.type==='geodesic'||faoPocketAdapt(op)||
-  (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer')); }
+  (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer'||op.type==='slotcut')); }
 function faoOpDefaults(type){
   const s=faoStock(); const job=faoDoc();
   const tool=(job.tools&&job.tools[0])||{id:'T1',d:10};
@@ -139,6 +139,12 @@ function faoOpDefaults(type){
       limit:{mode:'chain',loop:[],closed:false,nEdges:0,tangent:true,side:'center',extra:0},
       w:0.5,tipOff:0.3,cside:'auto',sens:'avalant',overlap:1});
   }
+  // V0.99.86 : DÉCOUPE 3 TAILLES — selon X / Y ou le long d'une arête (src/89-fao-decoupe-3tailles.js)
+  if(type==='slotcut'){
+    const st=(job.tools||[]).find(function(t){return t&&t.kind==='slot';});
+    return Object.assign({},base,{type:'slotcut',toolId:st?st.id:base.toolId,
+      ztop:s.z1, zbot:Math.round((s.z0+s.z1)/2*10)/10, nR:1, ae:2, fin:0, sens:'avalant'});
+  }
   if(['facing','pocket','contour','drill','rough3d','geofinish','geodesic'].indexOf(type)<0)return null;
   return Object.assign({},base,{type:type});
 }
@@ -147,7 +153,7 @@ function faoOpDefaults(type){
 function faoAddOpsSpec(){
   // V0.7.9 : la Poche (redondante avec l'Ébauche 3D) cède sa place au Chanfrein ; les poches des
   // fichiers existants restent lisibles et calculées
-  return [['facing','+ Surfaçage'],['chamfer','+ Chanfrein'],['contour','+ Contour'],
+  return [['facing','+ Surfaçage'],['chamfer','+ Chanfrein'],['contour','+ Contour'],['slotcut','+ Découpe 3 tailles'],
     ['drill','+ Perçage'],['rough3d','+ Ébauche 3D'],['geofinish','+ Finition'],['geodesic','+ Géodésique'],
     ['pattern','+ Répétition']]; // V0.95.3 : src/89-fao-repetition.js
 }
@@ -396,7 +402,7 @@ async function faoRegenOpStream(setupId,opId){
   try{ faoRefreshFaoUI(); }catch(e){} // triangle retiré tout de suite
   const g=faoPrevGroup;
   if(g)faoPrevStreamG=g; // « Masquer » pendant le calcul : éteint les traits provisoires (faoPrevToggleFast)
-  try{ if(g&&faoPrevOps){ const e=faoPrevOps.get(o); if(e)e.parts=[]; } }catch(e){} // jamais l'ancien tracé sous le nouveau
+  try{ if(g&&faoPrevOps){ const e=faoPrevOps.get(o); if(e){ e.parts=[]; e.src=[]; } } }catch(e){} // jamais l'ancien tracé sous le nouveau (survol compris)
   const dit=function(t){ try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent=t; }catch(e){} };
   dit('FAO : génération de « '+faoOpShortLabel(o)+' »…');
   let n=0;
@@ -602,17 +608,20 @@ function faoEntryRows(rp,op,D){
   // 0 = automatique (valeurs d'avant) ; lues pendant le calcul par faoEntryCfg / faoEntryCur
   const set=function(k,lo,hi){return function(v){if(isFinite(v)&&v>=lo&&v<=hi)op[k]=v;else delete op[k];};};
   const cur=function(k,lo,hi){const x=+op[k];return (isFinite(x)&&x>=lo&&x<=hi)?x:0;};
+  // V0.99.88 (« tu proposes les valeurs que tu aurais mis en automatique et on peut les changer ») :
+  // le champ montre la valeur proposée ; vide ou 0 = y revenir
   rp.appendChild(faoLab('Hélice : descente / tour'));
-  rp.appendChild(faoNum(cur('helixPas',0.05,50),set('helixPas',0.05,50),44,0.1,
-  'Descente de l\'hélice d\'entrée à chaque tour (mm). 0 = automatique : '+(+Math.max(0.5,dE*0.1).toFixed(2))+' mm (10 % du Ø, 0,5 mm au moins).'));
+  rp.appendChild(faoNum(cur('helixPas',0.05,50)||+faoPasTourAuto(dE).toFixed(2),set('helixPas',0.05,50),44,0.1,
+  'Descente de l\'hélice d\'entrée à chaque tour (mm). Valeur proposée : 10 % du Ø de l\'outil, 0,5 mm au moins ; changez-la à volonté (vide ou 0 = revenir à la valeur proposée).'));
   rp.appendChild(faoLab('Hélice : rayon maxi'));
   rp.appendChild(faoNum(cur('helixR',0.1,500),set('helixR',0.1,500),44,0.1,
   'Rayon maxi de l\'hélice d\'entrée (mm). Le logiciel prend la plus grande hélice qui tient dans la place libre ; ce réglage la limite (jamais plus grande que la place). 0 = automatique.'));
-  if(op&&op.type==='rough3d'){
-    rp.appendChild(faoLab('Rampe : pente maxi'));
-    rp.appendChild(faoNum(cur('rampAng',0.5,60),set('rampAng',0.5,60),44,0.5,
-    'Pente maxi des descentes en rampe (degrés), le long de la spirale ou d\'une paroi. 0 = automatique : 22° environ le long de la spirale, paliers de 2 mm le long d\'une paroi.'));
-  }
+  // V0.99.88 : plus de pente maxi (°) — les rampes descendent en zigzag, X mm par aller-retour
+  rp.appendChild(faoLab('Rampe : descente / tour'));
+  rp.appendChild(faoNum(cur('rampTour',0.01,100)||+faoPasTourAuto(dE).toFixed(2),set('rampTour',0.01,100),44,0.1,
+  'Descente des rampes à chaque tour (mm). Une rampe fait des allers-retours sur le début de sa passe (2 × Ø au plus) : '+
+  'un aller-retour = un tour. Elle finit à son point de départ, à la cote, et la passe repart de là. '+
+  'Valeur proposée : 10 % du Ø de l\'outil, 0,5 mm au moins ; changez-la à volonté (vide ou 0 = revenir à la valeur proposée).'));
 }
 /* 2026-10-08-003 : infos de mode en menu CONTEXTUEL — la fiche reste lisible
    (les blocs d'aide « trop en place » ont été retirés) : clic droit sur le
@@ -864,6 +873,8 @@ function faoRenderTree(){
   let tree=null;
   try{ tree=document.getElementById('faoTree'); }catch(e){ return; }
   if(!tree)return;
+  // V0.99.86 : lignes refaites -> le survol en cours s'arrête (il reprend au prochain mouvement de souris)
+  try{ if(typeof faoSurvolFin==='function')faoSurvolFin(); }catch(e){}
   try{
     tree.innerHTML='';
     const r=faoRoot();
@@ -965,6 +976,10 @@ function faoRenderTree(){
         }
         d.appendChild(mb);
         d.onclick=function(ev){ if(faoMultiClick(ev,s,op))return; faoSelectOp(s.id,op.id); };
+        // V0.99.86 (demande de Fred) : survol = l'opération seule en couleurs dans la vue,
+        // même masquée ; les autres en gris le temps du survol (src/88-fao-61-survol.js)
+        d.onmouseenter=function(){ faoSurvolPrevoir(op,d); };
+        d.onmouseleave=function(){ faoSurvolFin(); };
         tree.appendChild(d);
       });
     });
@@ -973,7 +988,7 @@ function faoRenderTree(){
 }
 function faoOpShortLabel(op){
   if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }
-  const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',drill:'Perçage',
+  const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',slotcut:'Découpe 3 tailles',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'}[op.type]||op.type;
   if(op.type==='drill'){
     // 2026-10-15-013 : libellé selon le cycle et les trous (« Taraudage M8 (4) »).
@@ -1206,8 +1221,14 @@ function faoPlanesCard(setup,op){
   box.appendChild(faoPlaneRow('clear','Dégagement',eff.clear,setup,op,tgt));
   box.appendChild(faoPlaneRow('retr','Retrait',eff.retr,setup,op,tgt));
   if(faoHtsOps(op)){
-    box.appendChild(faoHtRow('top','Haut',setup,op));
-    box.appendChild(faoHtRow('bot','Bas',setup,op));
+    const slot=faoContourSlotOp(op,setup); // V0.99.85 : fraise 3 tailles — hauteur de rainure dans la fiche Contour
+    const cut=faoSlotCut(op); // V0.99.86 : découpe 3 tailles — Bas = plan de coupe
+    if(cut)box.appendChild(faoHelp(op.slotThru===true&&op.cutDir!=='edge' // V0.99.93 : à travers
+      ?'Plan de coupe = DESSUS du disque, la face qui reste sous la pièce (référence + décalage, ou une face cliquée ; ex. Bas du modèle − 1 = 1 mm de surépaisseur). Haut : non utilisé — la découpe descend de sa hauteur sous ce plan (onglet Zone).'
+      :'Plan de coupe = dessous du disque (référence + décalage, ou une face cliquée). Haut : non utilisé — la découpe monte de sa hauteur (onglet Zone).'));
+    else if(slot)box.appendChild(faoHelp('Haut : non utilisé par la fraise 3 tailles — la rainure monte de sa hauteur (fiche Contour) au-dessus du Bas.'));
+    else box.appendChild(faoHtRow('top','Haut',setup,op));
+    box.appendChild(faoHtRow('bot',cut?'Plan de coupe':'Bas',setup,op));
     if(op.type==='rough3d'||faoPocketAdapt(op)){
       const rz=faoRow();
       if(op.zlim){
@@ -1231,7 +1252,7 @@ function faoPlanesCard(setup,op){
     // garde-fous : l'ordre Dégagement ≥ Retrait ≥ Haut > Bas
     const zc=faoClearAbs(op,setup), zr=faoRetractAbs(op,setup);
     const zt=+op.ztop, zb=+op.zbot, w=[], own=!!faoOpFrame(setup,op);
-    if(isFinite(zt)&&isFinite(zb)&&!(zt>zb))w.push('le Haut doit être au-dessus du Bas');
+    if(!slot&&!cut&&isFinite(zt)&&isFinite(zb)&&!(zt>zb))w.push('le Haut doit être au-dessus du Bas');
     if(!own&&isFinite(zr)&&isFinite(zt)&&zr<zt-1e-6)w.push('le Retrait est sous le Haut de la zone');
     if(isFinite(zc)&&isFinite(zr)&&zc<zr-1e-6)w.push('le Dégagement est sous le Retrait');
     if(w.length){
@@ -1276,6 +1297,12 @@ const FAO_TAB_HELP={
   'Entrées':'Comment l’outil entre dans la matière.',
   'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D, finition et géodésique : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
+// V0.99.86 : aide propre à la découpe 3 tailles (src/89-fao-decoupe-3tailles.js)
+const FAO_TAB_HELP_CUT={
+  'Zone':'Sens de la découpe (X, Y ou une arête), côté de la pièce, profondeur depuis sa face ou à travers (tronçonner), et hauteur de la découpe.',
+  'Hauteurs':'Dégagement, Retrait, puis le plan de coupe (dessous du disque ; dessus en « à travers ») : depuis le brut, le modèle ou une face cliquée, plus un décalage.',
+  'Entrées':'Le disque descend hors de la pièce, entre tout droit et ressort tout droit : longueur des zones d’entrée et de sortie.'};
+function faoTabHelp(n,op){ return (op&&op.type==='slotcut'&&FAO_TAB_HELP_CUT[n])||FAO_TAB_HELP[n]||''; }
 function faoTabOf(t){
   t=String(t||'').toLowerCase().replace(/\s*\(.*$/,'').trim();
   const M=[['outil','Outil'],['trous','Zone'],['hauteur','Hauteurs'],['vidage','Passes'],['passes','Passes'],['côté et sens','Passes'],
@@ -1312,7 +1339,7 @@ function faoCardTabs(d,op){
     if(op)faoTabSel[op.id]=n;
   };
   names.forEach(function(n){
-    const b=document.createElement('button');b.className='fao-tab';b.textContent=n;b.title=FAO_TAB_HELP[n]||n;
+    const b=document.createElement('button');b.className='fao-tab';b.textContent=n;b.title=faoTabHelp(n,op)||n;
     b.onclick=function(){show(n);};
     bar.appendChild(b);btns[n]=b;
     const p=document.createElement('div');p.className='fao-pane';
@@ -1328,10 +1355,10 @@ function faoCardTabs(d,op){
         row.insertBefore(pr,ch[q]);pr.appendChild(ch[q]);pr.appendChild(nx);q++;
       }
     });
-    const tip=document.createElement('div');tip.className='fao-tip';tip.textContent=FAO_TAB_HELP[n]||'';
+    const tip=document.createElement('div');tip.className='fao-tip';tip.textContent=faoTabHelp(n,op);
     const say=function(e){let t=e&&e.target;for(let q=0;q<4&&t&&t!==p;q++){if(t.title){tip.textContent=t.title;return;}t=t.parentNode;}};
     try{p.addEventListener('mouseover',say);p.addEventListener('focusin',say);
-      p.addEventListener('mouseleave',function(){tip.textContent=FAO_TAB_HELP[n]||'';});}catch(e){}
+      p.addEventListener('mouseleave',function(){tip.textContent=faoTabHelp(n,op);});}catch(e){}
     p.appendChild(tip);
     panes[n]=p;
   });
@@ -1384,7 +1411,7 @@ function faoSetupTabs(p,setup){
 function faoOpCardElement(setup,op,i){
   const d=faoCard();
   if(op.on===false)d.style.opacity='0.55';
-  const typeName={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',drill:'Perçage',
+  const typeName={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',slotcut:'Découpe 3 tailles',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'};
   const r=faoRow();
   const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=op.on!==false;
@@ -1439,7 +1466,7 @@ function faoOpCardElement(setup,op,i){
     rp.appendChild(faoNumFx(op,'ae',isFinite(+aeShow)?Math.round(+aeShow*1000)/1000:aeShow,function(v){
       op.ae=Math.max(0.5,v);
       op.np=null; // ancien doc « Passes » → bascule en pilotage par écart
-    },48,0.5,'Recouvrement du fraiseur : distance entre deux passes — SEUL paramètre de recouvrement XY (le nombre de lignes résultant est affiché en lecture seule à droite). Sur un ancien document piloté par « Passes », saisir l\'écart bascule définitivement en pilotage par écart.'));
+    },48,0.5,'Recouvrement du fraiseur : distance entre deux passes — SEUL paramètre de recouvrement XY (le nombre de lignes résultant est affiché en lecture seule à droite). Quand la fraise est au moins aussi large que le brut, une seule ligne au milieu suffit. Sur un ancien document piloté par « Passes », saisir l\'écart bascule définitivement en pilotage par écart.'));
     rp.appendChild(faoLab(nbShow+' ligne'+(nbShow>1?'s':'')));
     // Passes en Z (par brut) : ébauche du dessus du brut (Z1) à la cote Z en N
     // passes égales — l'ap est CALCULÉ (Z1−Z)/N et affiché en lecture seule.
@@ -1518,6 +1545,8 @@ function faoOpCardElement(setup,op,i){
     })();
   }else if(op.type==='chamfer'){
     faoChamferRows(d,setup,op); // src/89-fao-chanfrein.js
+  }else if(op.type==='slotcut'){
+    faoSlotCutRows(d,setup,op); // src/89-fao-decoupe-3tailles.js
   }else if(faoContourProfil(op)){
     faoContourRows(d,setup,op);
   }else if((op.type==='pocket'&&!faoPocketAdapt(op))||op.type==='contour'){
@@ -1848,7 +1877,7 @@ function faoOpCardElement(setup,op,i){
     rl.appendChild(faoNum(faoDsp(op,L.x1,0),function(v){L.x1=faoInp(op,v,0);},52,null,'Rectangle : coin X maxi (mm)'));
     rl.appendChild(faoNum(faoDsp(op,L.y1,1),function(v){L.y1=faoInp(op,v,1);},52,null,'Rectangle : coin Y maxi (mm)'));
   }
-  const geoOwn=faoPocketAdapt(op)||faoContourProfil(op)||op.type==='chamfer'; // bord / profil / arêtes : section propre
+  const geoOwn=faoPocketAdapt(op)||faoContourProfil(op)||op.type==='chamfer'||op.type==='slotcut'; // bord / profil / arêtes : section propre
   if(!geoOwn&&!(op.type==='drill'&&op.src==='model'))d.appendChild(rl); // trous du modèle : pas de zone
   if(limMode==='chain'&&op.limit&&!geoOwn){
     const rc=faoRow();
@@ -1908,7 +1937,7 @@ function faoOpCardElement(setup,op,i){
       d.appendChild(ws);
     }
   }
-  if((limMode==='rect'||limMode==='chain'||limMode==='sketch')&&op.limit&&!faoContourProfil(op)&&op.type!=='chamfer'){
+  if((limMode==='rect'||limMode==='chain'||limMode==='sketch')&&op.limit&&!faoContourProfil(op)&&op.type!=='chamfer'&&op.type!=='slotcut'){
     const rs=faoRow();
     rs.appendChild(faoLab('Outil'));
     rs.appendChild(faoSel([
@@ -1959,7 +1988,7 @@ function faoOpCardElement(setup,op,i){
     rl2.appendChild(faoNum(faoDsp(op,L2.x1,0),function(v){L2.x1=faoInp(op,v,0);},52,null,'Îlot : coin X maxi (mm)'));
     rl2.appendChild(faoNum(faoDsp(op,L2.y1,1),function(v){L2.y1=faoInp(op,v,1);},52,null,'Îlot : coin Y maxi (mm)'));
   }
-  if(!faoContourProfil(op)&&op.type!=='chamfer'&&!(op.type==='drill'&&op.src==='model'))d.appendChild(rl2); // trous du modèle, chanfrein : ni zone ni îlot
+  if(!faoContourProfil(op)&&op.type!=='chamfer'&&op.type!=='slotcut'&&!(op.type==='drill'&&op.src==='model'))d.appendChild(rl2); // trous du modèle, chanfrein : ni zone ni îlot
   if(lim2Mode==='chain'&&op.limit2){
     const rc2=document.createElement('div');
     rc2.className='fao-row';
@@ -2081,6 +2110,28 @@ function faoSetupFiche(p,setup){
   rM.appendChild(faoSel([['G54','G54'],['G55','G55'],['G56','G56'],['G57','G57'],['G58','G58'],['G59','G59']],
     setup.wcs||'G54',function(v){ setup.wcs=v; }));
   p.appendChild(rM);
+  // V0.99.92 : usinage grande vitesse HSC du Fagor (G501 / G500), comme le post Fusion
+  const PMh=FAO_POSTS[setup.machine||setup.post];
+  if(PMh&&PMh.kind==='fagor'){
+    const R=faoHscReglage(setup,PMh);
+    const rH=faoRow();
+    rH.appendChild(faoLab('Usinage grande vitesse HSC'));
+    rH.appendChild(faoSel([
+      ['auto','Automatique','G501 au début de chaque opération de fraisage, G500 avant un changement d’outil, un perçage et la fin du programme.'],
+      ['off','Arrêt','Aucun G501 / G500 dans le programme.']],
+      R.on?'auto':'off',function(v){ setup.hsc=v; },
+      'Use HSC high speed machining (post Fusion Fagor) : lissage de trajectoire G501 de la CN Fagor.'));
+    p.appendChild(rH);
+    if(R.on){
+      const rA=faoRow();
+      rA.appendChild(faoLab('Accélération de lissage'));
+      rA.appendChild(faoNumFx(setup,'hscAccel',R.accel,function(v){ if(v>0)setup.hscAccel=Math.max(30,Math.min(200,v)); },48,5,
+        'Smoothing contouring acceleration : pourcentage d’accélération du G501 (mot A), de 30 à 200 %. 60 par défaut.'));
+      rA.appendChild(faoLab('%'));
+      p.appendChild(rA);
+      p.appendChild(faoHelp('G501 A'+(+R.accel.toFixed(2))+' E… J100 M1 au début de chaque opération de fraisage : E = tolérance × 1,2 comme Fusion (0,12 en ébauche 3D et poche adaptative, 0,012 ailleurs). G500 avant un changement d’outil, un perçage et la fin du programme.'));
+    }
+  }
   // 2026-10-16-017 : origine = un des 27 points cardinaux (clic dans la vue) du brut ou du modèle
   const rO=faoRow();
   const spO=faoOriginSpec(setup);

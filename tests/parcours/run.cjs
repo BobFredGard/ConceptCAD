@@ -39,7 +39,7 @@ function exemples() {
   return l.filter(f => /\.(conceptcad|miniFusion)$/.test(f) && (!FILTRE || f.includes(FILTRE))).sort();
 }
 const TYPES = { facing: 'Surfaçage', rough3d: 'Ébauche 3D', geofinish: 'Finition', geodesic: 'Géodésique', pocket: 'Poche',
-  contour: 'Contour', drill: 'Perçage', chamfer: 'Chanfrein' };
+  contour: 'Contour', drill: 'Perçage', chamfer: 'Chanfrein', slotcut: 'Découpe 3 tailles' };
 function taches() {
   const t = [];
   for (const f of exemples()) {

@@ -175,12 +175,25 @@ function faoOpMovesKey(op,job){
     // V0.99.72 : « Finir une région avant la suivante » dans une zone — une coupe hors zone ne relie
     // plus les poches (faoRegionOrder) : seules ces ébauches sont à refaire (CACHE_VER inchangé)
     if(op&&op.type==='rough3d'&&op.parRegion&&(op.limit||op.limit2))dep=['region-zone',dep];
+    // V0.99.90 : surfaçage — une seule ligne quand la fraise couvre toute la largeur du brut :
+    // seuls ces surfaçages sont à refaire (CACHE_VER inchangé)
+    if(faoFacingUneOp(op,job))dep=['ligne-unique',dep];
     // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
     if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
+    // V0.99.85 : contour à la fraise 3 tailles — descente à côté de la matière restante (brut, opérations précédentes)
+    if(faoContourProfil(op)&&faoToolIsSlot(faoToolById(job,op.toolId))){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['3tailles',rd]; }
+    // V0.99.86 : découpe 3 tailles — entrée et sortie contrôlées sur la matière restante
+    if(faoSlotCut(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['decoupe3t',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
       if(op.type==='geofinish'&&op.traj==='scallop')dep=['restant-zone',dep]; }
+    // V0.99.96 : profils (contour, chanfrein, contour 3 tailles) — congés en G2 / G3 : seules ces
+    // opérations sont à refaire (CACHE_VER inchangé)
+    if(op&&(faoContourProfil(op)||op.type==='chamfer'))dep=['arcs-g2g3',dep];
+    // V0.99.97 : contour sur profil — même entrée à chaque niveau, la fraise reste en bas entre
+    // les niveaux, approche droit sur la vraie entrée (seuls ces contours sont à refaire)
+    if(op&&faoContourProfil(op))dep=['entree-niveaux-v1',dep]; // V1.0.0 : passage entre niveaux dans le vide
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -666,12 +679,16 @@ function* faoOpMovesIt0(op,job){
     if(ch&&op&&op.stale===true&&op.type!=='drill')return faoZoneServe(ch,op,job,secu);
   }
   const tool=faoToolById(job,op&&op.toolId);
-  const D=isFinite(+tool.d)&&+tool.d>0?+tool.d:10;
+  // V0.99.96 : Ø de calcul = Ø de la fiche + correction (outil + opération, fraises cylindriques et
+  // toriques — src/89-fao-outils.js faoOpToolD) ; sans correction : Ø de la fiche, comme avant
+  const D=faoOpToolD(op,tool);
   const sortie=(isFinite(+((job||{}).secu))?+job.secu:5);
   const base={toolD:D, secu:secu, sortie:sortie};
   const RA=faoRA(op||{});
   let mv=[];
   if(!op||!op.type)return [];
+  // V0.99.85 : la fraise 3 tailles ne coupe qu'en Contour sur profil (src/89-fao-contour-3tailles.js)
+  if(faoToolIsSlot(tool)&&!faoContourProfil(op)&&!faoSlotCut(op))return []; // V0.99.86 : et en Découpe 3 tailles
   if(op.type==='facing')mv=faoGenFacing(job.stock||faoStockDefault(),
     {toolD:D, ae:isFinite(+op.ae)?+op.ae:D*0.6, np:isFinite(+op.np)?+op.np:0,
      npz:isFinite(+op.npz)?+op.npz:0, sortie:sortie,
@@ -683,6 +700,7 @@ function* faoOpMovesIt0(op,job){
       radial:RA.radial,axial:RA.axial,
       // 2026-10-08-004 : entrée circulaire par défaut (rayon d'entrée op.).
       entry:op.entry||'circ',entryR:op.entryR}));
+  else if(op.type==='slotcut')mv=faoSlotCutMoves(op,job,base); // V0.99.86 : src/89-fao-decoupe-3tailles.js
   else if(op.type==='chamfer'){ // src/89-fao-chanfrein.js
     let am=null;
     try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; }
@@ -692,12 +710,27 @@ function* faoOpMovesIt0(op,job){
     let am=null;
     try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; } // 2026-10-22-009 : maillage intermédiaire
     const L=op.limit;
-    if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3){
+    if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3&&faoToolIsSlot(tool)){
+      // V0.99.85 : fraise 3 tailles — rainure taillée par le côté (src/89-fao-contour-3tailles.js)
+      const g=faoToolDims(tool),ms=am&&am.mesh;
+      let ob=null;try{ ob=faoSlotObstacles(op,job,ms,D/2,g.dDeg.v/2); }catch(e){ ob=null; }
+      mv=faoGenContourSlot(ms,L.loop,Object.assign({},base,{
+        zbot:+op.zbot,ap:+op.ap,ae:op.ae,nR:op.nR,fin:op.fin,
+        radial:RA.radial,axial:RA.axial,side:op.cside,sens:op.sens==='opp'?'opp':'climb',
+        leadR:op.leadR,overlap:op.overlap,ep:g.lc.v,rn:g.dDeg.v/2,
+        slotH:op.slotH,dz:op.slotDz,dr:op.slotDr,
+        lead:op.slotLead,lin:op.slotLin,lout:op.slotLout, // V0.99.89 : entrée droite
+        clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null,part:ob?ob.part:null})); // V0.99.91 : pièce seule
+      if(mv&&mv.length&&mv.arcC){ try{ mv=faoFitArcsMoves(mv,mv.arcC); }catch(e){} } // V0.99.96 : G2 / G3
+      try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
+    }
+    else if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3){
       mv=faoGenContourProfil(am&&am.mesh,L.loop,Object.assign({},base,{
         ztop:+op.ztop,zbot:+op.zbot,ap:+op.ap,ae:op.ae,nR:op.nR,fin:op.fin,
         radial:RA.radial,axial:RA.axial,side:op.cside,sens:op.sens==='opp'?'opp':'climb',
         leadR:op.leadR,overlap:op.overlap,tabN:op.tabN,tabW:op.tabW,tabH:op.tabH,
-        descente:op.descente,pente:op.pente}));
+        descente:op.descente,penteTour:op.penteTour}));
+      const arcC=mv&&mv.arcC; // V0.99.96 : centres des arcs (congés, coins, entrées)
       // V0.99.18 : fraise dans le vide (hors brut, ou matière déjà enlevée par les opérations
       // précédentes) -> rapide jusqu'au prochain point d'entrée en matière
       if(faoContourVideOn(op)&&mv&&mv.length){
@@ -705,6 +738,8 @@ function* faoOpMovesIt0(op,job){
         try{ const mat=faoContourMatFn(op,job,D,RA.radial,isFinite(+op.fin)?+op.fin:0);
           if(mat){ mv=faoContourTrimAir(mv,mat,D); if(dg){ dg.vide=mv.vide; mv.diag=dg; } } }catch(e){}
       }
+      // V0.99.96 : congés en G2 / G3 (src/89-fao-arcs.js), après le saut du vide (qui découpe en droites)
+      if(arcC&&mv&&mv.length){ try{ mv=faoFitArcsMoves(mv,arcC); }catch(e){} }
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
   }

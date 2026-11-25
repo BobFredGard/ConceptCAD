@@ -57,7 +57,23 @@ function faoToolSF(t,setup){
     :((t&&(t.kind==='drill'||t.kind==='spot'||t.kind==='center'||t.kind==='ream'))?Math.max(1,Math.round(faoToolFr(t)*s)):Math.max(1,Math.round(fz*z*s)));
   return {s:s, f:f, plunge:Math.max(1,Math.round(f*faoPlungePct(setup)/100))};
 }
-function faoKindLabel(k){ return k==='ball'?'Boule':(k==='bull'?'Torique':(k==='drill'?'Foret':(k==='spot'?'Foret à pointer':(k==='center'?'Foret à centrer':(k==='tap'?'Taraud':(k==='ream'?'Alésoir':(k==='chamfer'?'Fraise à chanfreiner':'Cylindrique'))))))); }
+function faoKindLabel(k){ return k==='slot'?'Fraise 3 tailles':k==='ball'?'Boule':(k==='bull'?'Torique':(k==='drill'?'Foret':(k==='spot'?'Foret à pointer':(k==='center'?'Foret à centrer':(k==='tap'?'Taraud':(k==='ream'?'Alésoir':(k==='chamfer'?'Fraise à chanfreiner':'Cylindrique'))))))); }
+/* V0.99.85 : FRAISE 3 TAILLES (demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et
+   l'usinage qui va avec, pourquoi pas dans Contour ») — un disque de Ø d et d'épaisseur Lc (t.lc)
+   au bout d'un col plus fin (Ø dégagement t.dDeg). Il coupe par sa périphérie et ses deux faces :
+   il creuse une rainure SOUS la matière (src/89-fao-contour-3tailles.js). */
+function faoToolIsSlot(t){ return !!(t&&t.kind==='slot'); }
+function faoToolSlotTp(t){
+  // « Profil de pointe » plat qui porte la forme du disque : tp.slot = {e : épaisseur, rn : rayon
+  // du col}. Les cartes de hauteurs (simulation « Cartes », brut restant, collisions) ne savent
+  // pas creuser sous la matière : elles sautent ces segments ; le moteur « Lisse » taille le
+  // disque et son col (src/88-fao-78-moteurs-volume.js).
+  if(!faoToolIsSlot(t))return null;
+  const g=faoToolDims(t),R=g.D/2;
+  const tp=[[0,0],[R,0]];
+  tp.slot={e:g.lc.v,rn:Math.max(0.05,Math.min(R,g.dDeg.v/2))};
+  return tp;
+}
 /* 2026-10-22-001 : FORME DE POINTE des forets (fiche, vue d'usinage, matière).
    Foret / foret à pointer : cône d'angle `ang` (118° / 90°) jusqu'au Ø.
    Foret à centrer DIN 333 forme A : pilote d1 (= Ø outil, pointe 118°) de longueur

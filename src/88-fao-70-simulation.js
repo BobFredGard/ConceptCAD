@@ -109,7 +109,7 @@ function faoViewerBuild(setup){
     const d=tool?faoToolBodyD(tool):10; // Ø du corps (d2 d'un foret à centrer)
     const kind=(tool&&tool.kind)?tool.kind:'flat';
     const cr=faoToolEffCr(tool); // rayon d'arête réel (mm) — forme de coupe par point
-    const tp=faoToolTipProfile(tool); // pointe de foret (mm) — null = fraise
+    const tp=faoToolTipProfile(tool)||faoToolSlotTp(tool); // pointe de foret (mm) ; disque d'une 3 tailles (.slot) — null = fraise
     const sf=tool?faoOpCutting(op,setup):null; // avance de CETTE opération
     const f=(sf&&isFinite(+sf.f)&&+sf.f>0)?+sf.f:1000;
     const mv=S.tail?S.moves.concat(S.tail):S.moves; // tail : remontée avant un changement d'outil
@@ -531,6 +531,9 @@ function faoMatterNrmSet(g,c,dx,dy,d2,rc,CR,TP){
 }
 const FAO_CARVE_DZ=0.05; // mm — pas de hauteur d'un segment en pente
 function faoMatterCarveSeg(g,ax,ay,az,bx,by,bz,r,outCols,cr,tp){
+  // V0.99.85 : fraise 3 tailles — une carte de hauteurs ne sait pas creuser SOUS la matière
+  // (la lèvre au-dessus de la rainure resterait taillée) : rien n'est enlevé ici
+  if(tp&&tp.slot)return [];
   // V0.7.8 : segment EN PENTE — la taille se fait à la cote la plus BASSE du segment ; un segment
   // de finition de 0,4 mm sur une pente de 30° creusait 0,2 mm de trop à une extrémité (ondulations
   // de 20 à 50 µm sur les bossages de Cavité Usinage, « crevasses »). Découpé en pas de hauteur.
@@ -1276,7 +1279,7 @@ function faoViewerToggle(){
       faoViewerMsg('FAO : mode lecture usinage quitté — traces ré-affichées, outil et brut retirés.');
       return false;
     }
-    if(faoViewerStart()){ faoViewerMsg('FAO : lecture usinage en cours (Échap ou ✕ pour sortir).'); return true; }
+    if(faoViewerStart()){ faoViewerMsg('FAO : lecture usinage en cours (Échap ou ✕ pour sortir).'+faoSlotSimNote(faoVw)); return true; }
     faoViewerMsg('FAO : aucune trajectoire à jouer — vérifiez le brut et activez au moins une opération.');
   }catch(e){
     faoViewerMsg('Usinage : '+((e&&e.message)||e));
