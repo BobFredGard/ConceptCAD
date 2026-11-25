@@ -292,6 +292,7 @@ const SUITES = [
   "test_composants_modele",
   "test_composants_corps",
   "test_composants_lies",
+  "test_assemblage_nom_fichier",
   "test_export_dossier",
   "test_livraison",
   "test_derivee",

@@ -504,6 +504,22 @@ async function bundleStoreCaches(b){
   }
   return ks.length;
 }
+function bundleNomFichier(d,nm){
+  // V0.99.83 : le nom du fichier est celui de la RACINE. Un assemblage enregistré pendant qu'on
+  // modifiait une de ses pièces a pour document de premier niveau cette pièce (doc = composant
+  // actif, 46 asmSerial) : elle prenait le nom du fichier hôte (MERLIN-39-001 affiché MERLIN-39-000,
+  // fichier de Fred du 25/11). La racine a alors son propre document dans le bloc asm.
+  const a=d.asm,rc=a&&Array.isArray(a.comps)?a.comps.find(c=>c&&c.id===a.root):null;
+  if(rc&&rc.doc&&typeof rc.doc==='object'){rc.doc.name=nm;rc.name=nm;}
+  else d.name=nm;
+}
+function docNomFichier(nm){
+  // Même règle sur le document chargé (ancien .json ouvert, « Enregistrer sous ») : pièce en cours
+  // de modification dans un assemblage → c'est la racine qui prend le nom du fichier
+  const r=(typeof asm!=='undefined'&&asm&&typeof asmRoot==='function')?asmRoot():null;
+  if(r&&r.doc&&r.doc!==doc){r.doc.name=nm;r.name=nm;}
+  else doc.name=nm;
+}
 async function bundleRestore(txt,opts){
   // Trajectoires d'abord (IndexedDB), document ensuite (deserialise relance la
   // lecture), puis mémoire amorcée : fonctionne aussi SANS IndexedDB.
@@ -513,7 +529,7 @@ async function bundleRestore(txt,opts){
   const moves=b.moves||{};
   // V0.99.16 : empreinte du document TEL QU'ENREGISTRÉ (avant le renommage d'après le nom du fichier) — image (20-75)
   try{if(b.pfin&&typeof pcSigDoc==='function')b._sigLu=pcSigDoc(JSON.stringify(b.doc));}catch(e){}
-  if(opts&&opts.name&&b.doc&&typeof b.doc==='object')b.doc.name=opts.name;
+  if(opts&&opts.name&&b.doc&&typeof b.doc==='object')bundleNomFichier(b.doc,opts.name);
   faoBundleMovesN=await bundleStoreCaches(b); // trajectoires puis sources des imports, AVANT le document
   try{pcFichierAttendu=b._pfin?{e:b._pfin,doc:null}:null;pcFichierDoc=null;}catch(e){} // V0.99.16 : image de ce fichier (20-75)
   faoBundleWantReport=true;   // consomme par faoMovesDone() (fin de lecture)
@@ -574,7 +590,7 @@ $('fileProj').addEventListener('change',async e=>{
   try{
     const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');
     if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
-    else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
+    else{await deserialise(txt);docNomFichier(nm);rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}
   e.target.value='';
 });

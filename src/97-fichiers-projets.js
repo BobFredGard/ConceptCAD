@@ -205,7 +205,7 @@ async function mffSaveAs(){
       const o={suggestedName:fname,types:MFF_TYPES};if(mffFolder)o.startIn=mffFolder;else if(mffHandle)o.startIn=mffHandle;
       const h=await window.showSaveFilePicker(o);
       await mffWrite(h);
-      mffHandle=h;fileHandle=h;mffName=mffBase(h.name);doc.name=mffName;mffMark();mffRecentAdd(h);
+      mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);
       try{autosave();renderTree();renderProps();}catch(e){}
       try{faceEl.textContent='Enregistré sous '+h.name+'.';}catch(e){}
       return true;
@@ -222,7 +222,7 @@ async function mffLoadText(txt,name,handle){
   try{docResetEmpty();}catch(e){}
   const nm=mffBase(name);
   if(bundleIs(txt))await bundleRestore(txt,{name:nm});
-  else{await deserialise(txt);doc.name=nm;rebuild();}
+  else{await deserialise(txt);docNomFichier(nm);rebuild();}
   mffHandle=handle||null;fileHandle=mffHandle;mffName=nm;
   try{renderTree();renderProps();}catch(e){}
   try{showAll();}catch(e){}
@@ -313,7 +313,7 @@ async function mffFolderPanel(){
     const ch=document.createElement('button');ch.textContent=mffFolder?'Changer de dossier…':'Choisir un dossier…';ch.onclick=async()=>{if(await mffFolderChoose())draw();};bar.appendChild(ch);
     if(mffFolder){const sv=document.createElement('button');sv.className='primary';sv.textContent='Enregistrer ici';sv.title='Enregistrer la pièce courante dans ce dossier';
       sv.onclick=async()=>{const nm=prompt('Nom du fichier :',(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_'));if(!nm)return;
-        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);doc.name=mffName;mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
+        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
       bar.appendChild(sv);}
     body.appendChild(bar);
     if(!mffFolder){const n=document.createElement('div');n.className='mffNote';n.textContent='Choisissez le dossier où vous rangez vos pièces : la liste de ses projets apparaîtra ici (double-clic pour ouvrir).';body.appendChild(n);return;}

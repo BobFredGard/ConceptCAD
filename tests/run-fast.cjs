@@ -129,6 +129,7 @@ const SUITES = [
   'test_extrusion_dynamique',
   'test_fenetre_dynamique',
   'test_composants_lies',
+  'test_assemblage_nom_fichier',
   'test_export_dossier',
   'test_livraison',
   'test_derivee',

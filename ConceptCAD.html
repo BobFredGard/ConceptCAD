@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.82';
+const APP_VER='V0.99.83';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -18606,9 +18606,31 @@ function asmFromSerial(a){
   // la vue d'assemblage demande les instantanés de tous les composants : rétablie après le
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser
   asm._wantAsm=t.wantAsm;
+  try{asmLinkNomsRepare();}catch(e){}
   asmResolve();
   try{if(typeof asmHistView!=='undefined')asmHistView=null;if(typeof asmHistReset==='function')asmHistReset();}catch(e){} // historique (48-assemblage-historique)
   return true;
+}
+function asmLinkNomsRepare(){
+  // V0.99.83 : composant lié qui porte le nom de l'assemblage hôte → nom de son fichier source.
+  // Avant V0.99.83, rouvrir un assemblage enregistré pendant qu'on modifiait une de ses pièces
+  // donnait à cette pièce le nom du fichier hôte (90-50 bundleNomFichier) ; le document de la pièce
+  // le gardait (asmNamesSync le recopiait), et la source réécrite aussi. → composants renommés
+  if(!asm)return 0;
+  const r=asmComp(asm.root);if(!r)return 0;
+  const hote=new Set([r.name,r.doc&&r.doc.name].filter(s=>typeof s==='string'&&s.trim()).map(s=>s.trim()));
+  let n=0;
+  asm.comps.forEach(c=>{
+    if(c===r||!c.link)return;
+    const f=String(c.link.rel||c.link.name||'').split(/[\\/]/).pop();
+    const base=f.replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'').trim();
+    const old=String(c.name||'').trim();
+    if(!base||base===old||!hote.has(old))return;
+    c.name=base;if(c.doc)c.doc.name=base;
+    asmCompOccs(c.id).forEach(q=>{if(String(q.name).startsWith(old))q.name=base+String(q.name).slice(old.length);});
+    n++;
+  });
+  return n;
 }
 function asmAllDocs(){
   // Tous les documents de composant (pièce seule : [doc]) — trajectoires FAO, imports du bundle
@@ -85515,6 +85537,22 @@ async function bundleStoreCaches(b){
   }
   return ks.length;
 }
+function bundleNomFichier(d,nm){
+  // V0.99.83 : le nom du fichier est celui de la RACINE. Un assemblage enregistré pendant qu'on
+  // modifiait une de ses pièces a pour document de premier niveau cette pièce (doc = composant
+  // actif, 46 asmSerial) : elle prenait le nom du fichier hôte (MERLIN-39-001 affiché MERLIN-39-000,
+  // fichier de Fred du 25/11). La racine a alors son propre document dans le bloc asm.
+  const a=d.asm,rc=a&&Array.isArray(a.comps)?a.comps.find(c=>c&&c.id===a.root):null;
+  if(rc&&rc.doc&&typeof rc.doc==='object'){rc.doc.name=nm;rc.name=nm;}
+  else d.name=nm;
+}
+function docNomFichier(nm){
+  // Même règle sur le document chargé (ancien .json ouvert, « Enregistrer sous ») : pièce en cours
+  // de modification dans un assemblage → c'est la racine qui prend le nom du fichier
+  const r=(typeof asm!=='undefined'&&asm&&typeof asmRoot==='function')?asmRoot():null;
+  if(r&&r.doc&&r.doc!==doc){r.doc.name=nm;r.name=nm;}
+  else doc.name=nm;
+}
 async function bundleRestore(txt,opts){
   // Trajectoires d'abord (IndexedDB), document ensuite (deserialise relance la
   // lecture), puis mémoire amorcée : fonctionne aussi SANS IndexedDB.
@@ -85524,7 +85562,7 @@ async function bundleRestore(txt,opts){
   const moves=b.moves||{};
   // V0.99.16 : empreinte du document TEL QU'ENREGISTRÉ (avant le renommage d'après le nom du fichier) — image (20-75)
   try{if(b.pfin&&typeof pcSigDoc==='function')b._sigLu=pcSigDoc(JSON.stringify(b.doc));}catch(e){}
-  if(opts&&opts.name&&b.doc&&typeof b.doc==='object')b.doc.name=opts.name;
+  if(opts&&opts.name&&b.doc&&typeof b.doc==='object')bundleNomFichier(b.doc,opts.name);
   faoBundleMovesN=await bundleStoreCaches(b); // trajectoires puis sources des imports, AVANT le document
   try{pcFichierAttendu=b._pfin?{e:b._pfin,doc:null}:null;pcFichierDoc=null;}catch(e){} // V0.99.16 : image de ce fichier (20-75)
   faoBundleWantReport=true;   // consomme par faoMovesDone() (fin de lecture)
@@ -85585,7 +85623,7 @@ $('fileProj').addEventListener('change',async e=>{
   try{
     const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');
     if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
-    else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
+    else{await deserialise(txt);docNomFichier(nm);rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}
   e.target.value='';
 });
@@ -87070,7 +87108,7 @@ async function mffSaveAs(){
       const o={suggestedName:fname,types:MFF_TYPES};if(mffFolder)o.startIn=mffFolder;else if(mffHandle)o.startIn=mffHandle;
       const h=await window.showSaveFilePicker(o);
       await mffWrite(h);
-      mffHandle=h;fileHandle=h;mffName=mffBase(h.name);doc.name=mffName;mffMark();mffRecentAdd(h);
+      mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);
       try{autosave();renderTree();renderProps();}catch(e){}
       try{faceEl.textContent='Enregistré sous '+h.name+'.';}catch(e){}
       return true;
@@ -87087,7 +87125,7 @@ async function mffLoadText(txt,name,handle){
   try{docResetEmpty();}catch(e){}
   const nm=mffBase(name);
   if(bundleIs(txt))await bundleRestore(txt,{name:nm});
-  else{await deserialise(txt);doc.name=nm;rebuild();}
+  else{await deserialise(txt);docNomFichier(nm);rebuild();}
   mffHandle=handle||null;fileHandle=mffHandle;mffName=nm;
   try{renderTree();renderProps();}catch(e){}
   try{showAll();}catch(e){}
@@ -87178,7 +87216,7 @@ async function mffFolderPanel(){
     const ch=document.createElement('button');ch.textContent=mffFolder?'Changer de dossier…':'Choisir un dossier…';ch.onclick=async()=>{if(await mffFolderChoose())draw();};bar.appendChild(ch);
     if(mffFolder){const sv=document.createElement('button');sv.className='primary';sv.textContent='Enregistrer ici';sv.title='Enregistrer la pièce courante dans ce dossier';
       sv.onclick=async()=>{const nm=prompt('Nom du fichier :',(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_'));if(!nm)return;
-        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);doc.name=mffName;mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
+        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
       bar.appendChild(sv);}
     body.appendChild(bar);
     if(!mffFolder){const n=document.createElement('div');n.className='mffNote';n.textContent='Choisissez le dossier où vous rangez vos pièces : la liste de ses projets apparaîtra ici (double-clic pour ouvrir).';body.appendChild(n);return;}
