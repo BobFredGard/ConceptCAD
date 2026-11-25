@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**767 versions**, de `2026-09-28b` à `V0.99.80` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**768 versions**, de `2026-09-28b` à `V0.99.81` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8515,3 +8515,13 @@ Manuel Fonctions 3D.
 **Matière vide** : case vide au lieu de « — » (l'espace envoyée par le pont donne aussi une case vide).
 
 **Test** : `tests/test_nomenclature_plan.cjs` (16 contrôles : modèle à la Schneider A3H, tableau à 15,47 mm sur le trait, texte vertical dégagé, en-tête REP. | QTÉ | RÉF. JUSTET | DÉSIGNATION | MATIÈRE | DIMENSIONS, largeurs 10 / 10 / 30 / 50 / 24 / 40, désignation trop longue resserrée, « RÉFÉRENCE » par défaut, colonnes d'avant sans référence, cartouche étroit sur A4, place à côté, cartouche classique) ; vérifié dans l'aperçu sur MERLIN-23-001 avec le modèle Schneider A3H et 4 lignes comme celles du pont (texte vertical de 10,9 à 13,9 mm, tableau à 15,47 mm, toutes les cases tiennent). Manuel PLAN. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.81 - Projeter : appui long = liste des arêtes de la pièce et des autres pièces de l'assemblage
+
+**Demande de Fred** : « Assemblage : quand je travaille dans une pièce de l'assemblage, je voudrais pour projeter une arête d'une autre pièce en utilisant la méthode du "Je clique", je reste appuyé 2s et une fenêtre me montre les arêtes disponibles du modèle et des autres ».
+
+**Avant** : l'outil ⧉ Projeter prenait au clic l'arête de la pièce en cours avant celle des autres pièces (`projectEdgeAt` rendait la première pièce qui avait une arête proche) : l'arête d'une autre pièce au même tracé vu depuis le plan (capot posé sur un socle, mêmes contours) n'était pas atteignable. Le clic long (V0.99.23) ne marchait qu'avec l'outil Sélection.
+
+**Correctif** : `src/50-esquisse-1-ouverture-references.js` — `projEdgeVue` (une arête vue dans le plan : distance, écart au plan, forme) et `projCandShapes` sortis de `projectEdgeAt` (résultat inchangé) ; `projectEdgesAt` liste tout ce qui est sous le clic (12 px au plus) : arêtes de la pièce, arêtes des autres pièces visibles de l'assemblage, traits et points des autres esquisses (références violettes sans noyau), du plus proche au plus loin, l'arête du plan d'abord. `src/60-trim-et-souris.js` — l'outil Projeter projette au relâcher (`skProjAppui`, `skProjeterClic`) ; `skProjeterPr` projette un élément choisi, message « Arête de « Socle » (suit ce composant) ». `src/90-15-choix-sous-clic.js` — appui d'une demi-seconde sans bouger (même délai que le clic long existant) avec au moins 2 éléments : liste « Projeter — N éléments sous le clic (dont n d'autres pièces) », lignes « Arête L40 · pièce « Socle:1 » · dans le plan » / « cette pièce « Capot » · à 10 mm du plan », survol = élément allumé en orange, clic ou Entrée = projeté (lié à l'instance visée, il la suit), Échap = rien. `src/46-assemblage-modele.js` — `asmSkExtLists` donne aussi le nom de l'instance. `src/50-esquisse-8` — `skpProjeter` sorti de `skpClic`. CACHE_VER et FORMES_VER inchangés.
+
+**Test** : `tests/test_projeter_appui_long.cjs` (23 contrôles : clic ordinaire = arête de la pièce, liste des 2 arêtes superposées, libellés, clic court projeté au relâcher sans liste, appui long → liste, relâcher sans projection, survol, choix de l'arête du socle liée à son instance, Échap, une seule arête = pas de liste, l'arête choisie suit le socle déplacé) ; `tests/test_esquisse_projection.cjs` (clic = appui + relâcher) ; `tests/browser/choix-sous-clic.spec.cjs` (capot sur socle avec le vrai noyau : clic court, appui long, 4 arêtes listées, choix de celle du socle) ; vérifié dans l'aperçu (5 éléments sous le clic, arête du socle choisie à la souris). Manuels Assemblage et Esquisse.

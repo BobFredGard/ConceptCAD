@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.80';
+const APP_VER='V0.99.81';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -18699,10 +18699,12 @@ function asmSkExtLists(){
   if(!asm||!asmOn())return [];
   const out=[],P=asm.path;
   const hidden=path=>{let c=asmRoot();for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
+  const occNom=path=>{let c=asmRoot(),o=null;for(const id of path){o=c&&c.occ.find(q=>q.id===id);if(!o)return '';c=asmComp(o.comp);}return o&&o.name||'';};
   asmInstances(asm.root).forEach(inst=>{
     if(inst.comp===asm.active||hidden(inst.path))return;
     const x={ctx:P.slice(),path:inst.path.slice()},ed=asmSkExtEdges(x);
-    if(ed&&ed.length)out.push({edges:ed,ext:x,name:(asmComp(inst.comp)||{}).name||''});
+    // inst : nom de l'instance (« Socle:2 »), pour l'appui long de Projeter (50-esquisse-1 projectEdgesAt)
+    if(ed&&ed.length)out.push({edges:ed,ext:x,name:(asmComp(inst.comp)||{}).name||'',inst:occNom(inst.path)});
   });
   return out;
 }
@@ -27041,93 +27043,98 @@ function projPreUpdate(){
   if(!any)return false;
   return updateAllProjections();
 }
+function projEdgeVue(e,B,x,y){
+  // Une arête 3D ({pts}) vue dans le plan d'esquisse B (sketchBasis) depuis le point (x,y) :
+  // {d (distance dans le plan), dz (écart au plan), forme() → {type:'line'|'circle'|'arc'|'curve',…}},
+  // ou null si l'arête est vue par la tranche (un point, rien à projeter).
+  const u=B.u,v=B.v,n=B.n,o=B.o;
+  const pts2=e.pts.map(p=>[(p[0]-o.x)*u.x+(p[1]-o.y)*u.y+(p[2]-o.z)*u.z, (p[0]-o.x)*v.x+(p[1]-o.y)*v.y+(p[2]-o.z)*v.z]);
+  if(pts2.every(p=>Math.hypot(p[0]-pts2[0][0],p[1]-pts2[0][1])<1e-4))return null; // arête ⟂ au plan : un point, rien à projeter
+  // cercle ? (3 points → centre)
+  let isCirc=false,cx=0,cy=0,r=0,arcA1=0,arcA2=0;
+  if(pts2.length>=6){
+    // 0, 1/3, 2/3 : un cercle complet a son dernier point sur le premier (V0.8.1)
+    const p0=pts2[0],p1=pts2[Math.floor(pts2.length/3)],p2=pts2[Math.floor(2*pts2.length/3)];
+    const d=2*(p0[0]*(p1[1]-p2[1])+p1[0]*(p2[1]-p0[1])+p2[0]*(p0[1]-p1[1]));
+    if(Math.abs(d)>1e-9){
+      const sq0=p0[0]*p0[0]+p0[1]*p0[1],sq1=p1[0]*p1[0]+p1[1]*p1[1],sq2=p2[0]*p2[0]+p2[1]*p2[1];
+      cx=(sq0*(p1[1]-p2[1])+sq1*(p2[1]-p0[1])+sq2*(p0[1]-p1[1]))/d;
+      cy=(sq0*(p2[0]-p1[0])+sq1*(p0[0]-p2[0])+sq2*(p1[0]-p0[0]))/d;
+      r=Math.hypot(p0[0]-cx,p0[1]-cy);
+      if(r>0.5){
+        let dev=0;
+        for(const p of pts2){const dd=Math.abs(Math.hypot(p[0]-cx,p[1]-cy)-r); if(dd>dev)dev=dd;}
+        if(dev<0.35){ isCirc=true; arcA1=Math.atan2(p0[1]-cy,p0[0]-cx); arcA2=Math.atan2(pts2[pts2.length-1][1]-cy,pts2[pts2.length-1][0]-cx); }
+      }
+    }
+  }
+  const span=isCirc?Math.abs(((arcA2-arcA1)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)):0;
+  const isFull=isCirc&&(span>6.0||Math.hypot(pts2[0][0]-pts2[pts2.length-1][0],pts2[0][1]-pts2[pts2.length-1][1])<0.5);
+  let d=1e9;
+  if(isFull) d=Math.abs(Math.hypot(x-cx,y-cy)-r);
+  else for(let i=0;i<pts2.length-1;i++) d=Math.min(d,distSeg2(x,y,pts2[i][0],pts2[i][1],pts2[i+1][0],pts2[i+1][1]));
+  // Départage par l'écart au plan d'esquisse : deux arêtes peuvent se superposer
+  // exactement en 2D (bloc avant / bloc arrière) — l'arête du plan projeté gagne.
+  let dz=0;
+  try{
+    dz=1e9;
+    for(const p of e.pts){ const t=Math.abs((p[0]-o.x)*n.x+(p[1]-o.y)*n.y+(p[2]-o.z)*n.z); if(t<dz)dz=t; }
+    if(dz>1e8)dz=0;
+  }catch(err){dz=0;}
+  const forme=()=>{
+    if(isFull)return {type:'circle',cx,cy,r};
+    if(isCirc){
+      const p0a=pts2[0], p1a=pts2[pts2.length-1], pma=pts2[Math.floor(pts2.length/2)];
+      const oa=arcOrient(cx,cy,p0a[0],p0a[1],p1a[0],p1a[1],pma[0],pma[1]);
+      return {type:'arc',cx,cy,r, x1:oa[0],y1:oa[1],x2:oa[2],y2:oa[3]};
+    }
+    // lot 3 spline : arête COURBE (B-spline, ellipse…) — avant, projetée en corde droite
+    const A0=pts2[0],B0=pts2[pts2.length-1],cl=Math.hypot(B0[0]-A0[0],B0[1]-A0[1]);let dv=0;
+    for(const p of pts2)dv=Math.max(dv,cl>1e-9?Math.abs((p[0]-A0[0])*(B0[1]-A0[1])-(p[1]-A0[1])*(B0[0]-A0[0]))/cl:Math.hypot(p[0]-A0[0],p[1]-A0[1]));
+    return dv>0.02?{type:'curve',pts:pts2.map(p=>p.slice())}:{type:'line',x1:A0[0],y1:A0[1],x2:B0[0],y2:B0[1]};
+  };
+  return {d,dz,forme};
+}
+function projCandShapes(sk){
+  // Solides offerts à l'outil Projeter : {pieces (solide antérieur exact si l'esquisse est consommée,
+  // sinon solide fini), ext (arêtes des autres pièces de l'assemblage, V0.8.1), FR (à libérer)}
+  const pieces=[];let FR=null;
+  const ext=(typeof asmSkExtLists==='function')?(()=>{try{return asmSkExtLists();}catch(e){return [];}})():[];
+  try{
+    const idx=skConsumerIdx(sk);
+    if(idx>=0&&occHas()){
+      const F=occFinalShapeRef(idx);
+      // Nettoyage DIFFÉRÉ (try/finally de l'appelant) : occCleanup(FR,null) supprime
+      // FR.shape — le lire après = use-after-free → aucune arête détectée sur esquisse consommée.
+      if(F&&F.shape){pieces.push(F.shape);FR=F;}
+    }else if(occHas()){const LS=occRefShape();if(LS)pieces.push(LS);} // V0.99.41 : import seul compris
+  }catch(e){}
+  return {pieces,ext,FR};
+}
+function projExtDe(best,sh){
+  if(sh&&sh.ext){best.ext={ctx:sh.ext.ctx.slice(),path:sh.ext.path.slice()};best.extName=sh.name;}
+  return best;
+}
 function projectEdgeAt(sk,x,y){
   // Arête 3D la plus proche du clic, projetée dans le plan d'esquisse (antériorité).
   // Retourne {type:'line',x1,y1,x2,y2} ou {type:'circle',cx,cy,r}
   const tol=Math.max(4, 8/Math.max(1,skView.s));
   let best=null,bd=1e9,srcMid=null;
-  const basis=sketchBasis(sk),u=basis.u,v=basis.v,n=basis.n,o=basis.o;
-  const candShapes=[];let FRk=null;
-  const candExt=(typeof asmSkExtLists==='function')?(()=>{try{return asmSkExtLists();}catch(e){return [];}})():[]; // V0.8.1
-  // 1) solide antérieur exact si esquisse consommée, sinon solide fini
+  const basis=sketchBasis(sk);
+  const C=projCandShapes(sk);
+  // BRep exact : teste chaque arête sur le plan ; la pièce d'abord, puis les autres pièces
   try{
-    const idx=skConsumerIdx(sk);
-    if(idx>=0&&occHas()){
-      const FR=occFinalShapeRef(idx);
-      // Nettoyage DIFFÉRÉ (try/finally en fin de fonction) : occCleanup(FR,null) supprime
-      // FR.shape — le lire après = use-after-free → aucune arête détectée sur esquisse consommée.
-      if(FR&&FR.shape){candShapes.push(FR.shape);FRk=FR;}
-    }else if(occHas()){const LS=occRefShape();if(LS)candShapes.push(LS);} // V0.99.41 : import seul compris
-  }catch(e){}
-  // 2) BRep exact : teste chaque arête sur le plan
-  try{
-  for(const sh of candShapes.concat(candExt)){
+  for(const sh of C.pieces.concat(C.ext)){
     try{
       const edges=sh&&sh.edges?sh.edges:occListEdges(sh);
       for(const e of edges){
-        const pts2=e.pts.map(p=>[(p[0]-o.x)*u.x+(p[1]-o.y)*u.y+(p[2]-o.z)*u.z, (p[0]-o.x)*v.x+(p[1]-o.y)*v.y+(p[2]-o.z)*v.z]);
-        if(pts2.every(p=>Math.hypot(p[0]-pts2[0][0],p[1]-pts2[0][1])<1e-4))continue; // arête ⟂ au plan : un point, rien à projeter
-        // cercle ? (3 points → centre)
-        let isCirc=false,cx=0,cy=0,r=0,arcA1=0,arcA2=0;
-        if(pts2.length>=6){
-          // 0, 1/3, 2/3 : un cercle complet a son dernier point sur le premier (V0.8.1)
-          const p0=pts2[0],p1=pts2[Math.floor(pts2.length/3)],p2=pts2[Math.floor(2*pts2.length/3)];
-          const d=2*(p0[0]*(p1[1]-p2[1])+p1[0]*(p2[1]-p0[1])+p2[0]*(p0[1]-p1[1]));
-          if(Math.abs(d)>1e-9){
-            const sq0=p0[0]*p0[0]+p0[1]*p0[1],sq1=p1[0]*p1[0]+p1[1]*p1[1],sq2=p2[0]*p2[0]+p2[1]*p2[1];
-            cx=(sq0*(p1[1]-p2[1])+sq1*(p2[1]-p0[1])+sq2*(p0[1]-p1[1]))/d;
-            cy=(sq0*(p2[0]-p1[0])+sq1*(p0[0]-p2[0])+sq2*(p1[0]-p0[0]))/d;
-            r=Math.hypot(p0[0]-cx,p0[1]-cy);
-            if(r>0.5){
-              let dev=0;
-              for(const p of pts2){const dd=Math.abs(Math.hypot(p[0]-cx,p[1]-cy)-r); if(dd>dev)dev=dd;}
-              if(dev<0.35){ isCirc=true; arcA1=Math.atan2(p0[1]-cy,p0[0]-cx); arcA2=Math.atan2(pts2[pts2.length-1][1]-cy,pts2[pts2.length-1][0]-cx); }
-            }
-          }
-        }
-        let d=1e9;
-        if(isCirc){
-          const span=Math.abs(((arcA2-arcA1)%(Math.PI*2)+Math.PI*2)%(Math.PI*2));
-          const isFull = span>6.0 || Math.hypot(pts2[0][0]-pts2[pts2.length-1][0], pts2[0][1]-pts2[pts2.length-1][1])<0.5;
-          if(isFull) d=Math.abs(Math.hypot(x-cx,y-cy)-r);
-          else {
-            let bestA=1e9;
-            for(let i=0;i<pts2.length-1;i++) bestA=Math.min(bestA, distSeg2(x,y,pts2[i][0],pts2[i][1],pts2[i+1][0],pts2[i+1][1]));
-            d=bestA;
-          }
-        } else for(let i=0;i<pts2.length-1;i++) d=Math.min(d,distSeg2(x,y,pts2[i][0],pts2[i][1],pts2[i+1][0],pts2[i+1][1]));
-        // Départage par l'écart au plan d'esquisse : deux arêtes peuvent se superposer
-        // exactement en 2D (bloc avant / bloc arrière) — l'arête du plan projeté gagne.
-        let dz=0;
-        try{
-          dz=1e9;
-          for(const p of e.pts){ const t=Math.abs((p[0]-o.x)*n.x+(p[1]-o.y)*n.y+(p[2]-o.z)*n.z); if(t<dz)dz=t; }
-          if(dz>1e8)dz=0;
-        }catch(err){dz=0;}
-        if(d<tol&&d+0.25*dz<bd){
-          bd=d+0.25*dz;
-          srcMid=e.mid?e.mid.slice():null;
-          if(isCirc){
-            const span=Math.abs(((arcA2-arcA1)%(Math.PI*2)+Math.PI*2)%(Math.PI*2));
-            const isFull = span>6.0 || Math.hypot(pts2[0][0]-pts2[pts2.length-1][0], pts2[0][1]-pts2[pts2.length-1][1])<0.5;
-            if(isFull) best={type:'circle',cx,cy,r};
-            else {
-              const p0a=pts2[0], p1a=pts2[pts2.length-1], pma=pts2[Math.floor(pts2.length/2)];
-              const oa=arcOrient(cx,cy,p0a[0],p0a[1],p1a[0],p1a[1],pma[0],pma[1]);
-              best={type:'arc',cx,cy,r, x1:oa[0],y1:oa[1],x2:oa[2],y2:oa[3]};
-            }
-          } else{
-            // lot 3 spline : arête COURBE (B-spline, ellipse…) — avant, projetée en corde droite
-            const A0=pts2[0],B0=pts2[pts2.length-1],cl=Math.hypot(B0[0]-A0[0],B0[1]-A0[1]);let dv=0;
-            for(const p of pts2)dv=Math.max(dv,cl>1e-9?Math.abs((p[0]-A0[0])*(B0[1]-A0[1])-(p[1]-A0[1])*(B0[0]-A0[0]))/cl:Math.hypot(p[0]-A0[0],p[1]-A0[1]));
-            best=dv>0.02?{type:'curve',pts:pts2.map(p=>p.slice())}:{type:'line',x1:A0[0],y1:A0[1],x2:B0[0],y2:B0[1]};
-          }
-        }
+        const c=projEdgeVue(e,basis,x,y);if(!c)continue;
+        if(c.d<tol&&c.d+0.25*c.dz<bd){bd=c.d+0.25*c.dz;srcMid=e.mid?e.mid.slice():null;best=c.forme();}
       }
-      if(best){if(srcMid)best.srcMid=srcMid;if(sh&&sh.ext){best.ext={ctx:sh.ext.ctx.slice(),path:sh.ext.path.slice()};best.extName=sh.name;}return best;}
+      if(best){if(srcMid)best.srcMid=srcMid;return projExtDe(best,sh);}
     }catch(e){}
   }
-  // 3) repli violet (toujours dispo, même sans BRep)
+  // repli violet (toujours dispo, même sans BRep)
   if(sk._refs&&sk._refs.length){
     for(const r of sk._refs){
       const d=distSeg2(x,y,r.x1,r.y1,r.x2,r.y2);
@@ -27136,7 +27143,50 @@ function projectEdgeAt(sk,x,y){
   }
   if(best&&srcMid)best.srcMid=srcMid;
   return best;
-  }finally{ if(FRk){try{occCleanup(FRk,null);}catch(e){} } }
+  }finally{ if(C.FR){try{occCleanup(C.FR,null);}catch(e){} } }
+}
+/* Appui long de l'outil Projeter (V0.99.81, demande de Fred : « quand je travaille dans une pièce de
+   l'assemblage, je voudrais pour projeter une arête d'une autre pièce […] je reste appuyé et une
+   fenêtre me montre les arêtes disponibles du modèle et des autres ») : le clic ordinaire prend
+   l'arête de la pièce d'abord ; une arête d'une autre pièce superposée (même tracé vu depuis le
+   plan) ou cachée derrière n'était pas atteignable. Liste de TOUT ce qui est sous le clic :
+   [{pr (prêt pour skProjeterPr), d, dz, src:'piece'|'ext'|'esq'|'ref', nom}], du plus proche au plus loin. */
+function projectEdgesAt(sk,x,y){
+  const s=Math.max(skView.s||1,1e-6);
+  const tol=Math.min(Math.max(4,8/Math.max(1,s)),Math.max(12/s,1e-3)); // sous le curseur : 12 px au plus
+  const out=[],basis=sketchBasis(sk);
+  const C=projCandShapes(sk);
+  try{
+    const lire=(sh,src,nom)=>{
+      let edges=null;try{edges=sh&&sh.edges?sh.edges:occListEdges(sh);}catch(e){edges=null;}
+      (edges||[]).forEach(e=>{
+        let c=null;try{c=projEdgeVue(e,basis,x,y);}catch(err){c=null;}
+        if(!c||!(c.d<=tol))return;
+        const pr=projExtDe(c.forme(),sh);if(e.mid)pr.srcMid=e.mid.slice();
+        out.push({pr,d:c.d,dz:c.dz,src,nom});
+      });
+    };
+    const nomPiece=(typeof asm!=='undefined'&&asm&&typeof asmOn==='function'&&asmOn()&&asmComp(asm.active))?asmComp(asm.active).name:'';
+    C.pieces.forEach(sh=>lire(sh,'piece',nomPiece));
+    C.ext.forEach(L=>lire(L,'ext',L.inst||L.name||'composant'));
+    if(!C.pieces.length&&!C.ext.length)(sk._refs||[]).forEach(r=>{ // sans noyau : les références violettes
+      const d=distSeg2(x,y,r.x1,r.y1,r.x2,r.y2);
+      if(d<=tol)out.push({pr:{type:'line',x1:r.x1,y1:r.y1,x2:r.x2,y2:r.y2},d,dz:0,src:'ref',nom:''});
+    });
+  }finally{ if(C.FR){try{occCleanup(C.FR,null);}catch(e){} } }
+  // traits des autres esquisses visibles (50-esquisse-8)
+  try{
+    skpItems(sk).forEach(it=>{
+      it.pts.forEach(q=>{const d=Math.hypot(q.x-x,q.y-y);
+        if(d<=Math.min(tol,SK_PT))out.push({pr:{type:'point',x:q.x,y:q.y,srcName:it.S.name,skSrc:{sk:it.S.id,pt:q.pid}},d,dz:0,src:'esq',nom:it.S.name});});
+      it.ents.forEach(c=>{const d=skpDistance(c.pr,x,y);
+        if(d<=tol)out.push({pr:Object.assign({},c.pr,{srcName:it.S.name,skSrc:{sk:it.S.id,ent:c.e.id}}),d,dz:0,src:'esq',nom:it.S.name});});
+    });
+  }catch(e){}
+  // du plus proche au plus loin ; à égalité, l'arête du plan, puis la pièce avant les autres
+  const rang={esq:0,piece:1,ext:2,ref:3};
+  out.sort((a,b)=>(Math.round(a.d*1e3)-Math.round(b.d*1e3))||(a.dz-b.dz)||(rang[a.src]-rang[b.src]));
+  return out.slice(0,20);
 }
 function projNames(pr){
   // Noms persistants d'une projection : « Projetée N » + « Arête M » (arête source 3D
@@ -32898,6 +32948,10 @@ function skpNom(pr){return pr.type==='point'?'Point':pr.type==='circle'?'Cercle'
 function skpClic(T,x,y){
   // outil ⧉ : true si le clic a porté sur une autre esquisse
   const pr=skpHit(T,x,y);if(!pr)return false;
+  skpProjeter(T,pr);return true;
+}
+function skpProjeter(T,pr){
+  // pr : élément d'une autre esquisse (skpHit, ou choisi dans la liste de l'appui long)
   const dej=skpExistante(T,pr);
   if(dej){skStatus(skpNom(pr)+' de « '+pr.srcName+' » déjà projeté(e) ici.');return true;}
   skPushUndo();
@@ -38080,8 +38134,36 @@ svg.addEventListener('dblclick',e=>{
   else sk.dims.push({id:skNewEid(sk),type:'radius',ent:ent.id,value:+ent.r.toFixed(3),ox:0,oy:0});
   afterEdit();skStatus('Cote créée — double-clic sur la valeur pour l’éditer.');
 });
+/* ⧉ Projeter : le clic projette au relâcher ; l'appui long (90-15) choisit dans une liste */
+let skProjAppui=null; // {sk, wx, wy} : clic posé, en attente du relâcher
+function skProjeterClic(sk,wx,wy){
+  if(skpClic(sk,wx,wy))return; // point, ligne ou courbe d'une autre esquisse (50-esquisse-8)
+  {const oh=skOrigHit(sk,wx,wy);if(oh){skPushUndo();skOrigMaterialize(sk,{x:oh.x,y:oh.y,orig:oh.orig,lab:oh.lab});skProjectHover=null;
+    skStatus('Centre « '+oh.lab+' » projeté : point de construction fixe, qui suit le repère.');afterEdit();return;}}
+  // OCCT donne les arêtes BRep exactes (vives ET de tangence) ; sans noyau on garde le
+  // repli sur les références projetées (corps visibles) — dégradé, mais utilisable.
+  if(!(occHas()&&occLive&&occLive.shape)&&!((sk._refs||[]).length)&&!(typeof asmSkExtLists==='function'&&asmSkExtLists().length)){
+    skStatus('Projeter : noyau OCCT requis et solide visible.');
+    return;
+  }
+  const pr=projectEdgeAt(sk,wx,wy);
+  if(!pr){skStatus('Aucune arête 3D sur ce plan à proximité.');return;}
+  skProjeterPr(sk,pr);
+}
+function skProjeterPr(sk,pr){
+  // pr : arête 3D (projectEdgeAt) ou élément choisi dans la liste de l'appui long (projectEdgesAt)
+  if(pr.skSrc){skpProjeter(sk,pr);return;} // élément d'une autre esquisse
+  skPushUndo();
+  const eid=skProjectCreate(sk,pr);
+  if(!eid){skUndoStack.pop();skUndoBtn();skStatus('Arête courbe trop courte pour être projetée.');return;}
+  const de=pr.ext?' de « '+(pr.extName||'composant')+' » (suit ce composant)':'';
+  skStatus(pr.type==='circle'?'Cercle'+de+' projeté en construction (centre fixe).':pr.type==='arc'?'Arc'+de+' projeté en construction (fixe).':
+    pr.type==='curve'?'Courbe'+de+' projetée en construction : spline aux points fixés (non suivie au rejeu).':'Arête'+de+' projetée en construction (fixe).');
+  afterEdit();
+}
 svg.addEventListener('pointerdown',e=>{
   if(!skEdit)return;const sk=skEdit;
+  skProjAppui=null;
   try{svg.setPointerCapture(e.pointerId);}catch(err){}
   // Souris comme dans l'espace 3D : clic-molette glissé = ORBITE autour du centre du dessin,
   // clic droit glissé = DÉPLACEMENT (clic droit sans glisser = menu / annuler, inchangé).
@@ -38272,23 +38354,9 @@ svg.addEventListener('pointerdown',e=>{
     return;
   }
   if(skTool==='project'){
-    if(skpClic(sk,wx,wy))return; // point, ligne ou courbe d'une autre esquisse (50-esquisse-8)
-    {const oh=skOrigHit(sk,wx,wy);if(oh){skPushUndo();skOrigMaterialize(sk,{x:oh.x,y:oh.y,orig:oh.orig,lab:oh.lab});skProjectHover=null;
-      skStatus('Centre « '+oh.lab+' » projeté : point de construction fixe, qui suit le repère.');afterEdit();return;}}
-    // OCCT donne les arêtes BRep exactes (vives ET de tangence) ; sans noyau on garde le
-    // repli sur les références projetées (corps visibles) — dégradé, mais utilisable.
-    if(!(occHas()&&occLive&&occLive.shape)&&!((sk._refs||[]).length)&&!(typeof asmSkExtLists==='function'&&asmSkExtLists().length)){
-      skStatus('Projeter : noyau OCCT requis et solide visible.');
-      return;
-    }
-    const pr=projectEdgeAt(sk,wx,wy);
-    if(!pr){skStatus('Aucune arête 3D sur ce plan à proximité.');return;}
-    skPushUndo();
-    const eid=skProjectCreate(sk,pr);
-    if(!eid){skUndoStack.pop();skUndoBtn();skStatus('Arête courbe trop courte pour être projetée.');return;}
-    skStatus(pr.type==='circle'?'Cercle projeté en construction (centre fixe).':pr.type==='arc'?'Arc projeté en construction (fixe).':
-      pr.type==='curve'?'Courbe projetée en construction : spline aux points fixés (non suivie au rejeu).':'Arête projetée en construction (fixe).');
-    afterEdit();return;
+    // V0.99.81 : on projette au RELÂCHER (pointerup ci-dessous) ; un appui long sans bouger ouvre
+    // la liste de tout ce qui est sous le clic, arêtes des autres pièces comprises (90-15)
+    skProjAppui={sk,wx,wy};return;
   }
   if(skTool==='isect'){skIsectClickAt(sk,wx,wy,e);return;}
   if(skTool==='trim'){
@@ -38305,6 +38373,7 @@ svg.addEventListener('pointermove',e=>{
   if(skPan&&!skPan.moved){if(Math.hypot(e.clientX-skPan.px,e.clientY-skPan.py)<4)return;skPan.moved=true;} // seuil : un clic droit court reste un clic
   if(skPan){skView.cx=skPan.cx-(e.clientX-skPan.px)/skView.s;skView.cy=skPan.cy+(e.clientY-skPan.py)/skView.s;drawSketch2D();return;}
   if(skTool==='project'){
+    if(typeof choixMenuOuvert==='function'&&choixMenuOuvert())return; // liste de l'appui long : l'élément survolé dans la liste reste allumé
     const oh=skOrigHit(sk,wx,wy),ho=oh?{kind:'pt',p:{kind:'origin',e:[],x:oh.x,y:oh.y},x:oh.x,y:oh.y}:null;
     if(JSON.stringify(ho)!==JSON.stringify(skPlHover)){skPlHover=ho;if(oh)skProjectHover=null;drawSketch2D();}
     if(oh){skStatus('⧉ Centre « '+oh.lab+' » — clic pour le projeter (point fixe qui suit le repère).');return;}
@@ -38503,6 +38572,8 @@ svg.addEventListener('pointerup',e=>{
   e=skEv(e);
   if(skPan){skPanDragged=skPan.moved;skPan=null;return;}
   if(!skEdit||e.button!==0)return;const sk=skEdit;const[wx,wy]=evXY(e);
+  if(skProjAppui){const A=skProjAppui;skProjAppui=null; // ⧉ : le clic projette au relâcher, là où il a été posé
+    if(A.sk===sk&&skTool==='project')skProjeterClic(sk,A.wx,A.wy);return;}
   if(skDimDrag){skDimDrag=null;drawSketch2D();return;}
   if(skDrag){const pid=skDrag,s=skDragSnap,F=skDragFrom;skDrag=null;skDragWalk=null;skDragPushed=false;skSnapMk=null;skDragSnap=null;skDragFrom=null;
     // V0.11.27 : accroche où le point était DÉJÀ au départ (milieu, ligne porteuse…) : rien à poser
@@ -81488,6 +81559,9 @@ function showAll2(){bodies.forEach(b=>{b.visible=true;b.mesh.visible=true;});doc
    - 3D : faces (même cachées, de l'avant vers l'arrière) et arêtes. Le choix est REJOUÉ comme un
      clic ordinaire (wirePick._up) avec l'élément imposé (mfPickForce, 90-10) : il marche donc aussi
      dans les fonctions qui attendent une face ou une arête (congé, perçage, coque, dépouille…).
+   - Esquisse, outil Projeter (V0.99.81) : arêtes de la pièce, arêtes des AUTRES PIÈCES de
+     l'assemblage et traits des autres esquisses (projectEdgesAt, 50-esquisse-1) ; le choix est
+     projeté comme au clic (skProjeterPr, 60). Le clic ordinaire projette au relâcher.
    Souris et stylet seulement : au doigt, l'appui long reste le menu contextuel (99-mobile). */
 const CHOIX_DELAI=500, CHOIX_BOUGE=5;
 
@@ -81642,6 +81716,43 @@ svg.addEventListener('pointerdown',e=>{
       choose:i=>{skChoixAppliquer(L[i].sel,ajout);renderSkPanel();drawSketch2D();
         skStatus('Sélection : '+L[i].txt+(L[i].note?' '+L[i].note:'')+'.');},
       cancel:()=>{if(skEdit===sk&&avant){skSel=avant.sel;skSelX=avant.selX.slice();renderSkPanel();drawSketch2D();}}
+    });
+  });
+});
+
+/* ===================== ESQUISSE : outil Projeter ===================== */
+let skProjChoixMinut=null;
+function skProjChoixListe(sk,wx,wy){
+  // lignes de la liste : forme, cote, d'où elle vient (pièce, autre pièce, esquisse), écart au plan
+  const f=v=>String(+(+v).toFixed(2)).replace('.',',');
+  return projectEdgesAt(sk,wx,wy).map(c=>{
+    const pr=c.pr;let ico='╱',txt='Arête';
+    if(pr.type==='point'){ico='•';txt='Point';}
+    else if(pr.type==='circle'){ico='◯';txt='Cercle Ø'+f(2*pr.r);}
+    else if(pr.type==='arc'){ico='◠';txt='Arc R'+f(pr.r);}
+    else if(pr.type==='curve'){ico='∿';txt='Courbe';}
+    else if(pr.type==='line')txt=(c.src==='esq'?'Ligne':'Arête')+' L'+f(Math.hypot(pr.x2-pr.x1,pr.y2-pr.y1));
+    let note=c.src==='piece'?'cette pièce'+(c.nom?' « '+c.nom+' »':''):c.src==='ext'?'pièce « '+c.nom+' »':c.src==='esq'?'esquisse « '+c.nom+' »':'référence';
+    if(c.src==='piece'||c.src==='ext')note+=c.dz>0.01?' · à '+f(c.dz)+' mm du plan':' · dans le plan';
+    return {ico,txt,note,pr,src:c.src};
+  });
+}
+// Après le gestionnaire de l'esquisse (60) : il a mis le clic en attente du relâcher (skProjAppui)
+svg.addEventListener('pointerdown',e=>{
+  if(skProjChoixMinut){skProjChoixMinut.annuler();skProjChoixMinut=null;}
+  if(!skEdit||skTool!=='project'||!choixSouris(e)||!skProjAppui)return;
+  const sk=skEdit,A=skProjAppui,cx=e.clientX,cy=e.clientY;
+  skProjChoixMinut=choixAppui(e,()=>{
+    skProjChoixMinut=null;
+    if(skEdit!==sk||skTool!=='project'||skProjAppui!==A)return;
+    const L=skProjChoixListe(sk,A.wx,A.wy);
+    if(L.length<2)return; // un seul élément : le relâcher le projette
+    skProjAppui=null; // la liste décide : le relâcher ne projette plus
+    const nExt=L.filter(it=>it.src==='ext').length;
+    choixMenuOuvrir(cx,cy,'Projeter — '+L.length+' éléments sous le clic'+(nExt?' (dont '+nExt+' d’autres pièces)':''),L,{
+      hover:i=>{skProjectHover=L[i].pr;drawSketch2D();},
+      choose:i=>{skProjectHover=null;if(skEdit===sk)skProjeterPr(sk,L[i].pr);drawSketch2D();},
+      cancel:()=>{skProjectHover=null;drawSketch2D();skStatus('Projeter : rien de projeté.');}
     });
   });
 });

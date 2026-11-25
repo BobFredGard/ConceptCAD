@@ -8,6 +8,9 @@
    - 3D : faces (même cachées, de l'avant vers l'arrière) et arêtes. Le choix est REJOUÉ comme un
      clic ordinaire (wirePick._up) avec l'élément imposé (mfPickForce, 90-10) : il marche donc aussi
      dans les fonctions qui attendent une face ou une arête (congé, perçage, coque, dépouille…).
+   - Esquisse, outil Projeter (V0.99.81) : arêtes de la pièce, arêtes des AUTRES PIÈCES de
+     l'assemblage et traits des autres esquisses (projectEdgesAt, 50-esquisse-1) ; le choix est
+     projeté comme au clic (skProjeterPr, 60). Le clic ordinaire projette au relâcher.
    Souris et stylet seulement : au doigt, l'appui long reste le menu contextuel (99-mobile). */
 const CHOIX_DELAI=500, CHOIX_BOUGE=5;
 
@@ -162,6 +165,43 @@ svg.addEventListener('pointerdown',e=>{
       choose:i=>{skChoixAppliquer(L[i].sel,ajout);renderSkPanel();drawSketch2D();
         skStatus('Sélection : '+L[i].txt+(L[i].note?' '+L[i].note:'')+'.');},
       cancel:()=>{if(skEdit===sk&&avant){skSel=avant.sel;skSelX=avant.selX.slice();renderSkPanel();drawSketch2D();}}
+    });
+  });
+});
+
+/* ===================== ESQUISSE : outil Projeter ===================== */
+let skProjChoixMinut=null;
+function skProjChoixListe(sk,wx,wy){
+  // lignes de la liste : forme, cote, d'où elle vient (pièce, autre pièce, esquisse), écart au plan
+  const f=v=>String(+(+v).toFixed(2)).replace('.',',');
+  return projectEdgesAt(sk,wx,wy).map(c=>{
+    const pr=c.pr;let ico='╱',txt='Arête';
+    if(pr.type==='point'){ico='•';txt='Point';}
+    else if(pr.type==='circle'){ico='◯';txt='Cercle Ø'+f(2*pr.r);}
+    else if(pr.type==='arc'){ico='◠';txt='Arc R'+f(pr.r);}
+    else if(pr.type==='curve'){ico='∿';txt='Courbe';}
+    else if(pr.type==='line')txt=(c.src==='esq'?'Ligne':'Arête')+' L'+f(Math.hypot(pr.x2-pr.x1,pr.y2-pr.y1));
+    let note=c.src==='piece'?'cette pièce'+(c.nom?' « '+c.nom+' »':''):c.src==='ext'?'pièce « '+c.nom+' »':c.src==='esq'?'esquisse « '+c.nom+' »':'référence';
+    if(c.src==='piece'||c.src==='ext')note+=c.dz>0.01?' · à '+f(c.dz)+' mm du plan':' · dans le plan';
+    return {ico,txt,note,pr,src:c.src};
+  });
+}
+// Après le gestionnaire de l'esquisse (60) : il a mis le clic en attente du relâcher (skProjAppui)
+svg.addEventListener('pointerdown',e=>{
+  if(skProjChoixMinut){skProjChoixMinut.annuler();skProjChoixMinut=null;}
+  if(!skEdit||skTool!=='project'||!choixSouris(e)||!skProjAppui)return;
+  const sk=skEdit,A=skProjAppui,cx=e.clientX,cy=e.clientY;
+  skProjChoixMinut=choixAppui(e,()=>{
+    skProjChoixMinut=null;
+    if(skEdit!==sk||skTool!=='project'||skProjAppui!==A)return;
+    const L=skProjChoixListe(sk,A.wx,A.wy);
+    if(L.length<2)return; // un seul élément : le relâcher le projette
+    skProjAppui=null; // la liste décide : le relâcher ne projette plus
+    const nExt=L.filter(it=>it.src==='ext').length;
+    choixMenuOuvrir(cx,cy,'Projeter — '+L.length+' éléments sous le clic'+(nExt?' (dont '+nExt+' d’autres pièces)':''),L,{
+      hover:i=>{skProjectHover=L[i].pr;drawSketch2D();},
+      choose:i=>{skProjectHover=null;if(skEdit===sk)skProjeterPr(sk,L[i].pr);drawSketch2D();},
+      cancel:()=>{skProjectHover=null;drawSketch2D();skStatus('Projeter : rien de projeté.');}
     });
   });
 });

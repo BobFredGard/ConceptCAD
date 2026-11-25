@@ -84,3 +84,46 @@ test('3D : appui long sur un bloc → la face de derrière peut être choisie',a
   expect(grp[0]).not.toBe(grp[1]);
   expect(err).toEqual([]);
 });
+
+// V0.99.81 : outil Projeter dans une pièce d'assemblage — un capot posé sur un socle, mêmes contours.
+// Le clic court prend l'arête du capot (projetée au relâcher) ; l'appui long liste aussi celles du socle.
+test('Projeter : appui long → arêtes de la pièce ET des autres pièces de l’assemblage',async({page})=>{
+  const err=await demarrer(page);
+  await page.evaluate(async()=>{
+    const attendre=async()=>{for(let i=0;i<600;i++){await new Promise(r=>setTimeout(r,200));if(builtEngine==='exact'&&rebuildDepth===0&&builtVersion===_docVersion)return;}};
+    docResetEmpty();doc.name='Banc';asmEnsure();
+    const Rt=asmRoot(),A=asmNewComp('Socle').comp,oA=Rt.occ[0],B=asmNewComp('Capot').comp,oB=Rt.occ[1];
+    oA.fr={o:[0,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]};oB.fr={o:[0,0,20],x:[1,0,0],y:[0,1,0],z:[0,0,1]};
+    const bloc=h=>{newSketch('XY');const sk=skEdit;const P=[[0,0],[40,0],[40,30],[0,30]].map(([x,y])=>addPoint(sk,x,y));
+      for(let i=0;i<4;i++)sk.entities.push({id:'L'+i,t:'line',p1:P[i],p2:P[(i+1)%4]});sk.visible=false;closeSketch(true);
+      addFeature({id:uid('ex'),type:'extrude',name:'Bloc',sketchId:sk.id,op:'add',distance:h});markDirty();rebuild();};
+    asmActivatePath([oA.id]);bloc(20);await attendre();
+    asmActivatePath([oB.id]);bloc(10);await attendre();
+    window.__oA=oA.id;
+    newSketch('XY');skView.cx=20;skView.cy=15;skView.s=8;skUpdateTols();skTool='project';drawSketch2D();
+  });
+  const pt=await page.evaluate(()=>{const r=svg.getBoundingClientRect(),[x,y]=w2s(20,0);return {x:r.left+x,y:r.top+y};});
+  const projetees=()=>page.evaluate(()=>skEdit.entities.filter(e=>e.proj).map(e=>e.ext?'socle':'capot'));
+  // clic court : rien à l'appui, l'arête du capot au relâcher, pas de liste
+  await page.mouse.click(pt.x,pt.y);await page.waitForTimeout(700);
+  await expect(page.locator('#mfChoixSous')).toHaveCount(0);
+  expect(await projetees()).toEqual(['capot']);
+  // appui long : la liste montre les arêtes du capot et du socle
+  await appuiLong(page,pt.x,pt.y);
+  await expect(page.locator('#mfChoixSous')).toBeVisible();
+  await expect(page.locator('#mfChoixSous .mfcT')).toContainText('d’autres pièces');
+  const txt=await lignes(page).allTextContents();
+  expect(txt.length).toBe(4);
+  expect(txt.filter(t=>/cette pièce « Capot »/.test(t)).length).toBe(2);
+  expect(txt.filter(t=>/pièce « Socle:1 »/.test(t)).length).toBe(2);
+  expect(await projetees()).toEqual(['capot']); // le relâcher de l'appui long n'a rien projeté
+  // survol puis clic sur l'arête du socle dans le plan
+  const i=txt.findIndex(t=>/Socle:1 » · dans le plan/.test(t));
+  await lignes(page).nth(i).hover();
+  expect(await page.evaluate(()=>!!(skProjectHover&&skProjectHover.ext))).toBe(true);
+  await lignes(page).nth(i).click();
+  await expect(page.locator('#mfChoixSous')).toHaveCount(0);
+  expect(await projetees()).toEqual(['capot','socle']);
+  expect(await page.evaluate(()=>skEdit.entities.find(e=>e.ext).ext.path.join()===window.__oA)).toBe(true);
+  expect(err).toEqual([]);
+});

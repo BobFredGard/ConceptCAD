@@ -677,10 +677,12 @@ function asmSkExtLists(){
   if(!asm||!asmOn())return [];
   const out=[],P=asm.path;
   const hidden=path=>{let c=asmRoot();for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
+  const occNom=path=>{let c=asmRoot(),o=null;for(const id of path){o=c&&c.occ.find(q=>q.id===id);if(!o)return '';c=asmComp(o.comp);}return o&&o.name||'';};
   asmInstances(asm.root).forEach(inst=>{
     if(inst.comp===asm.active||hidden(inst.path))return;
     const x={ctx:P.slice(),path:inst.path.slice()},ed=asmSkExtEdges(x);
-    if(ed&&ed.length)out.push({edges:ed,ext:x,name:(asmComp(inst.comp)||{}).name||''});
+    // inst : nom de l'instance (« Socle:2 »), pour l'appui long de Projeter (50-esquisse-1 projectEdgesAt)
+    if(ed&&ed.length)out.push({edges:ed,ext:x,name:(asmComp(inst.comp)||{}).name||'',inst:occNom(inst.path)});
   });
   return out;
 }
