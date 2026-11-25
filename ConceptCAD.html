@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.93';
+const APP_VER='V0.99.94';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -12386,6 +12386,9 @@ function rebuildHotes(){
   // source déplacée par une projection ou une face porteuse laissait la copie périmée).
   // Garde par signature : seules les répétitions dont une source a changé sont refaites.
   try{if(typeof repSyncStale==='function'&&repSyncStale())resolveAllSketchHosts();}catch(e){}
+  // V0.99.94 : fins de perçage prises sur une autre pièce de l'assemblage — plan relu après les hôtes
+  // (l'axe du trou suit son esquisse), avant le rejeu (la clé du cache voit le nouveau plan)
+  try{if(typeof asmUptoSyncAll==='function')asmUptoSyncAll();}catch(e){}
 }
 function rebuildInner2(projPass){
   // 2026-10-16-008 : projections associatives AVANT le rejeu principal (ordre timeline, hôtes
@@ -18682,6 +18685,9 @@ function asmExtStale(){
   asm.comps.forEach(c=>{if(out.includes(c))return;
     if((c.doc.cgeo||[]).some(el=>(el&&el.refs||[]).some(r=>{
       if(!r||(r.k!=='xf'&&r.k!=='xe'))return false;const s=asmXfSig(r,c.id);return s!=null&&s!==r.sig;})))out.push(c);});
+  // V0.99.94 : « jusqu'à » une face, une arête ou un sommet d'un autre composant (extrusion, perçage — 48-assemblage-jusqua)
+  asm.comps.forEach(c=>{if(out.includes(c))return;
+    if((c.doc.features||[]).some(f=>asmUptoRefs(f).some(r=>{const s=asmXfSig(r,c.id);return s!=null&&s!==r.sig;})))out.push(c);});
   // V0.8.1 : arêtes d'autres composants projetées dans une esquisse
   asm.comps.forEach(c=>{if(out.includes(c))return;
     if((c.doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>{
@@ -22061,6 +22067,289 @@ function asmTlRender(){
   if(ptr>=H.length&&H.length)R.appendChild(mk());
   if(!H.length){const e=document.createElement('span');e.className='tlbE';e.textContent='Aucune étape — insérez un composant, puis posez-le (Relations, Aligner…).';R.appendChild(e);}
   h._cnt.textContent=H.length?(ptr<H.length?ptr+' / '+H.length:H.length)+' étape(s)':'';
+}
+
+/* ═══════════════ 48-assemblage-jusqua.js — assemblage jusqua ═══════════════ */
+/* ---------- « Jusqu'à » une face, une arête ou un sommet d'une AUTRE pièce (V0.99.94) ----------
+   Demande de Fred : « Assemblage : Conception, permettre de sélectionner les faces et arêtes des
+   autres modèles pour aller jusqu'à la face ou arête d'un autre modèle », « avec la possibilité de
+   mettre une valeur en moins ou en plus, par exemple +1mm ou -1mm », « Fonction extrusion en
+   particulier mais pas que ».
+   En mode Modéliser d'un assemblage, l'étendue « Jusqu'à » de l'extrusion (70) et la fin « Jusqu'à la
+   face » du perçage et de sa longueur filetée (76) acceptent aussi, sur les pièces dessinées autour :
+     · une face PLANE (capture _snap.pfaces, référence 'xf' comme la construction, V0.9.7) ;
+     · une arête (capture _snap.pedges, référence 'xe', V0.9.8) : parallèle au plan de départ, on
+       s'arrête à sa hauteur ; sinon on prend son sommet le plus proche du clic ;
+     · un sommet (à 12 px au plus d'un bout d'arête).
+   La cible devient un PLAN : face → son plan ; arête / sommet → plan perpendiculaire à la direction
+   de la fonction qui passe par elle. Les références suivent l'autre pièce déplacée ou modifiée
+   (asmExtStale, 46) et gardent la dernière distance (⚠ dans la fenêtre) si la cible disparaît.
+   Décalage (off, mm), pour toutes les cibles « jusqu'à » : + = plus loin que la cible, − = avant. */
+const ASM_UPTO_PLAT=0.01; // arête « parallèle » au plan de départ : écart de hauteur toléré (mm)
+let asmUptoHl=null;       // surbrillance de la cible survolée
+function asmUptoDispo(){
+  // Une autre pièce affichée offre-t-elle des arêtes ou des faces ? (mode Modéliser d'un assemblage)
+  try{
+    if(typeof asm==='undefined'||!asm||!asmOn()||asmMode==='asm')return false;
+    return asmSkExtLists().length>0;
+  }catch(e){return false;}
+}
+function asmUptoRefs(f){
+  // Références vers une autre pièce portées par une fonction (extrusion, perçage, longueur filetée)
+  if(!f)return [];
+  return [f.upto&&f.upto.x,f.uptoPlane&&f.uptoPlane.x,f.thread&&f.thread.uptoPlane&&f.thread.uptoPlane.x]
+    .filter(r=>r&&(r.k==='xf'||r.k==='xe'));
+}
+function asmUptoOccName(path){
+  // « Socle:1 » : nom de l'occurrence visée
+  try{return (asmOcc(path[path.length-1])||{}).name||'';}catch(e){return '';}
+}
+function asmUptoEdgePts(ref,cid){
+  // Arête 'xe' retrouvée dans la capture de son composant : ses points et son milieu, dans le repère
+  // du composant cid (actif par défaut) ; la référence suit (pos, len, sig), comme asmXeEval (46)
+  if(!asm||!ref||!Array.isArray(ref.path)||!ref.pos)return null;
+  cid=cid||asm.active;
+  const T=asmPathComp(ref.path),c=asmComp(T);
+  if(!c||T===cid||!c._snap||!c._snap.pedges)return null;
+  const hit=asmXeFind(c._snap.pedges,ref);if(!hit)return null;
+  const ctx=asmSkExtCtx(ref,cid),F=ctx&&asmSkXf(ctx,ref.path);if(!F)return null;
+  const r4=v=>v.map(a=>+(+a).toFixed(4));
+  ref.pos=r4(hit.m);ref.len=+hit.L.toFixed(4);ref.sig=asmXfSig(ref,cid);
+  return {pts:hit.e.pts.map(p=>asmApply(F,p)),mid:asmApply(F,hit.m)};
+}
+function asmUptoPlane(ref,dir,cid){
+  // Plan {p, n} de la cible dans le repère du composant cid (actif par défaut). dir : direction de la
+  // fonction (une arête ou un sommet donne le plan perpendiculaire à dir). null : cible introuvable.
+  if(!asm||!ref)return null;
+  let d=null;try{d=cgUnit(dir);}catch(e){return null;}
+  if(ref.k==='xf'){
+    const g=asmXfEval(ref,cid);if(!g||!g.plane)return null;
+    let n=null;try{n=cgUnit(g.plane.n);}catch(e){return null;}
+    return {p:g.plane.o.slice(),n};
+  }
+  if(ref.k!=='xe')return null;
+  if(ref.sub==='vtx'){const g=asmXeEval(ref,cid);return g&&g.point?{p:g.point.o.slice(),n:d}:null;}
+  const E=asmUptoEdgePts(ref,cid);if(!E||!E.pts.length)return null;
+  // arête parallèle au plan de départ : sa hauteur ; sinon (l'autre pièce a tourné) son milieu
+  let lo=Infinity,hi=-Infinity;E.pts.forEach(p=>{const h=cgDot(p,d);if(h<lo)lo=h;if(h>hi)hi=h;});
+  return {p:(hi-lo<=ASM_UPTO_PLAT?E.pts[0]:E.mid).slice(),n:d};
+}
+function asmUptoDist(pl,O,dir){
+  // Distance signée le long de dir, depuis O, jusqu'au plan pl ; null si dir est parallèle au plan
+  if(!pl)return null;
+  const dn=cgDot(pl.n,dir);if(Math.abs(dn)<1e-9)return null;
+  return cgDot(pl.n,cgSub(pl.p,O))/dn;
+}
+function asmUptoOff(v){
+  // Décalage saisi (« +1 », « -1,5 », « 2 mm ») → nombre, ou NaN
+  const s=String(v==null?'':v).replace(',','.').replace(/mm/i,'').replace(/\s/g,'');
+  return s===''?0:parseFloat(s);
+}
+function asmUptoOffTxt(off){
+  // « +1 » / « −1,5 » (vide pour 0) : libellés et noms de fonction
+  off=+off||0;if(!off)return '';
+  return (off>0?'+':'−')+String(+Math.abs(off).toFixed(3)).replace('.',',');
+}
+/* ── ce qui est sous le curseur, sur les autres pièces ── */
+function asmOtherFaceHit(e){
+  // Triangle d'une autre pièce sous le curseur. Ces maillages ne sont pas cliquables en temps normal
+  // (asmFill, 47) : on les vise ici, pendant une saisie seulement. → intersection THREE ou null
+  if(typeof scene==='undefined'||!scene)return null;
+  const G=scene.getObjectByName('asmCtx');if(!G||G.visible===false)return null;
+  const r=renderer.domElement.getBoundingClientRect();
+  rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
+  G.updateMatrixWorld(true);
+  const hits=[];G.traverse(m=>{if(m.isMesh&&m.visible!==false)THREE.Mesh.prototype.raycast.call(m,rayc,hits);});
+  hits.sort((a,b)=>a.distance-b.distance);
+  return hits[0]||null;
+}
+function asmOtherFaceRef(h,wP,wA){
+  // Face exacte (_snap.pfaces) touchée en h sur une autre pièce : face plane (wP) ou cylindrique /
+  // conique (wA) → référence 'xf' ; {err} si la pièce n'a pas de faces exactes ; null sinon
+  if(!h||!h.face)return null;
+  let g=h.object;while(g&&!(g.userData&&g.userData.path))g=g.parent;if(!g)return null;
+  const path=g.userData.path.slice(),T=asmPathComp(path),c=asmComp(T);
+  if(!c||T===asm.active)return null;
+  const Fs=c._snap&&c._snap.pfaces;
+  if(!Fs||!Fs.length)return {err:'« '+c.name+' » : faces exactes indisponibles (noyau exact requis, rejouez ce composant).'};
+  const ctx=asm.path.slice(),Fi=asmInverse(asmSkXf(ctx,path));
+  const p=asmApply(Fi,[h.point.x,h.point.y,h.point.z]);
+  const nw=h.face.normal.clone().transformDirection(h.object.matrixWorld);
+  const q=asmApply(Fi,[nw.x,nw.y,nw.z]),n=cgUnit([q[0]-Fi.o[0],q[1]-Fi.o[1],q[2]-Fi.o[2]]);
+  let best=null,bd=Infinity;
+  Fs.forEach(f=>{
+    if(wP&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
+      const d=Math.abs(cgDot(cgSub(p,f.plane.o),f.plane.n));if(d<bd){bd=d;best=f;}
+    }
+    if(wA&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
+      const w=cgSub(p,f.axis.o),t=cgDot(w,f.axis.d),dd=cgLen(cgSub(w,cgMul(f.axis.d,t)));
+      const d=f.axis.rad!=null?Math.abs(dd-f.axis.rad):dd;if(d<bd){bd=d;best=f;}
+    }
+  });
+  if(!best||bd>0.5)return null;
+  const nm=asmUptoOccName(path)||c.name;
+  const loc=best.plane?{plane:best.plane}:{axis:best.axis};
+  return {k:'xf',ctx,path,ref:best.ref,loc,name:(best.plane?'Face':'Axe de face')+' · '+nm,sig:null};
+}
+function asmOtherEdgeAt(e,surfDist){
+  // Arête des autres instances (asmSkExtLists : arêtes exactes vues depuis l'instance active) à ≤ 7 px
+  // du curseur, non masquée par une surface plus proche que surfDist → {Lx, E, ei, raw, toS, mx, my}
+  const lists=asmSkExtLists();if(!lists.length)return null;
+  const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const v=new THREE.Vector3(),toS=p=>{v.set(p[0],p[1],p[2]).project(camera);return [(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z];};
+  let best=null,bd=7;
+  lists.forEach(Lx=>Lx.edges.forEach((E,ei)=>{
+    let a=toS(E.pts[0]);
+    for(let k=1;k<E.pts.length;k++){
+      const b=toS(E.pts[k]);
+      if(Math.abs(a[2])<1&&Math.abs(b[2])<1){
+        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9;
+        const t=Math.max(0,Math.min(1,((mx-a[0])*dx+(my-a[1])*dy)/L2));
+        const d=Math.hypot(mx-(a[0]+t*dx),my-(a[1]+t*dy));
+        if(d<bd){
+          const P0=E.pts[k-1],P1=E.pts[k],w=new THREE.Vector3(P0[0]+(P1[0]-P0[0])*t,P0[1]+(P1[1]-P0[1])*t,P0[2]+(P1[2]-P0[2])*t);
+          if(camera.position.distanceTo(w)<=surfDist*1.004+0.3){bd=d;best={Lx,E,ei};}
+        }
+      }
+      a=b;
+    }
+  }));
+  if(!best)return null;
+  best.raw=asmComp(asmPathComp(best.Lx.ext.path))._snap.pedges[best.ei];
+  best.toS=toS;best.mx=mx;best.my=my;
+  return best;
+}
+function asmUptoEdgeRef(A,dir){
+  // Arête trouvée par asmOtherEdgeAt → référence 'xe' pour un « jusqu'à » : sommet près d'un bout
+  // (≤ 12 px) ou arête non parallèle au plan de départ (son sommet le plus proche) ; sinon l'arête
+  const {Lx,E,raw,toS,mx,my}=A,x=Lx.ext;
+  let L=0;for(let i=1;i<raw.pts.length;i++)L+=Math.hypot(raw.pts[i][0]-raw.pts[i-1][0],raw.pts[i][1]-raw.pts[i-1][1],raw.pts[i][2]-raw.pts[i-1][2]);
+  const mid=raw.mid||raw.pts[Math.floor(raw.pts.length/2)];
+  const nm=asmUptoOccName(x.path)||Lx.name;
+  const base={k:'xe',ctx:x.ctx.slice(),path:x.path.slice(),pos:mid.map(a=>+a.toFixed(4)),len:+L.toFixed(4),sig:null};
+  const last=E.pts.length-1;
+  const ends=[0,last].map(i=>{const s=toS(E.pts[i]);return {i,d:Math.hypot(s[0]-mx,s[1]-my)};}).sort((p,q)=>p.d-q.d);
+  let flat=true;
+  try{const d=cgUnit(dir);let lo=Infinity,hi=-Infinity;E.pts.forEach(p=>{const h=cgDot(p,d);if(h<lo)lo=h;if(h>hi)hi=h;});flat=hi-lo<=ASM_UPTO_PLAT;}catch(err){}
+  const closed=Math.hypot(E.pts[0][0]-E.pts[last][0],E.pts[0][1]-E.pts[last][1],E.pts[0][2]-E.pts[last][2])<1e-6;
+  if((ends[0].d<=12&&!closed)||!flat){
+    const end=ends[0].i?raw.pts[raw.pts.length-1]:raw.pts[0];
+    return Object.assign(base,{sub:'vtx',vpos:end.map(a=>+a.toFixed(4)),name:'Sommet · '+nm});
+  }
+  let Gm=null;try{Gm=cgEdgeGeom(E.pts);}catch(err){}
+  return Object.assign(base,{sub:'edge',name:(Gm&&Gm.circ?'Cercle':'Arête')+' · '+nm});
+}
+function asmUptoPickAt(e,dir,bodyDist){
+  // Cible « jusqu'à » sur une autre pièce sous le curseur : arête ou sommet (≤ 7 px, non masqué),
+  // sinon face plane. bodyDist : distance de la pièce active touchée (devant = elle gagne).
+  // → {ref, hit, A} | {err} (autre pièce touchée mais inutilisable) | null (rien d'une autre pièce)
+  if(!asmUptoDispo())return null;
+  const h=asmOtherFaceHit(e);
+  const bd=bodyDist==null?Infinity:bodyDist;
+  const A=asmOtherEdgeAt(e,Math.min(h?h.distance:Infinity,bd));
+  if(A)return {ref:asmUptoEdgeRef(A,dir),A};
+  if(!h||bd<h.distance-1e-6)return null; // rien, ou la pièce active est devant
+  const xf=asmOtherFaceRef(h,true,false);
+  if(xf&&!xf.err)return {ref:xf,hit:h};
+  return {err:xf&&xf.err?xf.err:'face non plane d’une autre pièce : choisissez une face plane, une arête ou un sommet.',hit:h};
+}
+/* ── survol : la cible qu'un clic retiendrait, en orange ── */
+function asmUptoHlClear(){
+  if(!asmUptoHl)return;
+  try{scene.remove(asmUptoHl);asmUptoHl.traverse(o=>{try{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();}catch(e){}});}catch(e){}
+  asmUptoHl=null;
+}
+function asmUptoHlFace(h){
+  // Triangles de la face exacte touchée (groupes occGroups du maillage capturé, 47) — sinon le seul triangle
+  const m=h.object,g=m.geometry,pos=g.getAttribute('position'),idx=g.index;
+  const grp=(g.userData||{}).occGroups;
+  let a=h.faceIndex,b=h.faceIndex+1;
+  if(Array.isArray(grp)){const G=grp.find(x=>h.faceIndex>=x.start&&h.faceIndex<x.start+x.count);if(G){a=G.start;b=G.start+G.count;}}
+  const out=[];
+  for(let t=a;t<b;t++)for(let k=0;k<3;k++){const i=idx?idx.getX(t*3+k):t*3+k;out.push(pos.getX(i),pos.getY(i),pos.getZ(i));}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(out,3));
+  const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xff8c00,transparent:true,opacity:0.45,side:THREE.DoubleSide,
+    depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  m.updateMatrixWorld(true);mesh.matrixAutoUpdate=false;mesh.matrix.copy(m.matrixWorld);
+  mesh.renderOrder=998;return mesh;
+}
+let asmUptoHovEv=null,asmUptoHovMsg=false;
+function asmUptoDirNow(){
+  // Direction de la saisie « jusqu'à » en cours (perçage : axe du trou ; extrusion : normale de l'esquisse)
+  try{const H=typeof holeUptoPick==='function'?holeUptoPick():null;if(H){const U=holeUptoDir(H.f);return U?U.D:null;}}catch(e){}
+  try{
+    const f=(typeof extPickFace!=='undefined'&&extPickFace&&extPickFace.f)||(typeof extUptoAuto==='function'?extUptoAuto():null);
+    const sk=f&&doc.sketches.find(s=>s.id===f.sketchId);
+    if(sk){const B=sketchBasis(sk);return [B.n.x,B.n.y,B.n.z];}
+  }catch(e){}
+  return null;
+}
+function asmUptoHoverAt(e){
+  // Déplacement de la souris pendant une saisie « jusqu'à » (90-10) : une recherche par image au plus
+  if(!asmUptoDispo()){asmUptoHlClear();return;}
+  const first=!asmUptoHovEv;asmUptoHovEv={clientX:e.clientX,clientY:e.clientY};
+  if(!first)return;
+  const run=()=>{
+    const ev=asmUptoHovEv;asmUptoHovEv=null;if(!ev)return;
+    const dir=asmUptoDirNow();if(!dir){asmUptoHlClear();return;}
+    // pièce active devant : comme au clic (extrusion : corps réels seulement, l'outil de découpe est transparent)
+    let d=null;
+    try{
+      const H=typeof holeUptoPick==='function'?holeUptoPick():null;
+      if(H){const h=pick(ev);d=h?h.distance:null;}else{const h=extPickHit(ev);d=h?h.dist:null;}
+    }catch(err){}
+    asmUptoHover(ev,dir,d);
+  };
+  try{requestAnimationFrame(run);}catch(err){run();}
+}
+function asmUptoHover(e,dir,bodyDist){
+  // Survol pendant une saisie « jusqu'à » : surbrillance de la cible d'une autre pièce, son nom en bas.
+  // → true si une autre pièce est sous le curseur (le survol de la pièce active ne compte pas)
+  asmUptoHlClear();
+  let R=null;try{R=asmUptoPickAt(e,dir,bodyDist);}catch(err){R=null;}
+  if(!R){
+    if(asmUptoHovMsg){asmUptoHovMsg=false;try{faceEl.textContent='Jusqu’à : cliquez une face, ou une face plane, une arête, un sommet d’une autre pièce.';}catch(err){}}
+    return false;
+  }
+  asmUptoHovMsg=true;
+  const G=new THREE.Group();G.name='asmUptoHl';G.userData.noMirror=true;
+  try{
+    if(R.ref&&R.A){
+      const P=R.A.E.pts;
+      if(R.ref.sub==='vtx'){
+        const q=R.ref.vpos,F=asmSkXf(R.ref.ctx,R.ref.path),w=F?asmApply(F,q):P[0];
+        const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(w,3));
+        const pt=new THREE.Points(geo,new THREE.PointsMaterial({color:0xff8c00,size:11,sizeAttenuation:false,depthTest:false}));
+        pt.renderOrder=999;G.add(pt);
+      }
+      const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute([].concat(...P),3));
+      const ln=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xff8c00,depthTest:false,linewidth:2}));
+      ln.renderOrder=999;G.add(ln);
+    }else if(R.hit&&R.ref)G.add(asmUptoHlFace(R.hit));
+  }catch(err){}
+  if(G.children.length){scene.add(G);asmUptoHl=G;}
+  try{faceEl.textContent=R.ref?'Jusqu’à : '+R.ref.name+' — cliquez pour la choisir.':'Jusqu’à : '+R.err;}catch(err){}
+  return true;
+}
+/* ── perçage : plans des cibles prises sur une autre pièce, recalculés avant le rejeu ── */
+function asmUptoHoleSync(f){
+  // f.uptoPlane / f.thread.uptoPlane {p, n, x} : p, n relus depuis la référence x (plan
+  // perpendiculaire à l'axe du trou pour une arête ou un sommet). Cible perdue : plan gardé, perdu=1.
+  if(!f||f.type!=='hole')return;
+  const L=[f.uptoPlane,f.thread&&f.thread.uptoPlane].filter(pl=>pl&&pl.x);if(!L.length)return;
+  const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);if(!sk)return;
+  let D=null;try{const A=holeAxis(f,sk);D=[A.dir.x,A.dir.y,A.dir.z];}catch(e){return;}
+  const r6=v=>v.map(a=>+(+a).toFixed(6));
+  L.forEach(pl=>{
+    let q=null;try{q=asmUptoPlane(pl.x,D);}catch(e){q=null;}
+    if(!q){pl.perdu=1;return;}
+    delete pl.perdu;pl.p=r6(q.p);pl.n=r6(q.n);
+  });
+}
+function asmUptoSyncAll(){
+  // Avant le rejeu (rebuildHotes, 30) : cibles des perçages prises sur une autre pièce
+  if(typeof asm==='undefined'||!asm)return;
+  (doc.features||[]).forEach(f=>{if(f&&f.type==='hole'){try{asmUptoHoleSync(f);}catch(e){}}});
 }
 
 /* ═══════════════ 48-assemblage-mesure.js — assemblage mesure ═══════════════ */
@@ -40141,7 +40430,7 @@ function extDynSet(label,fn){
   try{repSyncForFeature(f);}catch(e){}
   markDirty();rebuild();renderTree();renderProps();
 }
-function extDynClose(){extDyn=null;extDynHide();}
+function extDynClose(){extDyn=null;extDynHide();try{if(typeof asmUptoHlClear==='function')asmUptoHlClear();}catch(e){}}
 function extDynOk(){
   extDynClose();sel={kind:null,id:null};
   try{renderTree();renderProps();}catch(e){}
@@ -40202,26 +40491,53 @@ function extDynPanel(p,f){
     else extDynSet('direction de « '+f.name+' »',g=>{g.mid=(v==='mid');});
   }));
   // étendue
-  sec('Étendue',extSeg([['dist','📏','Distance','Une distance donnée'],['upto','🎯','Jusqu’à la face','S’arrête sur une face du corps cible'],['through','⤴','À travers tout','Traverse tout le solide']],
+  // V0.99.94 : dans un assemblage, une face plane, une arête ou un sommet d'une autre pièce sert aussi
+  // de cible, même sans fonction antérieure (48-assemblage-jusqua)
+  const autres=typeof asmUptoDispo==='function'&&asmUptoDispo();
+  sec('Étendue',extSeg([['dist','📏','Distance','Une distance donnée'],['upto','🎯','Jusqu’à la face','S’arrête sur une face du corps cible'+(autres?', ou sur une face plane, une arête, un sommet d’une autre pièce de l’assemblage':'')],['through','⤴','À travers tout','Traverse tout le solide']],
     f.upto?'upto':(f.through?'through':'dist'),v=>{
     if(v==='upto'){
       // V0.11.27 : l'icône active SUFFIT — tout clic court sur une face la désigne (extUptoAuto)
       if(!f.upto){
         const t=extUptoTarget(f,f.body);
-        if(!t){try{faceEl.textContent='Jusqu’à la face : aucune fonction ANTÉRIEURE — créez d’abord un volume.';}catch(e){}return;}
-        extDynSet('étendue de « '+f.name+' »',g=>{g.upto={ex:t.id,side:1};g.through=false;});
+        if(!t&&!autres){try{faceEl.textContent='Jusqu’à la face : aucune fonction ANTÉRIEURE — créez d’abord un volume.';}catch(e){}return;}
+        extDynSet('étendue de « '+f.name+' »',g=>{g.upto=t?{ex:t.id,side:1}:{side:1};g.through=false;});
       }
-      try{faceEl.textContent='Jusqu’à la face : cliquez une face dans la vue (autant de fois que voulu).';}catch(e){}
+      try{faceEl.textContent='Jusqu’à : cliquez une face dans la vue'+(autres?', ou une face plane, une arête, un sommet d’une autre pièce':'')+' (autant de fois que voulu).';}catch(e){}
     }else if(v==='through')extDynSet('étendue de « '+f.name+' »',g=>{g.upto=null;g.through=true;g.distance=null;});
     else extDynSet('étendue de « '+f.name+' »',g=>{g.upto=null;g.through=false;if(!isFinite(g.distance)||g.distance===null)g.distance=10*(g.op==='cut'?-1:1);});
   }));
   // distance / face cible
   if(f.upto){
     const w=mk('div','pnl-btns');w.style.cssText='align-items:center;gap:6px';
-    const fp=f.upto.faceProps;
-    w.appendChild(mk('span','pnl-note',fp&&fp.center?'🎯 face choisie — '+Math.abs(+f.distance||0)+' mm':'🎯 cliquez une face dans la vue'));
-    const tip=mk('div','pnl-note','Un clic sur une autre face la remplace.');tip.style.cssText='width:100%;opacity:.75';w.appendChild(tip);
-    sec('Face cible',w);
+    const fp=f.upto.faceProps,X=f.upto.x,mm=String(Math.abs(+f.distance||0)).replace('.',',')+' mm';
+    // V0.99.94 : cible prise sur une autre pièce (48-assemblage-jusqua) ; ⚠ si elle a disparu
+    const lab=X?(f.upto.perdu?'⚠ '+X.name+' introuvable — '+mm+' gardés':'🎯 '+X.name+' — '+mm):(fp&&fp.center?'🎯 face choisie — '+mm:'🎯 cliquez une cible dans la vue');
+    const st=mk('span','pnl-note extUptoCible',lab);w.appendChild(st);
+    const tip=mk('div','pnl-note','Un clic sur une autre '+(autres?'face, ou sur une face, une arête, un sommet d’une autre pièce, la remplace.':'face la remplace.'));tip.style.cssText='width:100%;opacity:.75';w.appendChild(tip);
+    sec('Cible',w);
+    // Décalage : + = plus loin que la cible, − = avant (« +1 », « -1 ») ; gardé quand la cible change
+    const off0=+f.upto.off||0,offTxt=off0?(off0>0?'+':'')+String(off0).replace('.',','):'0';
+    const io=document.createElement('input');io.type='text';io.inputMode='decimal';io.className='extUptoOff';io.style.width='70px';io.value=offTxt;
+    io.title='+ : la fonction va plus loin que la cible ; − : elle s’arrête avant (par exemple +1 ou -1).';
+    const cdO=()=>{
+      const v=asmUptoOff(io.value),old=+f.upto.off||0;
+      if(!isFinite(v)){io.value=offTxt;return;}
+      if(Math.abs(v-old)<1e-9)return;
+      // essai à blanc : refusé s'il ferait repartir de l'autre côté de l'esquisse (extUptoSetDist)
+      const u0=f.upto.off,d0=f.distance;
+      f.upto.off=v;f.distance=NaN;try{resolveExtrudeUpto(f);}catch(e){}
+      const trop=f.upto.err==='décalage'; // cible perdue ou pas encore choisie : le décalage est seulement retenu
+      if(u0===undefined)delete f.upto.off;else f.upto.off=u0;
+      f.distance=d0;delete f.upto.err;
+      if(trop){try{faceEl.textContent='Décalage refusé : la fonction repartirait de l’autre côté de l’esquisse.';}catch(e){}io.value=offTxt;return;}
+      extDynSet('décalage de « '+f.name+' »',g=>{if(Math.abs(v)<1e-9)delete g.upto.off;else g.upto.off=+v.toFixed(4);});
+    };
+    io.addEventListener('change',cdO);
+    io.addEventListener('keydown',e=>{if(e.key==='Enter'){cdO();io.blur();}e.stopPropagation();});
+    io.addEventListener('click',e=>e.stopPropagation());
+    const wo=mk('div','pnl-btns');wo.style.cssText='align-items:center;gap:6px';wo.appendChild(io);wo.appendChild(mk('span','pnl-note','mm (+ plus loin, − avant)'));
+    sec('Décalage',wo);
   }else if(!f.through){
     const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.className='extDynDist';inp.style.width='90px';
     inp.value=String(Math.abs(+f.distance||0)).replace('.',',');
@@ -40757,10 +41073,13 @@ function extName(f){
   if(f.kwKey)return f.name||'Clavette';
   const base=(f.op==='cut'?'Découpe ':'Extrusion ')+skName(f.sketchId);
   const suf=(f.flip?' ⇄':'')+((+f.draft||0)?' ∠'+(+f.draft)+'°':'');
+  const off=f.upto&&typeof asmUptoOffTxt==='function'?asmUptoOffTxt(f.upto.off):'';
+  // V0.99.94 : face, arête ou sommet d'une autre pièce de l'assemblage (48-assemblage-jusqua)
+  if(f.upto&&f.upto.x)return base+' → '+(f.upto.x.name||'autre pièce')+(off?' '+off:'')+suf;
   if(f.upto&&f.upto.ex){
     // face cliquée : « → face » (dans un corps fusionné, la fonction cible ne dit pas QUELLE face)
-    if(f.upto.faceProps)return base+' → face'+suf;
-    const t=doc.features.find(x=>x.id===f.upto.ex);return base+' → '+(t?t.name:'cible supprimée')+suf;
+    if(f.upto.faceProps)return base+' → face'+(off?' '+off:'')+suf;
+    const t=doc.features.find(x=>x.id===f.upto.ex);return base+' → '+(t?t.name:'cible supprimée')+(off?' '+off:'')+suf;
   }
   const d=+f.distance||0;
   if(f.mid)return base+' ±'+(Math.abs(d)/2)+'mm'+suf;
@@ -40770,6 +41089,8 @@ function resolveExtrudeUpto(f){
   // « Vers un objet » : l'extrusion s'arrête sur la FACE CLICKEE (triangle fi stocké).
   // Si le maillage a changé, fallback sur matching géométrique (faceProps) puis alignement.
   if(!f||f.type!=='extrude'||!f.upto)return false;
+  if(f.upto.x)return extUptoExt(f); // V0.99.94 : cible sur une autre pièce (48-assemblage-jusqua)
+  if(!f.upto.ex)return false;        // V0.99.94 : en attente du clic (assemblage, aucune fonction antérieure)
   const tgt=doc.features.find(x=>x.id===f.upto.ex);
   const fi=doc.features.indexOf(f),ti=tgt?doc.features.indexOf(tgt):-1;
   if(ti<0||fi<0||ti>=fi){f.upto=null;f.name=extName(f);return false;}
@@ -40863,9 +41184,32 @@ function resolveExtrudeUpto(f){
   // Plus de rejet avec dir — c'était la cause des « sens inversé » : une face inclinée a son
   // centre d'un côté du plan d'esquisse et son plan de l'autre, la garde repoussait la bonne
   // distance et l'extrusion retombait sur la valeur Distance.
+  return extUptoSetDist(f,t);
+}
+function extUptoSetDist(f,t){
+  // Course jusqu'à la cible (t signé), décalage compris (V0.99.94 : f.upto.off, + = plus loin que la
+  // cible, − = avant). Un décalage qui ferait repartir de l'autre côté du plan d'esquisse est refusé.
+  const off=+(f.upto&&f.upto.off)||0;
+  const d=off?t+Math.sign(t)*off:t;
+  if(!isFinite(d)||Math.abs(d)<1e-6||(off&&Math.sign(d)!==Math.sign(t))){if(f.upto)f.upto.err=off?'décalage':'nul';return false;}
+  if(f.upto)delete f.upto.err;
   const prev=f.distance;
-  f.distance=+t.toFixed(4);
+  f.distance=+d.toFixed(4);
   return Math.abs((+prev||0)-f.distance)>1e-6;
+}
+function extUptoExt(f){
+  // « Jusqu'à » une face, une arête ou un sommet d'une AUTRE pièce : le plan de la cible, lu dans
+  // la capture de l'autre composant (asmUptoPlane), coupe la normale de l'esquisse depuis son
+  // origine. Cible perdue : distance gardée, f.upto.perdu (⚠ dans la fenêtre).
+  const sk=doc.sketches.find(s=>s.id===f.sketchId);if(!sk)return false;
+  let B;try{B=sketchBasis(sk);}catch(e){return false;}
+  const n=[B.n.x,B.n.y,B.n.z],O=[B.o.x,B.o.y,B.o.z];
+  let pl=null;try{pl=typeof asmUptoPlane==='function'?asmUptoPlane(f.upto.x,n):null;}catch(e){pl=null;}
+  if(!pl){f.upto.perdu=1;return false;}
+  delete f.upto.perdu;
+  const t=asmUptoDist(pl,O,n);
+  if(t===null||Math.abs(t)<1e-6){f.upto.err='nul';return false;}
+  return extUptoSetDist(f,t);
 }
  function extDistSet(f,v){
   // Écriture de la course depuis le champ Distance : v = course signée le long de n.
@@ -40898,7 +41242,7 @@ function extPickHit(e){
   const ms=bodies.filter(b=>b.visible&&b.mesh&&!b.ghost&&b.mesh.visible!==false).map(b=>b.mesh);
   const h=rayc.intersectObjects(ms,false)[0];
   if(!h||!h.object.userData.bid)return null;
-  return {bid:h.object.userData.bid,mesh:h.object,fi:h.faceIndex,props:getFaceProps(h.object,h.faceIndex)};
+  return {bid:h.object.userData.bid,mesh:h.object,fi:h.faceIndex,dist:h.distance,props:getFaceProps(h.object,h.faceIndex)};
 }
 function extUptoTarget(f,bid){
   // fonction cible : la dernière fonction ANTÉRIEURE du corps cliqué, sinon la dernière antérieure
@@ -40912,40 +41256,53 @@ function extPickFaceCommit(e){
   const auto=extUptoAuto();
   const job=extPickFace||(auto?{f:auto}:null);extPickFace=null;
   try{renderer.domElement.style.cursor='';}catch(err){}
+  try{if(typeof asmUptoHlClear==='function')asmUptoHlClear();}catch(err){}
   if(!job)return;
   const f=doc.features.find(x=>x.id===job.f.id)||job.f;
   let picked=null;try{picked=extPickHit(e);}catch(err){}
-  if(!picked){faceEl.textContent='Jusqu\'à la face : cliquez sur une face d\'un corps.';return;}
   const sk=doc.sketches.find(s=>s.id===f.sketchId);
   let B=null;try{B=sk?sketchBasis(sk):null;}catch(err){}
-  // Côté déterminé par la POSITION de la face par rapport au plan d'esquisse (pas la normale)
-  const faceProps=picked.props||getFaceProps(picked.mesh,picked.fi);
-  let side=1;
-  if(B&&faceProps){
-    const c=faceProps.center;
-    side=((c.x-B.o.x)*B.n.x+(c.y-B.o.y)*B.n.y+(c.z-B.o.z)*B.n.z)>=0?1:-1;
-  }
-  const tgt=extUptoTarget(f,picked.bid);
-  if(!tgt){faceEl.textContent='Jusqu\'à la face : aucune fonction ANTÉRIEURE — créez d\'abord un volume avant cette extrusion.';return;}
+  // V0.99.94 : face plane, arête ou sommet d'une AUTRE pièce de l'assemblage, si elle est devant
+  let X=null;
+  try{if(B&&typeof asmUptoPickAt==='function')X=asmUptoPickAt(e,[B.n.x,B.n.y,B.n.z],picked?picked.dist:null);}catch(err){X=null;}
+  if(X&&X.err){faceEl.textContent='Jusqu’à : '+X.err;return;}
   const prevUpto=f.upto,prevDist=f.distance;
-  f.upto={ex:tgt.id,side,faceId:{fi:picked.fi,bid:picked.bid},faceProps};
-  let ok=false;try{ok=resolveExtrudeUpto(f);}catch(err){ok=false;}
-  if(!ok||!isFinite(f.distance)){
-    // Face non utilisable (parallèle au sens d'extrusion, dans le plan d'esquisse…) : rien ne change
+  const off=prevUpto&&+prevUpto.off||0; // le décalage reste quand on change de cible
+  if(X&&X.ref){
+    f.upto={x:X.ref,side:1};if(off)f.upto.off=off;
+  }else{
+    if(!picked){faceEl.textContent='Jusqu’à la face : cliquez sur une face d’un corps'+(typeof asmUptoDispo==='function'&&asmUptoDispo()?', ou une face plane, une arête, un sommet d’une autre pièce.':'.');return;}
+    // Côté déterminé par la POSITION de la face par rapport au plan d'esquisse (pas la normale)
+    const faceProps=picked.props||getFaceProps(picked.mesh,picked.fi);
+    let side=1;
+    if(B&&faceProps){
+      const c=faceProps.center;
+      side=((c.x-B.o.x)*B.n.x+(c.y-B.o.y)*B.n.y+(c.z-B.o.z)*B.n.z)>=0?1:-1;
+    }
+    const tgt=extUptoTarget(f,picked.bid);
+    if(!tgt){faceEl.textContent='Jusqu’à la face : aucune fonction ANTÉRIEURE — créez d’abord un volume avant cette extrusion.';return;}
+    f.upto={ex:tgt.id,side,faceId:{fi:picked.fi,bid:picked.bid},faceProps};if(off)f.upto.off=off;
+  }
+  f.distance=NaN; // seule une résolution réussie redonne une course
+  try{resolveExtrudeUpto(f);}catch(err){}
+  const bad=!f.upto||f.upto.err||f.upto.perdu||!isFinite(f.distance);
+  if(bad){
+    // Cible non utilisable (parallèle au sens d'extrusion, dans le plan d'esquisse, décalage trop grand…) : rien ne change
+    const why=f.upto&&f.upto.err==='décalage'?'le décalage ('+asmUptoOffTxt(off)+' mm) ferait repartir de l’autre côté de l’esquisse':'cible non utilisable (parallèle au sens d’extrusion, ou dans le plan de l’esquisse)';
     f.upto=prevUpto;f.distance=prevDist;
     f.name=extName(f);
-    faceEl.textContent='Jusqu\'à la face : face non utilisable (parallèle au sens d\'extrusion, ou dans le plan de l\'esquisse) — choisissez-en une autre.';
+    faceEl.textContent='Jusqu’à : '+why+' — choisissez-en une autre.';
     return;
   }
-  // une étape d'annulation par face choisie (l'état d'avant = prevUpto / prevDist)
+  // une étape d'annulation par cible choisie (l'état d'avant = prevUpto / prevDist)
   const now={upto:f.upto,distance:f.distance};
   f.upto=prevUpto;f.distance=prevDist;
-  docPushUndo('face cible de « '+f.name+' »');
+  docPushUndo('cible de « '+f.name+' »');
   f.upto=now.upto;f.distance=now.distance;
   f.name=extName(f);
   ghostHide=(f.op==='cut')?f.id:null;
   repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();
-  faceEl.textContent='Jusqu\'à la face : '+Math.abs(+f.distance||0)+' mm ('+(f.op==='cut'?'Poche':'Plot')+'). Cliquez une autre face pour changer.';
+  faceEl.textContent='Jusqu’à '+(f.upto.x?f.upto.x.name:'la face')+' : '+Math.abs(+f.distance||0)+' mm ('+(f.op==='cut'?'Poche':'Plot')+'). Cliquez une autre cible pour changer.';
 }
 
 /* ═══════════════ 71-fenetre-dynamique.js — fenetre dynamique ═══════════════ */
@@ -44779,7 +45136,9 @@ function holeLatheGeo(R,n){
 }
 function holePlaneSuit(pl,base){
   // Fin de trou « jusqu'à la face » : la face garde son nom (20-05), le plan mémorisé la suit.
-  if(!pl||!pl.p||!pl.n||!base)return;
+  // V0.99.94 : une cible prise sur une autre pièce (pl.x) suit cette pièce (asmUptoHoleSync, 48),
+  // jamais une face de la pièce qui serait dans le même plan
+  if(!pl||!pl.p||!pl.n||!base||pl.x)return;
   let h=null,all=null;
   try{
     if(pl.nom){h=nomsRefFace(base,pl);if(!h)return;}
@@ -44802,7 +45161,10 @@ function holePlaneDist(pl,P,D){
   const dn=D.x*pl.n[0]+D.y*pl.n[1]+D.z*pl.n[2];
   if(Math.abs(dn)<1e-6)return null;
   const t=((pl.p[0]-P.x)*pl.n[0]+(pl.p[1]-P.y)*pl.n[1]+(pl.p[2]-P.z)*pl.n[2])/dn;
-  return t>0.01?t:null;
+  if(!(t>0.01))return null;
+  // V0.99.94 : décalage (pl.off) — + = plus loin que la face, − = avant
+  const u=t+(+pl.off||0);
+  return u>0.01?u:null;
 }
 function holeNextExit(sh,P,D){
   // « Jusqu'à la prochaine face » : distance le long de l'axe jusqu'à la PREMIÈRE
@@ -44834,25 +45196,71 @@ let holeFacePick=null; // {fid, which:'end'|'thread'}
 function holeFacePickStart(fid,which){
   holeFacePick={fid:fid,which:which};
   try{renderer.domElement.style.cursor='crosshair';}catch(e){}
-  try{faceEl.textContent='Perçage : cliquez une face PLANE de la pièce ('+(which==='thread'?'fin du filetage':'fin du trou')+') — Échap pour annuler.';}catch(e){}
+  const autres=typeof asmUptoDispo==='function'&&asmUptoDispo();
+  try{faceEl.textContent='Perçage : cliquez une face PLANE de la pièce'+(autres?', ou une face plane, une arête, un sommet d’une autre pièce':'')+' ('+(which==='thread'?'fin du filetage':'fin du trou')+') — Échap pour annuler.';}catch(e){}
 }
-function holeFacePickCancel(){holeFacePick=null;try{renderer.domElement.style.cursor='default';}catch(e){}}
+function holeFacePickCancel(){holeFacePick=null;try{renderer.domElement.style.cursor='default';}catch(e){}try{if(typeof asmUptoHlClear==='function')asmUptoHlClear();}catch(e){}}
+function holeUptoDir(f){
+  // Direction de perçage [x,y,z] (cibles prises sur une autre pièce, 48-assemblage-jusqua) ; null sans esquisse
+  const sk=f&&doc.sketches.find(function(s){return s.id===f.sketchId;});if(!sk)return null;
+  try{const A=holeAxis(f,sk);return {D:[A.dir.x,A.dir.y,A.dir.z],A:A};}catch(e){return null;}
+}
+function holeUptoPick(){
+  // Saisie de la face de fin (trou ou filetage) en cours → {f} ; sinon null (perçage sur cylindre…)
+  if(typeof holeFacePick==='undefined'||!holeFacePick||(holeFacePick.which!=='end'&&holeFacePick.which!=='thread'))return null;
+  const f=doc.features.find(function(x){return x.id===holeFacePick.fid;});
+  return f?{f:f}:null;
+}
 function holeFacePickAt(e){
   if(!holeFacePick)return false;
   if(/^cyl/.test(holeFacePick.which))return holeCylPickAt(e); // perçage sur cylindre (76-percage-cylindre)
   const f=doc.features.find(function(x){return x.id===holeFacePick.fid;});
   if(!f){holeFacePickCancel();return false;}
-  const h=pick(e);if(!h){try{faceEl.textContent='Perçage : aucune face sous le curseur.';}catch(e2){}return true;}
-  let G=null;try{G=occFaceGeom(h.object,h.faceIndex);}catch(e2){G=null;}
-  if(!G||G.kind!=='plan'){try{faceEl.textContent='Perçage : choisissez une face PLANE.';}catch(e2){}return true;}
-  const pl={p:[G.p.x,G.p.y,G.p.z],n:[G.n.x,G.n.y,G.n.z]};
+  const thr=holeFacePick.which==='thread';
+  const old=thr?(f.thread&&f.thread.uptoPlane):f.uptoPlane,off=old&&+old.off||0; // le décalage reste quand la face change
+  const h=pick(e);
+  // V0.99.94 : face plane, arête ou sommet d'une AUTRE pièce de l'assemblage, si elle est devant
+  const U=holeUptoDir(f);let X=null;
+  try{if(U&&typeof asmUptoPickAt==='function')X=asmUptoPickAt(e,U.D,h?h.distance:null);}catch(e2){X=null;}
+  if(X&&X.err){try{faceEl.textContent='Perçage : '+X.err;}catch(e2){}return true;}
+  let pl=null,nom='face';
+  if(X&&X.ref){
+    const q=asmUptoPlane(X.ref,U.D);
+    if(!q){try{faceEl.textContent='Perçage : cible de l’autre pièce illisible.';}catch(e2){}return true;}
+    const r6=function(v){return v.map(function(a){return +(+a).toFixed(6);});};
+    pl={p:r6(q.p),n:r6(q.n),x:X.ref};nom=X.ref.name;
+    const P=U.A.pts[0];
+    if(P&&holePlaneDist({p:pl.p,n:pl.n},P,U.A.dir)===null){try{faceEl.textContent='Perçage : '+nom+' est derrière le début du trou (ou parallèle à son axe) — choisissez-en une autre, ou inversez le sens.';}catch(e2){}return true;}
+  }else{
+    if(!h){try{faceEl.textContent='Perçage : aucune face sous le curseur.';}catch(e2){}return true;}
+    let G=null;try{G=occFaceGeom(h.object,h.faceIndex);}catch(e2){G=null;}
+    if(!G||G.kind!=='plan'){try{faceEl.textContent='Perçage : choisissez une face PLANE.';}catch(e2){}return true;}
+    pl={p:[G.p.x,G.p.y,G.p.z],n:[G.n.x,G.n.y,G.n.z]};
+  }
+  if(off)pl.off=off;
   docPushUndo('perçage : face');
-  if(holeFacePick.which==='thread'){if(!f.thread)f.thread={};f.thread.uptoPlane=pl;f.thread.lenMode='upto';}
+  if(thr){if(!f.thread)f.thread={};f.thread.uptoPlane=pl;f.thread.lenMode='upto';}
   else{f.uptoPlane=pl;f.end='upto';}
   holeFacePickCancel();
   f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();
-  try{faceEl.textContent='Perçage : face retenue.';}catch(e2){}
+  try{faceEl.textContent='Perçage : '+(nom==='face'?'face':nom)+' retenue.';}catch(e2){}
   return true;
+}
+function holeUptoRow(p,pl,set,go){
+  // Sous « Sélectionner la face » : la cible retenue (une autre pièce : son nom ; ⚠ si perdue) et
+  // le décalage (V0.99.94 : + = plus loin que la face, − = avant), qui reste quand la face change
+  const mk=function(tag,cls,txt){const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  if(pl&&pl.x){const n=mk('div','pnl-note holeUptoCible',(pl.perdu?'⚠ '+pl.x.name+' introuvable — dernière position gardée':'🎯 '+pl.x.name));p.appendChild(n);}
+  if(!pl)return;
+  const r=mk('div','pnl-row');r.appendChild(mk('label',null,'Décalage (mm)'));
+  const off0=+pl.off||0,txt=off0?(off0>0?'+':'')+String(off0).replace('.',','):'0';
+  const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.className='holeUptoOff';i.style.width='70px';i.value=txt;
+  i.title='+ : le trou va plus loin que la face ; − : il s’arrête avant (par exemple +1 ou -1).';
+  const c=function(){const v=asmUptoOff(i.value);if(!isFinite(v)){i.value=txt;return;}if(Math.abs(v-off0)<1e-9)return;
+    docPushUndo('perçage : décalage');set(Math.abs(v)<1e-9?0:+v.toFixed(4));go();};
+  i.addEventListener('change',c);i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
+  i.addEventListener('click',function(e){e.stopPropagation();});
+  r.appendChild(i);p.appendChild(r);
 }
 /* ----- création ----- */
 function askHole(presetSketchId,pre){
@@ -44986,7 +45394,8 @@ function renderHoleProps(p,f){
       f.thread.lenMode=v;if(v==='upto'&&!f.thread.uptoPlane)setTimeout(function(){holeFacePickStart(f.id,'thread');},0);}));
     const tm=f.thread.lenMode||'len';
     if(tm==='len')pRow('Longueur (mm)',num(f.thread.len||f.depth,function(v){f.thread.len=v;},0,f.thread,'len'));
-    else if(tm==='upto')pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'thread');}]]);
+    else if(tm==='upto'){pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'thread');}]]);
+      holeUptoRow(p,f.thread.uptoPlane,function(v){if(v)f.thread.uptoPlane.off=v;else delete f.thread.uptoPlane.off;},go);}
     if(f._thLen)pNote('Longueur filetée effective : '+String(f._thLen).replace('.',',')+' mm');
     if(!threadInfo(f.thread.size).model)pNote('Filet '+(threadInfo(f.thread.size).cone?'conique ':'')+'cosmétique seulement (profil non modélisé) ; Ø de perçage du taraud selon les tables usuelles.');
     else pRow('Filet',sel([['model','Modélisé — profil ISO dans le corps'],['cosmetic','Cosmétique (dessin seul, trou lisse)']],f.thread.model?'model':'cosmetic',function(v){
@@ -45009,10 +45418,11 @@ function renderHoleProps(p,f){
   if(f.kind==='csink'){pRow('Ø fraisure',num(f.csD,function(v){f.csD=v;},0,f,'csD'));pRow('Angle (°)',sel([['90','90°'],['82','82° (UNC)'],['100','100°'],['120','120°']],String(f.csA||90),function(v){f.csA=+v;}));}
   /* fin */
   // V0.8.0 : fin en icônes
-  pRow('Fin',extSeg([['blind','📏','Borgne','Profondeur donnée (flèche dans la vue)'],['upto','🎯','Jusqu’à la face','S’arrête sur une face choisie'],
+  pRow('Fin',extSeg([['blind','📏','Borgne','Profondeur donnée (flèche dans la vue)'],['upto','🎯','Jusqu’à la face','S’arrête sur une face choisie'+(typeof asmUptoDispo==='function'&&asmUptoDispo()?', ou sur une face plane, une arête, un sommet d’une autre pièce de l’assemblage':'')],
     ['next','⤓','Débouchant','Jusqu’à la prochaine face'],['through','⤴','Tout','Traverse tout']],f.end||'blind',
     function(v){docPushUndo('perçage');f.end=v;if(v==='upto'&&!f.uptoPlane)setTimeout(function(){holeFacePickStart(f.id,'end');},0);go();}));
-  if(f.end==='upto')pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'end');}]]);
+  if(f.end==='upto'){pBtns([['Sélectionner la face',function(){holeFacePickStart(f.id,'end');}]]);
+    holeUptoRow(p,f.uptoPlane,function(v){if(v)f.uptoPlane.off=v;else delete f.uptoPlane.off;},go);}
   if(!f.end||f.end==='blind'){
     pRow('Profondeur (plein Ø)',num(f.depth,function(v){f.depth=v;},0,f,'depth'));
     pRow('Fond',sel([['118','Pointe 118°'],['135','Pointe 135°'],['140','Pointe 140°'],['90','Pointe 90°'],['0','Fond plat']],String(f.tip===0?0:(f.tip||118)),function(v){f.tip=+v;}));
@@ -46381,76 +46791,30 @@ function cgPickOtherComp(e,draft,slot,bodyHit){
   // Face d'un AUTRE composant affiché autour de la pièce (mode Modéliser d'un assemblage) :
   // plan = face plane, axe = face cylindrique ou conique. Ces maillages ne sont pas cliquables
   // en temps normal (asmFill) : on les vise ici, pendant la saisie seulement. → ref 'xf' ou null
+  // (V0.99.94 : le calcul est partagé avec les « jusqu'à » — 48-assemblage-jusqua)
   if(typeof asm==='undefined'||!asm||!asmOn()||asmMode==='asm')return null;
   const type0=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
   if(type0!=='plane'&&type0!=='axis'&&type0!=='point'&&type0!=='dir')return null;
   const wP=type0==='plane'||type0==='dir',wA=type0==='axis'||type0==='dir',type=type0==='dir'?'axis':type0; // dir : arête, face plane ou cylindre
-  const G=scene.getObjectByName('asmCtx');if(!G)return null;
+  if(!scene.getObjectByName('asmCtx'))return null;
   try{
-    const r=renderer.domElement.getBoundingClientRect();
-    rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
-    G.updateMatrixWorld(true);
-    const hits=[];G.traverse(m=>{if(m.isMesh&&m.visible!==false)THREE.Mesh.prototype.raycast.call(m,rayc,hits);});
-    hits.sort((a,b)=>a.distance-b.distance);
-    const h=hits[0];
+    const h=asmOtherFaceHit(e);
     // arête ou sommet d'un autre composant à ≤ 7 px (non masqué par une surface plus proche)
     {const near=Math.min(h?h.distance:Infinity,bodyHit?bodyHit.distance:Infinity);
      const xe=cgPickOtherEdge(e,type,near);if(xe)return xe;}
     if(type==='point'||!h||!h.face)return null;
     if(bodyHit&&bodyHit.distance<h.distance-1e-6)return null; // la pièce active est devant
-    let g=h.object;while(g&&!(g.userData&&g.userData.path))g=g.parent;if(!g)return null;
-    const path=g.userData.path.slice(),T=asmPathComp(path),c=asmComp(T);
-    if(!c||T===asm.active)return null;
-    const Fs=c._snap&&c._snap.pfaces;
-    if(!Fs||!Fs.length){try{faceEl.textContent='« '+c.name+' » : faces exactes indisponibles (noyau exact requis, rejouez ce composant).';}catch(err){}return null;}
-    const ctx=asm.path.slice(),Fi=asmInverse(asmSkXf(ctx,path));
-    const p=asmApply(Fi,[h.point.x,h.point.y,h.point.z]);
-    const nw=h.face.normal.clone().transformDirection(h.object.matrixWorld);
-    const q=asmApply(Fi,[nw.x,nw.y,nw.z]),n=cgUnit([q[0]-Fi.o[0],q[1]-Fi.o[1],q[2]-Fi.o[2]]);
-    let best=null,bd=Infinity;
-    Fs.forEach(f=>{
-      if(wP&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
-        const d=Math.abs(cgDot(cgSub(p,f.plane.o),f.plane.n));if(d<bd){bd=d;best=f;}
-      }
-      if(wA&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
-        const w=cgSub(p,f.axis.o),t=cgDot(w,f.axis.d),dd=cgLen(cgSub(w,cgMul(f.axis.d,t)));
-        const d=f.axis.rad!=null?Math.abs(dd-f.axis.rad):dd;if(d<bd){bd=d;best=f;}
-      }
-    });
-    if(!best||bd>0.5)return null;
-    const nm=(asmOcc(path[path.length-1])||{}).name||c.name;
-    const loc=best.plane?{plane:best.plane}:{axis:best.axis};
-    return {k:'xf',ctx,path,ref:best.ref,loc,name:(best.plane?'Face':'Axe de face')+' · '+nm,sig:null};
+    const r=asmOtherFaceRef(h,wP,wA);
+    if(r&&r.err){try{faceEl.textContent=r.err;}catch(err){}return null;}
+    return r;
   }catch(err){return null;}
 }
 function cgPickOtherEdge(e,type,surfDist){
-  // Arête des autres instances (asmSkExtLists : arêtes exactes vues depuis l'instance active) sous
-  // le curseur → ref 'xe' : point = sommet (ou centre d'un cercle), axe = droite ou axe d'un
-  // cercle, plan = plan d'un cercle ; null sinon
-  const lists=asmSkExtLists();if(!lists.length)return null;
-  const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-  const v=new THREE.Vector3(),toS=p=>{v.set(p[0],p[1],p[2]).project(camera);return [(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z];};
-  let best=null,bd=7;
-  lists.forEach(Lx=>Lx.edges.forEach((E,ei)=>{
-    let a=toS(E.pts[0]);
-    for(let k=1;k<E.pts.length;k++){
-      const b=toS(E.pts[k]);
-      if(Math.abs(a[2])<1&&Math.abs(b[2])<1){
-        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9;
-        const t=Math.max(0,Math.min(1,((mx-a[0])*dx+(my-a[1])*dy)/L2));
-        const d=Math.hypot(mx-(a[0]+t*dx),my-(a[1]+t*dy));
-        if(d<bd){
-          const P0=E.pts[k-1],P1=E.pts[k],w=new THREE.Vector3(P0[0]+(P1[0]-P0[0])*t,P0[1]+(P1[1]-P0[1])*t,P0[2]+(P1[2]-P0[2])*t);
-          if(camera.position.distanceTo(w)<=surfDist*1.004+0.3){bd=d;best={Lx,E,ei};}
-        }
-      }
-      a=b;
-    }
-  }));
-  if(!best)return null;
-  const {Lx,E}=best,x=Lx.ext,Gm=cgEdgeGeom(E.pts);
-  const Fi=asmInverse(asmSkXf(x.ctx,x.path)),loc=p=>asmApply(Fi,p).map(a=>+a.toFixed(4));
-  const raw=asmComp(asmPathComp(x.path))._snap.pedges[best.ei];
+  // Arête des autres instances (asmOtherEdgeAt, 48-assemblage-jusqua) sous le curseur → ref 'xe' :
+  // point = sommet (ou centre d'un cercle), axe = droite ou axe d'un cercle, plan = plan d'un
+  // cercle ; null sinon
+  const A=asmOtherEdgeAt(e,surfDist);if(!A)return null;
+  const {Lx,E,raw,toS,mx,my}=A,x=Lx.ext,Gm=cgEdgeGeom(E.pts);
   let L=0;for(let i=1;i<raw.pts.length;i++)L+=Math.hypot(raw.pts[i][0]-raw.pts[i-1][0],raw.pts[i][1]-raw.pts[i-1][1],raw.pts[i][2]-raw.pts[i-1][2]);
   const mid=raw.mid||raw.pts[Math.floor(raw.pts.length/2)];
   const nm=(asmOcc(x.path[x.path.length-1])||{}).name||Lx.name;
@@ -82368,6 +82732,10 @@ function wirePick(){
       if(ctrlMesureEv(e))return; // Ctrl : survol de mesure seulement (hoverMove), pas celui de la fonction ouverte
       if(typeof pgPick!=='undefined'&&pgPick){pgPickHover(e);return;} // répétition suivant un profil : départ (41)
       if(!e.buttons&&typeof extProfHover==='function'&&extProfHover(e))return; // zone d'esquisse de l'extrusion
+      // « jusqu'à » : une face, une arête ou un sommet d'une autre pièce s'allume au survol (48-assemblage-jusqua)
+      const uptoOn=extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())||(typeof holeUptoPick==='function'&&holeUptoPick());
+      if(!uptoOn&&typeof asmUptoHl!=='undefined'&&asmUptoHl)asmUptoHlClear();
+      if(uptoOn&&!e.buttons&&typeof asmUptoHoverAt==='function')asmUptoHoverAt(e);
       if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){renderer.domElement.style.cursor='crosshair';return;}
       if(faoPlanePick){renderer.domElement.style.cursor='crosshair';return;}
       if(faoZPlanePick){renderer.domElement.style.cursor='crosshair';return;}

@@ -659,6 +659,9 @@ function asmExtStale(){
   asm.comps.forEach(c=>{if(out.includes(c))return;
     if((c.doc.cgeo||[]).some(el=>(el&&el.refs||[]).some(r=>{
       if(!r||(r.k!=='xf'&&r.k!=='xe'))return false;const s=asmXfSig(r,c.id);return s!=null&&s!==r.sig;})))out.push(c);});
+  // V0.99.94 : « jusqu'à » une face, une arête ou un sommet d'un autre composant (extrusion, perçage — 48-assemblage-jusqua)
+  asm.comps.forEach(c=>{if(out.includes(c))return;
+    if((c.doc.features||[]).some(f=>asmUptoRefs(f).some(r=>{const s=asmXfSig(r,c.id);return s!=null&&s!==r.sig;})))out.push(c);});
   // V0.8.1 : arêtes d'autres composants projetées dans une esquisse
   asm.comps.forEach(c=>{if(out.includes(c))return;
     if((c.doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>{

@@ -197,6 +197,9 @@ function rebuildHotes(){
   // source déplacée par une projection ou une face porteuse laissait la copie périmée).
   // Garde par signature : seules les répétitions dont une source a changé sont refaites.
   try{if(typeof repSyncStale==='function'&&repSyncStale())resolveAllSketchHosts();}catch(e){}
+  // V0.99.94 : fins de perçage prises sur une autre pièce de l'assemblage — plan relu après les hôtes
+  // (l'axe du trou suit son esquisse), avant le rejeu (la clé du cache voit le nouveau plan)
+  try{if(typeof asmUptoSyncAll==='function')asmUptoSyncAll();}catch(e){}
 }
 function rebuildInner2(projPass){
   // 2026-10-16-008 : projections associatives AVANT le rejeu principal (ordre timeline, hôtes

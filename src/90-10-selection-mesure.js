@@ -59,6 +59,10 @@ function wirePick(){
       if(ctrlMesureEv(e))return; // Ctrl : survol de mesure seulement (hoverMove), pas celui de la fonction ouverte
       if(typeof pgPick!=='undefined'&&pgPick){pgPickHover(e);return;} // répétition suivant un profil : départ (41)
       if(!e.buttons&&typeof extProfHover==='function'&&extProfHover(e))return; // zone d'esquisse de l'extrusion
+      // « jusqu'à » : une face, une arête ou un sommet d'une autre pièce s'allume au survol (48-assemblage-jusqua)
+      const uptoOn=extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())||(typeof holeUptoPick==='function'&&holeUptoPick());
+      if(!uptoOn&&typeof asmUptoHl!=='undefined'&&asmUptoHl)asmUptoHlClear();
+      if(uptoOn&&!e.buttons&&typeof asmUptoHoverAt==='function')asmUptoHoverAt(e);
       if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){renderer.domElement.style.cursor='crosshair';return;}
       if(faoPlanePick){renderer.domElement.style.cursor='crosshair';return;}
       if(faoZPlanePick){renderer.domElement.style.cursor='crosshair';return;}
