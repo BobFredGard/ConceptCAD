@@ -552,6 +552,7 @@ svg.addEventListener('dblclick',e=>{
 /* ⧉ Projeter : le clic projette au relâcher ; l'appui long (90-15) choisit dans une liste */
 let skProjAppui=null; // {sk, wx, wy} : clic posé, en attente du relâcher
 function skProjeterClic(sk,wx,wy){
+  if(skLienRe&&lpReClic(sk,wx,wy))return; // V0.99.82 : Réattribuer un lien perdu (50-esquisse-97)
   if(skpClic(sk,wx,wy))return; // point, ligne ou courbe d'une autre esquisse (50-esquisse-8)
   {const oh=skOrigHit(sk,wx,wy);if(oh){skPushUndo();skOrigMaterialize(sk,{x:oh.x,y:oh.y,orig:oh.orig,lab:oh.lab});skProjectHover=null;
     skStatus('Centre « '+oh.lab+' » projeté : point de construction fixe, qui suit le repère.');afterEdit();return;}}
@@ -567,6 +568,7 @@ function skProjeterClic(sk,wx,wy){
 }
 function skProjeterPr(sk,pr){
   // pr : arête 3D (projectEdgeAt) ou élément choisi dans la liste de l'appui long (projectEdgesAt)
+  if(skLienRe){lpReChoix(sk,pr);return;} // V0.99.82 : Réattribuer un lien perdu (50-esquisse-97)
   if(pr.skSrc){skpProjeter(sk,pr);return;} // élément d'une autre esquisse
   skPushUndo();
   const eid=skProjectCreate(sk,pr);
@@ -789,6 +791,7 @@ svg.addEventListener('pointermove',e=>{
   if(skPan){skView.cx=skPan.cx-(e.clientX-skPan.px)/skView.s;skView.cy=skPan.cy+(e.clientY-skPan.py)/skView.s;drawSketch2D();return;}
   if(skTool==='project'){
     if(typeof choixMenuOuvert==='function'&&choixMenuOuvert())return; // liste de l'appui long : l'élément survolé dans la liste reste allumé
+    if(skLienRe){lpReSurvol(sk,wx,wy);return;} // V0.99.82 : Réattribuer un lien perdu (50-esquisse-97)
     const oh=skOrigHit(sk,wx,wy),ho=oh?{kind:'pt',p:{kind:'origin',e:[],x:oh.x,y:oh.y},x:oh.x,y:oh.y}:null;
     if(JSON.stringify(ho)!==JSON.stringify(skPlHover)){skPlHover=ho;if(oh)skProjectHover=null;drawSketch2D();}
     if(oh){skStatus('⧉ Centre « '+oh.lab+' » — clic pour le projeter (point fixe qui suit le repère).');return;}
@@ -1123,6 +1126,7 @@ function skEscapeToSelect(){
 }
 function skCancelDraft(){
   try{if(skDimEditInp)skDimEditInp._cancel();}catch(e){} // V0.11.23 : Échap referme aussi la saisie d’une cote
+  try{if(skLienRe)lpReAnnuler();}catch(e){} // V0.99.82 : Échap, autre outil, clic droit → la fenêtre des liens perdus revient
   skFilletSess=null;skCornerPick=null; // nouvelle passe de congés : nouvelle cote
   if(skDimPlace&&skEdit){skEdit.dims=skEdit.dims.filter(x=>x.id!==skDimPlace.id);skDimPlace=null;} // Échap pendant le placement annule la cote
   skChain=null;skArcC=null;skArcA1=null;skArcPa=null;skSpl=null;skPendPt=null;skCoinA=null;skCornA=null;skOffArm=null;skDraft=null;skDown=null;skDrag=null;skDragEnt=null;skDragWalk=null;skBox=null;skDyn=null;skDimDrag=null;skPan=null;skInfer=null;skMsg='';skDimLine=null;skDimRef=null;skProjectHover=null;if(typeof skIsectReset==='function')skIsectReset();hideSkCtx();if(skEdit){cleanupSk(skEdit);drawSketch2D();renderSkPanel();}}

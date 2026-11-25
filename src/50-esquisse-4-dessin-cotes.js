@@ -297,6 +297,7 @@ function drawSketch2D(){
       skEl('circle',{cx:a,cy:b,r:4,fill:'#ff9f0a'}); skEl('circle',{cx:c,cy:d,r:4,fill:'#ff9f0a'});
     }
   }
+  try{lpDessinSk(sk);}catch(e){} // V0.99.82 : élément survolé dans la fenêtre des liens perdus / en cours de réattribution
   // ⨯ Intersection : courbes de section candidates / retenues / survolées
   if(skTool==='isect'&&typeof skIsectDraw==='function'){try{skIsectDraw(sk);}catch(e){}}
   // ⇄ Décalage : aperçu orange de la copie, survol de la chaîne (50-esquisse-93-decalage)

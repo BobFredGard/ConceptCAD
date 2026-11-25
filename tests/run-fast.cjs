@@ -152,6 +152,7 @@ const SUITES = [
   'test_composants_references',
   'test_composants_aretes_esquisse',
   'test_projeter_appui_long',
+  'test_liens_perdus',
   'test_enregistrement_sur',
   'test_exemples_sains',
   'test_configurations',

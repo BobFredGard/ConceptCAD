@@ -30,6 +30,12 @@
   - Sont concernés : les arêtes du solide situées dans le plan de l'esquisse (trait plein), celles hors du plan vues en projection (tiretés), leurs sommets, milieux, centres et croisements, et les points où une arête traverse le plan.
   - Sans outil actif, un clic les sélectionne comme une entité d'esquisse (`Ctrl` pour ajouter).
 - **Projeter d'une esquisse à une autre** : avec **⧉ Projeter**, les autres esquisses visibles s'affichent en bleu ; un clic reprend un point, une ligne, un cercle, un arc ou une courbe, qui suit ensuite sa source (sur un plan incliné, un cercle devient une ellipse). Avec **⧉ Projeter**, le clic projette au relâcher ; un appui d'une demi-seconde sans bouger ouvre la liste de tout ce qui est sous le clic (arêtes de la pièce, des autres pièces de l'assemblage, traits des autres esquisses), pour atteindre une arête cachée sous une autre.
+- **Liens perdus (comme Fusion)** : quand une esquisse perd sa face, ou qu'une arête projetée, une reprise d'une autre esquisse ou une intersection n'a plus de source, une fenêtre « ⚠ Liens perdus » les liste (elle s'ouvre avec l'esquisse ; sinon double-clic sur le ⚠ de l'arbre ou de la timeline). Survoler une ligne allume l'élément. Pour chacun :
+  - **Réattribuer** : la fenêtre se cache, cliquez la nouvelle arête dans la vue (appui long = liste) ; l'élément s'y pose en gardant ses contraintes et ses cotes, puis la fenêtre revient. Pour la face : cliquez la nouvelle face. `Échap` revient à la liste ;
+  - **Garder** : accepte l'arête la plus proche trouvée d'office (« à vérifier ») ;
+  - **Couper** : plus de lien, l'élément reste en place comme une ligne fixe ; la face devient un plan figé ;
+  - **Supprimer** : retire l'élément (la fenêtre dit quelles cotes et contraintes partent avec).
+  - En bas : **Couper tous les liens**, **Supprimer les éléments perdus**, **Plus tard**. Tout s'annule par `Ctrl+Z`.
 - **Traits d'esquisse épais en 3D** : les esquisses visibles se lisent aussi à travers les solides, en plus fin pour la partie cachée.
 - **Splines** par points de passage ou par points de contrôle, ouvertes ou fermées : poignées de tangence cotables, **tangence** et **courbure continue (G2)** avec une ligne, un arc ou une autre spline, **peigne de courbure** ; ajustement, jonction en T, décalage, intersection et projection en splines.
 - **Trait d'axe (⟲)** : une ligne passée en axe de rotation reste un trait mixte et donne ses cotes en Ø ; si ses deux bouts ferment le contour, elle en devient un côté et sert à la fois de bord du profil et d'axe à la **révolution**.

@@ -316,6 +316,7 @@ const SUITES = [
   "test_composants_references",
   "test_composants_aretes_esquisse",
   "test_projeter_appui_long",
+  "test_liens_perdus",
   "test_composants_aretes_occ",
   "test_assemblage_step_projection",
   "test_composants_plan_bulles",

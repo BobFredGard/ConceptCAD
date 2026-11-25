@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.81';
+const APP_VER='V0.99.82';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -2652,7 +2652,7 @@ function resolveAllSketchHosts(){
   }
   // migration : anciennes esquisses FACE sans host (origines à 20mm figées) → infère
   for(const sk of (doc.sketches||[])){
-    if(sk.plane!=='FACE'||sk.host)continue;
+    if(sk.plane!=='FACE'||sk.host||sk.planFige)continue; // planFige : lien coupé à la demande (50-esquisse-97)
     if(!sk.origin||!isFinite(sk.origin[0]))continue;
     if(!sk.axN)continue;
     const pt=new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]);
@@ -13576,6 +13576,7 @@ function renderTree(){
   // L'arbre est construit par le modèle générique (42-arbre-modele.js : treeModel → treeDraw)
   treeRender();
   try{mfFaoGate();}catch(e){} // V0.21.11 : FAO grisé sans pièce active (97)
+  try{lpRafraichir();}catch(e){} // V0.99.82 : fenêtre des liens perdus à jour (50-esquisse-97)
 }
 
 /* ═══════════════ 40-20-repetitions.js — 20 repetitions ═══════════════ */
@@ -15604,8 +15605,8 @@ function renderProps(){
     const sk=doc.sketches.find(s=>s.id===sel.id);if(!sk){pNote('Esquisse supprimée.');return;}
     pH('Esquisse');
     pInfo(`<b>${sk.name}</b> · plan ${sketchFaceLabel(sk)} · ${sk.entities.length} entités`);
-    const perdue=skFacePerdue(sk);
-    if(perdue)pNote('⚠ '+perdue+' — « 🎯 Changer de face » pour la resélectionner.');
+    const perdue=lpResume(sk); // V0.99.82 : face ou éléments sans source (50-esquisse-97)
+    if(perdue){pNote('⚠ '+perdue+'.');pBtns([['⚠ Liens perdus…',()=>lpOuvrir(sk.id)]]);}
     pBtns([
       ['🔧 Éditer',()=>openSketch(sk.id)],
       ['🎯 Changer de face',()=>skRedefStart(sk.id)],
@@ -16183,7 +16184,7 @@ function tlbSteps(){
       if(sk.at!==undefined)key=Math.max(support==null?-1:support,4*cgPos(sk)+3);
       else key=support==null?4*F.length:support;                                 // fichier ancien : place inconnue
     }
-    S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:!!skFacePerdue(sk)}); // face perdue : double-clic = la resélectionner
+    S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:!!lpResume(sk)}); // face ou arête perdue : double-clic = fenêtre des liens perdus (50-esquisse-97)
   });
   S.sort((a,b)=>(a.key-b.key)||(a.sub-b.sub));
   S.forEach(s=>{s.off=m>=0&&s.key>4*m;});
@@ -16335,7 +16336,7 @@ function tlbClick(s,ev){
 }
 function tlbDbl(s){
   // Double-clic = édition : esquisse, congé/chanfrein exact, dépouille, coque, construction
-  if(s.kind==='sketch'){if(skFacePerdue(s.o))skRedefStart(s.id);else openSketch(s.id);return;} // face perdue : la resélectionner
+  if(s.kind==='sketch'){if(lpResume(s.o))lpOuvrir(s.id);else openSketch(s.id);return;} // V0.99.82 : liens perdus → leur fenêtre (50-esquisse-97)
   if(s.kind==='cg'){if(!cgMode)cgEdit(s.id);return;}
   const f=s.o;
   sel={kind:'feature',id:f.id};treeSel=[];
@@ -16498,7 +16499,7 @@ function renderTimeline(){
     d.innerHTML='<span>'+tlbIcon(s)+'</span>'+(s.warn?'<span class="w">⚠</span>':'');
     const perdu=s.warn&&(s.kind==='sketch'||(s.o&&((s.o._perdues&&s.o._perdues.length)||(s.o._m&&s.o._m.m<s.o._m.t))));
     const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:
-      (perdu?' — ⚠ '+(s.kind==='sketch'?skFacePerdue(s.o):'face ou arête perdue')+' : double-clic pour la resélectionner':(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
+      (perdu?' — ⚠ '+(s.kind==='sketch'?lpResume(s.o)+' : double-clic pour les réparer':'face ou arête perdue : double-clic pour la resélectionner'):(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
     d.title=tlbName(s)+why+(s.off?' — hors rejeu (au-delà du marqueur)':'')+(vis?'':' — masqué')+
       '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps (avec son esquisse)':(tlbDragFeatOf(s)?' · glisser = déplacer avec sa fonction':''))+repWhy(s);
     d.onclick=ev=>tlbClick(s,ev);
@@ -16881,7 +16882,7 @@ function treePart(L){
   cgTreeModel(L); // 📐 Construction (79) : section + éléments en enfants
   const skVis=doc.sketches.filter(s=>!skIsRepCopy(s)&&!s.fao); // V0.23.20 : esquisses FAO jamais en CAO
   if(gfold('sk','✏️','Esquisses ('+skVis.length+')','Esquisses de la pièce',false)){
-    skVis.forEach(s=>{const pd=skFacePerdue(s);node(pd?'⚠':'✏️',s.name,'sketch',s.id,s.visible,()=>pd?skRedefStart(s.id):openSketch(s.id),sketchFaceLabel(s)+' · '+s.entities.length+' traits'+(pd?' — ⚠ '+pd+' : « 🎯 Changer de face » dans ses propriétés':''));});
+    skVis.forEach(s=>{const pd=lpResume(s);node(pd?'⚠':'✏️',s.name,'sketch',s.id,s.visible,()=>pd?lpOuvrir(s.id):openSketch(s.id),sketchFaceLabel(s)+' · '+s.entities.length+' traits'+(pd?' — ⚠ '+pd+' : double-clic pour les réparer (fenêtre des liens perdus)':''));});
   }
   if(tlMark!=null){
     const mi=tlIdx();
@@ -26417,6 +26418,7 @@ function sketchFaceLabel(sk){
   if(!sk)return '?';
   if(sk.fao)return 'XY du posage'; // V0.23.20 : esquisse FAO
   if(sk.plane==='CG'){const el=sk.cg&&cgGet(sk.cg.id);return (el?el.name:'construction ?')+(sk.cg&&sk.cg.sub?' · '+sk.cg.sub:'');}
+  if(sk.plane==='FACE'&&sk.origin&&sk.planFige)return 'plan figé @('+sk.origin.map(v=>(+v).toFixed(1)).join(', ')+')'; // V0.99.82 : lien à la face coupé
   if(sk.plane==='FACE'&&sk.origin)return 'FACE @('+sk.origin.map(v=>(+v).toFixed(1)).join(', ')+')'+(sk.host&&sk.host.name?' · '+sk.host.name:(!(sk.host&&sk.host.feat)&&sk.hostFace&&sk.hostFace.nom?' · '+(sk.hostFace.name||'face nommée'):''));
   return sk.plane;
 }
@@ -26765,7 +26767,7 @@ function skFaceParNom(L,ref){
 }
 function skFaceNommeeSuit(sk){
   // → true si le plan de l'esquisse a bougé
-  if(!sk||sk.plane!=='FACE'||(sk.host&&sk.host.feat)||!sk.axN||!sk.origin)return false;
+  if(!sk||sk.plane!=='FACE'||sk.planFige||(sk.host&&sk.host.feat)||!sk.axN||!sk.origin)return false; // planFige : lien coupé (50-esquisse-97)
   if(projImportsEnAttente())return false;
   const L=skFacesPlanes(sk);if(!L||!L.length)return false;
   const N=new THREE.Vector3(+sk.axN[0]||0,+sk.axN[1]||0,+sk.axN[2]||0);
@@ -26918,7 +26920,7 @@ function projEtat(sk){
 }
 function projEstProjetee(sk,e){
   // même règle que la boucle de mise à jour : projetée déclarée, ou ligne de construction aux deux bouts fixes
-  return !!(e&&(e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e))));
+  return !!(e&&(e.proj||e.isProj||(e.construction&&e.t==='line'&&!e.sansLien&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e))));
 }
 function projSimple(sk){
   return !sk.entities.some(e=>e&&(e.isect||e.skSrc||e.ext||((e.orig||e.pierce)&&e.t==='cpoint')));
@@ -26951,13 +26953,15 @@ function updateAssociativeProjections1(sk){
     if(e.skSrc){if(skpTrack(sk,e))changed=true;continue;} // projection d'une autre esquisse (50-esquisse-8)
     if(e.orig&&e.t==='cpoint'){if(skOrigTrack(sk,e))changed=true;continue;} // centre de repère (50-esquisse-7)
     if(e.pierce&&e.t==='cpoint'){if(skPlTrackPierce(sk,e))changed=true;continue;} // V0.20.1 : traversée du plan
-    const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e));
+    const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&!e.sansLien&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e));
     if(!isProj) continue;
     // V0.8.1 : arête d'un autre composant — ses arêtes, vues depuis ce composant
     let EO;
     if(e.ext){
       if(typeof asmSkExtEdges!=='function')continue;
-      EO=asmSkExtEdges(e.ext);if(!EO)continue;
+      EO=asmSkExtEdges(e.ext);
+      if(!EO){lpNoteExt(sk,e,false);continue;} // V0.99.82 : instance disparue → ⚠ Liens perdus (50-esquisse-97)
+      lpNoteExt(sk,e,true);
       const sg=asmSkExtSig(e.ext);if(sg!=null)e.ext.sig=sg;
     }
     if(e.t==='line'){
@@ -27366,6 +27370,7 @@ function openSketch(id){
   // Les mises à niveau ci-dessus (rdV, chk, audit) ne sont pas une modification : la référence du
   // filet les inclut, sans quoi ouvrir puis fermer une esquisse laissait une étape « vide »
   try{docBaseSync();}catch(e){}
+  try{lpAuto(skEdit);}catch(e){} // V0.99.82 : liens perdus → la fenêtre s'ouvre (50-esquisse-97)
 }
 function skIsGhost(sk){
   // Esquisse fantôme : rien de dessiné et rien ne la cite. Elle encombrerait le fil pour rien.
@@ -27385,6 +27390,7 @@ function skGhostUndo(sk){
 }
 function closeSketch(save){
   try{if(skDimEditInp)skDimEditInp._cancel();}catch(e){} // V0.11.23
+  try{if(skLienRe)lpReAnnuler();}catch(e){} // V0.99.82 : Réattribuer en cours → la fenêtre des liens perdus revient
   skOpenAt=0;
   $('sketchOverlay').classList.remove('open');
   try{$('skStatWrap').style.display='none';}catch(e){}
@@ -29897,6 +29903,7 @@ function drawSketch2D(){
       skEl('circle',{cx:a,cy:b,r:4,fill:'#ff9f0a'}); skEl('circle',{cx:c,cy:d,r:4,fill:'#ff9f0a'});
     }
   }
+  try{lpDessinSk(sk);}catch(e){} // V0.99.82 : élément survolé dans la fenêtre des liens perdus / en cours de réattribution
   // ⨯ Intersection : courbes de section candidates / retenues / survolées
   if(skTool==='isect'&&typeof skIsectDraw==='function'){try{skIsectDraw(sk);}catch(e){}}
   // ⇄ Décalage : aperçu orange de la copie, survol de la chaîne (50-esquisse-93-decalage)
@@ -32608,7 +32615,10 @@ function skOrigMaterialize(sk,p){
 }
 function skOrigTrack(sk,e){
   // rejeu : le centre projeté suit son repère (repère de construction déplacé, esquisse déplacée)
-  const Q=sk.points[e.p],p=skOrigPos3(e.orig);if(!Q||!p)return false;
+  const Q=sk.points[e.p],p=skOrigPos3(e.orig);
+  // V0.99.82 : repère supprimé → ⚠ Liens perdus (50-esquisse-97)
+  if(Q&&e.orig&&e.orig.cg)lpNoteSuivi(sk,e,p?null:'son repère n’existe plus');
+  if(!Q||!p)return false;
   const q=skOrigTo2(sk,p);if(Math.hypot(q[0]-Q.x,q[1]-Q.y)<=1e-6)return false;
   Q.x=q[0];Q.y=q[1];return true;
 }
@@ -34329,7 +34339,7 @@ function skRedefApply(sk,s){
     const limH=tlIdx();
     try{host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);}catch(e){host=null;}
   }
-  sk.plane='FACE';delete sk.cg;
+  sk.plane='FACE';delete sk.cg;delete sk.planFige; // planFige : lien coupé (50-esquisse-97) — reposée, elle suit de nouveau
   sk.origin=[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)];
   sk.axU=[u.x,u.y,u.z];sk.axV=[v.x,v.y,v.z];sk.axN=[n.x,n.y,n.z];
   const nm=(sk.host&&sk.host.name)||(sk.hostFace&&sk.hostFace.name)||null;
@@ -34350,15 +34360,17 @@ function skRedefPickAt(e){
   markDirty();rebuild();
   try{renderTree();renderProps();}catch(err){}
   faceEl.textContent='« '+sk.name+' » posée sur '+sketchFaceLabel(sk)+' : elle suivra cette face.';
+  try{lpRetour();}catch(err){} // V0.99.82 : venue de la fenêtre des liens perdus → elle revient (50-esquisse-97)
 }
 window.addEventListener('keydown',e=>{
   if(e.key!=='Escape'||!skRedef)return;
   skRedefEnd();
   faceEl.textContent='Changer de face : annulé.';
+  try{lpRetour();}catch(err){}
 });
 function skFacePerdue(sk){
   // Raison d'une face d'esquisse perdue (panneau, ⚠ de l'arbre), ou null
-  if(!sk||sk.fao)return null;
+  if(!sk||sk.fao||sk.planFige)return null; // planFige : lien coupé à la demande (50-esquisse-97)
   if(sk.plane==='CG'){const el=sk.cg&&cgGet(sk.cg.id);return el&&sk.axN?null:'son plan de construction n’existe plus';}
   if(sk.plane!=='FACE')return null;
   try{const m=NOMS_PERTES_ESQ.get(sk.id+'/face');if(m)return m.replace(/^[^:]*: /,'');}catch(e){}
@@ -35194,6 +35206,476 @@ function skTxtPathD(contours){
   // contours (mm) → chemin SVG écran (courbes exactes : Q / C)
   const S=p=>{const s=w2s(p[0],p[1]);return s[0].toFixed(1)+' '+s[1].toFixed(1);};
   return contours.map(c=>'M '+S(c.s)+' '+c.seg.map(g=>g.k==='L'?'L '+S(g.p):(g.k==='Q'?'Q '+S(g.c)+' '+S(g.p):'C '+S(g.c1)+' '+S(g.c2)+' '+S(g.p))).join(' ')+' Z').join(' ');
+}
+
+/* ═══════════════ 50-esquisse-97-liens-perdus.js — esquisse 97 liens perdus ═══════════════ */
+/* ---------- ⚠ Liens perdus d'une esquisse (V0.99.82), comme Fusion ----------
+   Demande de Fred : « quand une ou des arêtes ou faces manquent pour une esquisse, l'outil nous propose
+   une fenêtre qui les recense et nous propose de les réattribuer », « ou de supprimer tout lien ou
+   supprimer l'arête aussi », et « à chaque Réattribuer, il faut cacher la fenêtre pour accéder à la vue 3D ».
+   Une fenêtre liste, pour UNE esquisse, ce qui ne retrouve plus sa source :
+     · sa face porteuse ou son plan de construction (skFacePerdue, 50-esquisse-94) ;
+     · une arête de la pièce projetée dont le nom n'existe plus (projPreferMid, 50-esquisse-1) : elle est
+       raccrochée à l'arête la plus proche, peut-être la mauvaise → « à vérifier » ;
+     · une arête d'une autre pièce dont l'instance n'est plus dans l'assemblage (lpNoteExt) ;
+     · un trait d'une autre esquisse supprimé ou changé de forme (skpTrack, 50-esquisse-8) ;
+     · une intersection qui ne coupe plus le plan (62), le centre d'un repère supprimé (50-esquisse-7).
+   Une ligne par élément, et pour chacun :
+     Réattribuer — la fenêtre se cache ; une face se clique dans la vue 3D (« Changer de face »), une arête
+                   dans l'esquisse ouverte, comme l'outil Projeter (appui long = liste). L'élément garde son
+                   identité : ses cotes et ses contraintes restent. La fenêtre revient ensuite (Échap aussi).
+     Garder      — l'arête raccrochée par position est la bonne : elle est reprise telle quelle.
+     Couper      — l'élément reste où il est, fixé (📌), et ne suit plus rien (e.sansLien, sk.planFige).
+     Supprimer   — l'élément part, avec les cotes et contraintes qui ne tiennent qu'à lui.
+   La fenêtre s'ouvre seule à l'ouverture d'une esquisse qui a des liens perdus, et par double-clic sur le
+   ⚠ de l'arbre ou de la timeline ; le panneau des propriétés de l'esquisse a aussi son bouton. */
+let lpEtat=null;   // {sk, el, cache} : fenêtre ouverte pour l'esquisse sk (cache : masquée le temps de Réattribuer)
+let skLienRe=null; // {sk, eid} : élément qui attend sa nouvelle arête (outil Projeter détourné, 60)
+let lpSurvol=null; // {sk, eid} : ligne survolée → élément allumé en orange dans l'esquisse
+let lpSilence=0;   // esquisse ouverte PAR la fenêtre : pas de réouverture automatique
+const LP_CLES_LIEN=['proj','isProj','srcMid','srcNom','srcName','projName','ext','skSrc','isect','pierce','orig'];
+
+/* ----- recensement ----- */
+function lpSketch(id){return(doc.sketches||[]).find(s=>s&&s.id===id)||null;}
+function lpCles(sk,e){return[sk.id+'/'+e.id,'skp:'+sk.id+'/'+e.id];}
+function lpOublier(sk,e){lpCles(sk,e).forEach(k=>{try{nomsPerteOubli(k);}catch(x){}});}
+function lpIco(e){return e.t==='circle'?'◯':e.t==='arc'?'◠':e.t==='spline'?'∿':e.t==='cpoint'?'✕':'╱';}
+function lpGenre(e){return e.t==='circle'?'un cercle':e.t==='arc'?'un arc':e.t==='cpoint'?'un point':e.t==='spline'?'une courbe':'une arête droite';}
+function lpInstNom(path){
+  // nom de l'instance au bout du chemin (« Socle:1 »), '' si le chemin est rompu
+  try{let c=asmRoot(),o=null;for(const id of (path||[])){o=c&&c.occ.find(q=>q.id===id);if(!o)return '';c=asmComp(o.comp);}return o&&o.name||'';}
+  catch(e){return '';}
+}
+function lpNom(e){
+  const n=e.projName||({line:'Ligne',circle:'Cercle',arc:'Arc',spline:'Courbe',cpoint:'Point'}[e.t]||'Élément');
+  let s=e.srcName;
+  if(e.ext&&Array.isArray(e.ext.path)){const i=lpInstNom(e.ext.path);if(i)s=(s?s+' de ':'')+'« '+i+' »';}
+  return n+(s?' · '+s:'');
+}
+function lpRaison(e,m){
+  // message de NOMS_PERTES_ESQ → {raison courte, verif : raccrochée par position}
+  let r=String(m||'');
+  const i=r.indexOf(' : ');if(i>=0)r=r.slice(i+3);
+  if(e.projName&&r.indexOf(e.projName+' — ')===0)r=r.slice(e.projName.length+3);
+  if(/recherche par position/.test(r))return{raison:'son arête n’existe plus — raccrochée à la plus proche',verif:true,long:r};
+  return{raison:r.replace(/ ; (elle|il) reste fig[ée]e?.*$/,' — figée'),verif:false,long:r};
+}
+function lpEstLie(sk,e){
+  if(!e||e.sansLien)return false;
+  if(e.proj||e.isProj||e.skSrc||e.isect||e.pierce||e.orig||e.ext)return true;
+  try{return projEstProjetee(sk,e);}catch(x){return false;}
+}
+function lpListe(sk){
+  // éléments perdus de l'esquisse, la face d'abord (le plan compte pour tout le reste)
+  if(!sk||sk.fao)return[];
+  const out=[];
+  let fp=null;try{fp=skFacePerdue(sk);}catch(e){fp=null;}
+  if(fp)out.push({k:'face',sk:sk.id,ico:'▢',nom:sk.plane==='CG'?'Plan de construction':'Face porteuse',raison:fp,long:fp,
+    reat:true,couper:!!(sk.axN&&sk.axU&&sk.axV&&sk.origin),suppr:false,garder:false});
+  let notes=null;try{notes=NOMS_PERTES_ESQ;}catch(e){notes=null;}
+  if(!notes||!notes.size)return out;
+  (sk.entities||[]).forEach(e=>{
+    if(!e||!e.id)return;
+    const m=notes.get(sk.id+'/'+e.id)||notes.get('skp:'+sk.id+'/'+e.id);
+    if(!m||!lpEstLie(sk,e))return;
+    const R=lpRaison(e,m);
+    // réattribuable : ligne, cercle, arc projetés (pièce ou autre pièce) ; élément d'une autre esquisse
+    const reat=!e.isect&&!e.pierce&&!e.orig&&(e.skSrc?['line','circle','arc','cpoint'].indexOf(e.t)>=0:['line','circle','arc'].indexOf(e.t)>=0);
+    out.push({k:'ent',sk:sk.id,eid:e.id,ico:lpIco(e),nom:lpNom(e),raison:R.raison,long:R.long,verif:R.verif,
+      reat,garder:R.verif,couper:true,suppr:true});
+  });
+  return out;
+}
+function lpResume(sk){
+  // texte court du ⚠ (arbre, timeline, propriétés), ou null
+  const L=lpListe(sk);if(!L.length)return null;
+  const f=L.find(it=>it.k==='face'),n=L.length-(f?1:0);
+  const autres=n?n+' élément'+(n>1?'s':'')+' sans source':'';
+  if(f)return f.raison+(autres?' · '+autres:'');
+  const v=L.filter(it=>it.verif).length;
+  return n===v?n+' arête'+(n>1?'s':'')+' à vérifier':autres;
+}
+
+/* ----- notes posées au rejeu (appelées par 50-esquisse-1, 50-esquisse-7, 62) ----- */
+function lpNoteExt(sk,e,trouve){
+  // arête d'une autre pièce : instance absente de l'assemblage → figée, avec un avertissement
+  const cle=sk.id+'/'+e.id;
+  if(trouve){const m=NOMS_PERTES_ESQ.get(cle);if(m&&m.indexOf('n’est plus dans l’assemblage')>=0)nomsPerteOubli(cle);return;}
+  try{if(!asm||!e.ext||!Array.isArray(e.ext.path)||asmPathComp(e.ext.path))return;}catch(x){return;} // assemblage pas encore là : rien à dire
+  nomsPerteNote(cle,(sk.name||'Esquisse')+' : '+(e.projName||'projection')+' — sa pièce n’est plus dans l’assemblage ; elle reste figée');
+}
+function lpNoteSuivi(sk,e,raison){
+  // raison : texte de la perte (intersection, repère) ; null = source retrouvée
+  const cle=sk.id+'/'+e.id;
+  if(!raison){try{nomsPerteOubli(cle);}catch(x){}return;}
+  try{nomsPerteNote(cle,(sk.name||'Esquisse')+' : '+(e.projName||'projection')+' — '+raison+' ; elle reste figée');}catch(x){}
+}
+
+/* ----- modifier une esquisse, ouverte ou non (une étape d'annulation) ----- */
+function lpModifier(sk,lbl,fn,geom){
+  const ouverte=skEdit&&skEdit.id===sk.id;
+  if(ouverte){skPushUndo();fn();afterEdit();return;}
+  try{undoActLabel=lbl;undoActT=Date.now();}catch(e){}
+  fn();
+  try{solveSketch(sk);cleanupSk(sk);}catch(e){}
+  markDirty();
+  try{docCheckpoint();}catch(e){}
+  if(geom){try{rebuildEdit(()=>{try{renderTree();renderProps();}catch(e){}});}catch(e){}}
+  try{renderTree();renderProps();}catch(e){}
+}
+function lpCouperEnt(sk,e){
+  // le lien part, l'élément reste à sa place : ses « fixe » sont rétablis avant (sinon il flotterait)
+  try{skProjFixRepair(sk);}catch(x){}
+  const has=f=>(sk.constraints||[]).some(f);
+  if(e.t==='spline'&&!has(c=>c.type==='fix'&&c.ent===e.id))sk.constraints.push({id:skNewEid(sk),type:'fix',ent:e.id});
+  lpOublier(sk,e);
+  LP_CLES_LIEN.forEach(k=>{delete e[k];});
+  e.sansLien=1;
+}
+function lpCouperFace(sk){
+  // le plan reste où il est et ne suit plus aucune face (sk.planFige, lu par 10 et 50-esquisse-1/94)
+  if(!(sk.axN&&sk.axU&&sk.axV&&sk.origin))return false;
+  sk.plane='FACE';delete sk.cg;sk.host=null;delete sk.hostFace;sk.planFige=1;
+  try{nomsPerteOubli(sk.id+'/face');}catch(x){}
+  return true;
+}
+function lpPerdus(sk,e){
+  // ce qui part avec l'élément : {cotes, contraintes} (essai sur une copie, mêmes règles que cleanupSk)
+  try{
+    const C=JSON.parse(JSON.stringify({points:sk.points,entities:sk.entities,constraints:sk.constraints,dims:sk.dims}));
+    const T=Object.assign({},sk,C,{id:sk.id});
+    const pids=new Set(skProjPids(T,entById(T,e.id)||e));
+    T.entities=T.entities.filter(x=>x.id!==e.id);
+    skProjFixOublier(T,pids);
+    cleanupSk(T);
+    const nf=L=>L.filter(c=>c.type!=='fix').length;
+    return{cotes:(sk.dims||[]).length-T.dims.length,contraintes:Math.max(0,nf(sk.constraints||[])-nf(T.constraints))};
+  }catch(x){return{cotes:0,contraintes:0};}
+}
+function lpPerdusTexte(p){
+  const L=[];
+  if(p.cotes)L.push(p.cotes+' cote'+(p.cotes>1?'s':''));
+  if(p.contraintes)L.push(p.contraintes+' contrainte'+(p.contraintes>1?'s':''));
+  return L.join(' et ');
+}
+function lpSupprimerEnt(sk,e){
+  const pids=new Set(skProjPids(sk,e));
+  lpOublier(sk,e);
+  sk.entities=sk.entities.filter(x=>x!==e);
+  try{skProjFixOublier(sk,pids);}catch(x){}
+  cleanupSk(sk);
+}
+
+/* ----- actions d'une ligne ----- */
+function lpItem(it){const sk=lpSketch(it.sk);return{sk,e:sk&&it.eid?entById(sk,it.eid):null};}
+function lpGarder(it){
+  const{sk,e}=lpItem(it);if(!sk||!e)return;
+  // le nom perdu est oublié : au prochain rejeu, l'arête retrouvée à la même place donne le sien (projPreferMid)
+  lpModifier(sk,'arête gardée',()=>{delete e.srcNom;lpOublier(sk,e);},false);
+  lpMsg('« '+lpNom(e)+' » gardée sur l’arête où elle se trouve.');
+  lpRafraichir();
+}
+function lpCouper(it){
+  const{sk,e}=lpItem(it);if(!sk)return;
+  if(it.k==='face'){
+    if(skEdit&&skEdit.id!==sk.id)return;
+    lpModifier(sk,'plan figé',()=>lpCouperFace(sk),false);
+    lpMsg('« '+sk.name+' » : plan figé à sa place, il ne suit plus aucune face.');
+  }else{
+    if(!e)return;const nm=lpNom(e);
+    lpModifier(sk,'lien coupé',()=>lpCouperEnt(sk,e),false);
+    lpMsg('« '+nm+' » : lien coupé — elle reste à sa place, fixée (📌), et ne suit plus rien.');
+  }
+  lpRafraichir();
+}
+function lpSupprimer(it){
+  const{sk,e}=lpItem(it);if(!sk||!e)return;
+  const nm=lpNom(e),p=lpPerdusTexte(lpPerdus(sk,e));
+  if(p&&!confirm('Supprimer « '+nm+' » ?\n'+p+' accrochée(s) à elle partiront aussi.'))return;
+  lpModifier(sk,'élément supprimé',()=>lpSupprimerEnt(sk,e),true);
+  lpMsg('« '+nm+' » supprimée'+(p?' avec '+p:'')+' — Ctrl+Z pour revenir.');
+  lpRafraichir();
+}
+function lpToutCouper(){
+  const sk=lpEtat&&lpSketch(lpEtat.sk);if(!sk)return;
+  const L=lpListe(sk).filter(it=>it.couper&&(it.k!=='face'||!skEdit||skEdit.id===sk.id));if(!L.length)return;
+  if(!confirm('Couper les '+L.length+' lien(s) perdu(s) de « '+sk.name+' » ?\nLes éléments restent à leur place, fixés, et ne suivent plus la pièce.'))return;
+  lpModifier(sk,'liens coupés',()=>L.forEach(it=>{
+    if(it.k==='face')lpCouperFace(sk);else{const e=entById(sk,it.eid);if(e)lpCouperEnt(sk,e);}
+  }),false);
+  lpMsg(L.length+' lien(s) coupé(s) dans « '+sk.name+' ».');
+  lpRafraichir();
+}
+function lpToutSupprimer(){
+  const sk=lpEtat&&lpSketch(lpEtat.sk);if(!sk)return;
+  const L=lpListe(sk).filter(it=>it.suppr);if(!L.length)return;
+  const tot={cotes:0,contraintes:0};
+  L.forEach(it=>{const e=entById(sk,it.eid);if(e){const p=lpPerdus(sk,e);tot.cotes+=p.cotes;tot.contraintes+=p.contraintes;}});
+  const p=lpPerdusTexte(tot);
+  if(!confirm('Supprimer les '+L.length+' élément(s) perdu(s) de « '+sk.name+' » ?'+(p?'\n'+p+' partiront aussi.':'')))return;
+  lpModifier(sk,'éléments supprimés',()=>L.forEach(it=>{const e=entById(sk,it.eid);if(e)lpSupprimerEnt(sk,e);}),true);
+  lpMsg(L.length+' élément(s) supprimé(s) dans « '+sk.name+' »'+(p?' avec '+p:'')+' — Ctrl+Z pour revenir.');
+  lpRafraichir();
+}
+function lpMsg(t){try{if(skEdit)skStatus(t);else faceEl.textContent=t;}catch(e){}}
+
+/* ----- Réattribuer : la fenêtre se cache, on clique, elle revient ----- */
+function lpReattribuer(it){
+  const sk=lpSketch(it.sk);if(!sk)return;
+  lpCacher();
+  if(it.k==='face'){
+    // « Changer de face » (50-esquisse-94) : esquisse fermée, la face se clique dans la vue 3D
+    if(skEdit)closeSketch(true);
+    skRedefStart(sk.id);
+    if(!skRedef){lpRetour();return;}
+    faceEl.innerHTML='<b>🎯 Réattribuer la face</b> — « '+sk.name+' »<br><span class="note">Cliquez la nouvelle face dans la vue 3D. '+
+      'Le dessin garde ses cotes. <b>Échap</b> revient à la liste des liens perdus.</span>';
+    return;
+  }
+  if(!skEdit||skEdit.id!==sk.id){
+    if(skEdit)closeSketch(true);
+    lpSilence++;try{openSketch(sk.id);}finally{lpSilence--;}
+    if(!skEdit||skEdit.id!==sk.id){lpRetour();return;}
+  }
+  const e=entById(skEdit,it.eid);if(!e){lpRetour();return;}
+  try{skCancelDraft();}catch(x){}
+  skTool='project';
+  try{document.querySelectorAll('#skToolbar .tool').forEach(x=>x.classList.toggle('on',x.dataset.tool==='project'));}catch(x){}
+  skLienRe={sk:sk.id,eid:e.id};
+  skProjectHover=null;skSel=null;skSelX=[];
+  skStatus(lpReAide(null));
+  try{drawSketch2D();renderSkPanel();}catch(x){}
+}
+function lpReElement(){
+  const sk=skLienRe&&skEdit&&skEdit.id===skLienRe.sk?skEdit:null;
+  return sk?{sk,e:entById(sk,skLienRe.eid)}:null;
+}
+function lpReAide(pr){
+  const R=lpReElement(),e=R&&R.e;if(!e)return '';
+  const tete='🎯 Réattribuer « '+lpNom(e)+' » : ';
+  if(!pr)return tete+'cliquez '+lpGenre(e)+' de la pièce ou d’une autre esquisse (appui long = liste) — Échap revient à la liste.';
+  const ok=pr.type===({line:'line',circle:'circle',arc:'arc',cpoint:'point'}[e.t]);
+  if(!ok)return tete+'il faut '+lpGenre(e)+', pas '+({line:'une arête droite',circle:'un cercle',arc:'un arc',point:'un point',curve:'une courbe'}[pr.type]||'cet élément')+'.';
+  return tete+'clic pour la poser sur '+(pr.skSrc?'cet élément de « '+(pr.srcName||'esquisse')+' »':pr.ext?'cette arête de « '+(pr.extName||'composant')+' »':'cette arête')+'.';
+}
+function lpReSurvol(sk,wx,wy){
+  // pointermove de l'outil Projeter détourné (60) : l'arête candidate en orange, l'aide dans la barre
+  let pr=null;try{pr=skpHit(sk,wx,wy)||projectEdgeAt(sk,wx,wy);}catch(e){pr=null;}
+  const k=pr?JSON.stringify(pr):'null',ko=skProjectHover?JSON.stringify(skProjectHover):'null';
+  if(k!==ko){skProjectHover=pr;drawSketch2D();}
+  skStatus(lpReAide(pr));
+}
+function lpReClic(sk,wx,wy){
+  // clic de l'outil Projeter détourné (60 skProjeterClic) : true = clic pris
+  if(!skLienRe)return false;
+  let pr=null;try{pr=skpHit(sk,wx,wy)||projectEdgeAt(sk,wx,wy);}catch(e){pr=null;}
+  lpReChoix(sk,pr);
+  return true;
+}
+function lpReChoix(sk,pr){
+  // pr : élément cliqué, ou choisi dans la liste de l'appui long (90-15 → skProjeterPr)
+  const R=lpReElement();
+  if(!R||!R.e){skLienRe=null;lpRetour();return;}
+  if(!lpReAppliquer(R.sk,R.e,pr)){skStatus(pr?lpReAide(pr):lpReAide(null).replace(/ : cliquez/,' : rien sous le clic — cliquez'));return;}
+  const nm=lpNom(R.e);
+  skLienRe=null;skProjectHover=null;skTool='select';
+  try{document.querySelectorAll('#skToolbar .tool').forEach(x=>x.classList.toggle('on',x.dataset.tool==='select'));}catch(e){}
+  try{drawSketch2D();renderSkPanel();}catch(e){}
+  skStatus('« '+nm+' » réattribuée : elle suit maintenant sa nouvelle source.');
+  lpRetour();
+}
+function lpReAppliquer(sk,e,pr){
+  // la nouvelle source remplace l'ancienne SANS changer l'identité de l'élément (cotes et contraintes restent)
+  const voulu={line:'line',circle:'circle',arc:'arc',cpoint:'point'}[e.t];
+  if(!pr||pr.type!==voulu)return false;
+  if(!pr.skSrc&&!(pr.srcMid&&pr.srcMid.length===3))return false; // repli sans noyau : rien à suivre
+  const P=sk.points;
+  skPushUndo();
+  if(e.t==='line'){
+    const A=P[e.p1],B=P[e.p2];if(!A||!B){skUndoStack.pop();return false;}
+    const d1=Math.hypot(A.x-pr.x1,A.y-pr.y1)+Math.hypot(B.x-pr.x2,B.y-pr.y2),d2=Math.hypot(A.x-pr.x2,A.y-pr.y2)+Math.hypot(B.x-pr.x1,B.y-pr.y1);
+    if(d2<d1){A.x=pr.x2;A.y=pr.y2;B.x=pr.x1;B.y=pr.y1;}else{A.x=pr.x1;A.y=pr.y1;B.x=pr.x2;B.y=pr.y2;}
+  }else if(e.t==='circle'){const C=P[e.pc];if(!C){skUndoStack.pop();return false;}C.x=pr.cx;C.y=pr.cy;e.r=pr.r;}
+  else if(e.t==='arc'){const C=P[e.pc],A=P[e.pa],B=P[e.pb];if(!C||!A||!B){skUndoStack.pop();return false;}
+    C.x=pr.cx;C.y=pr.cy;A.x=pr.x1;A.y=pr.y1;B.x=pr.x2;B.y=pr.y2;e.r=pr.r;}
+  else{const Q=P[e.p];if(!Q){skUndoStack.pop();return false;}Q.x=pr.x;Q.y=pr.y;}
+  lpOublier(sk,e);
+  delete e.srcNom;delete e.ext;delete e.skSrc;delete e.srcMid;delete e.sansLien;
+  e.proj=true;if(!e.projName)e.projName=entName('proj');
+  if(pr.skSrc){e.skSrc=Object.assign({},pr.skSrc);e.srcName='« '+(pr.srcName||'Esquisse')+' »';}
+  else{
+    e.srcMid=pr.srcMid.slice();e.srcName=entName('edge'); // le nom de l'arête est repris au prochain rejeu (projPreferMid)
+    if(pr.ext){e.ext={ctx:pr.ext.ctx.slice(),path:pr.ext.path.slice()};try{e.ext.sig=asmSkExtSig(e.ext);}catch(x){}}
+  }
+  try{skProjFixRepair(sk);}catch(x){}
+  afterEdit();
+  return true;
+}
+function lpReAnnuler(){
+  // Échap, autre outil, clic droit, esquisse fermée : la fenêtre revient
+  if(!skLienRe)return;
+  skLienRe=null;
+  try{skProjectHover=null;if(skEdit){skStatus('Réattribuer : annulé.');drawSketch2D();}}catch(e){}
+  lpRetour();
+}
+
+/* ----- la fenêtre ----- */
+(function lpCss(){
+  try{
+    const st=document.createElement('style');
+    st.textContent='#mfLiensPerdus{position:fixed;z-index:5100;top:72px;right:14px;width:min(540px,calc(100vw - 28px));max-height:calc(100vh - 100px);'+
+      'display:flex;flex-direction:column;background:var(--surface,#1c1c20);color:var(--text,#f5f5f7);border:1px solid var(--border,#3a3a3f);'+
+      'border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:.74rem;user-select:none}'+
+      '#mfLiensPerdus.cache{display:none}'+
+      '#mfLiensPerdus .lpH{display:flex;align-items:center;gap:8px;padding:8px 10px 6px}'+
+      '#mfLiensPerdus .lpT{flex:1;min-width:0;font-weight:600;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '#mfLiensPerdus .lpS{padding:0 10px 6px;opacity:.7;font-size:.7rem}'+
+      '#mfLiensPerdus .lpL{overflow-y:auto;border-top:1px solid var(--border,#3a3a3f)}'+
+      '#mfLiensPerdus .lpR{display:flex;align-items:center;gap:6px;padding:4px 10px;min-height:24px;border-bottom:1px solid rgba(128,128,128,.15)}'+
+      '#mfLiensPerdus .lpR:hover{background:rgba(255,159,10,.14)}'+
+      '#mfLiensPerdus .lpI{width:14px;text-align:center;flex:none;color:#ff9f0a}'+
+      '#mfLiensPerdus .lpN{flex:none;max-width:42%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '#mfLiensPerdus .lpW{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.62;font-size:.68rem}'+
+      '#mfLiensPerdus .lpV{flex:none;font-size:.62rem;padding:0 5px;border-radius:4px;background:rgba(255,159,10,.22);color:#ffb340}'+
+      '#mfLiensPerdus button.lpB{flex:none;font:inherit;font-size:.66rem;line-height:1.2;padding:2px 6px;margin:0;border-radius:5px;cursor:pointer;'+
+      'background:transparent;color:inherit;border:1px solid var(--border,#3a3a3f);width:auto;min-width:0;box-shadow:none}'+
+      '#mfLiensPerdus button.lpB:hover{background:var(--primary,#0a84ff);border-color:var(--primary,#0a84ff);color:#fff}'+
+      '#mfLiensPerdus button.lpB.dg:hover{background:#ff453a;border-color:#ff453a}'+
+      '#mfLiensPerdus .lpF{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;padding:7px 10px}'+
+      '#mfLiensPerdus .lpX{cursor:pointer;opacity:.7;padding:0 4px;font-size:.9rem}#mfLiensPerdus .lpX:hover{opacity:1}';
+    (document.head||document.documentElement).appendChild(st);
+  }catch(e){}
+})();
+function lpOuvrir(id){
+  const sk=lpSketch(id);if(!sk)return false;
+  if(!lpListe(sk).length){lpFermer();lpMsg('« '+sk.name+' » : aucun lien perdu.');return false;}
+  if(!lpEtat||!lpEtat.el||!lpEtat.el.isConnected){
+    lpFermer();
+    const el=document.createElement('div');el.id='mfLiensPerdus';
+    el.addEventListener('pointerdown',ev=>ev.stopPropagation());
+    el.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();});
+    document.body.appendChild(el);
+    lpEtat={sk:id,el,cache:false};
+  }
+  lpEtat.sk=id;lpEtat.cache=false;lpEtat.el.classList.remove('cache');
+  lpDessiner();
+  return true;
+}
+function lpFermer(){
+  if(skLienRe){skLienRe=null;try{skProjectHover=null;if(skEdit)drawSketch2D();}catch(e){}}
+  const E=lpEtat;lpEtat=null;
+  if(lpSurvol){lpSurvol=null;try{if(skEdit)drawSketch2D();}catch(e){}}
+  if(E&&E.el){try{E.el.remove();}catch(e){}}
+}
+function lpCacher(){if(lpEtat&&lpEtat.el){lpEtat.cache=true;lpEtat.el.classList.add('cache');}lpSurvol=null;}
+function lpRetour(){
+  // fin d'un Réattribuer (fait ou annulé) : la fenêtre revient, liste à jour ; rien de perdu → elle se ferme
+  if(!lpEtat)return;
+  const sk=lpSketch(lpEtat.sk);
+  if(!sk||!lpListe(sk).length){
+    const nm=sk&&sk.name;lpFermer();
+    if(nm)setTimeout(()=>lpMsg('« '+nm+' » : tous les liens perdus sont réglés.'),0);
+    return;
+  }
+  lpEtat.cache=false;lpEtat.el.classList.remove('cache');
+  lpDessiner();
+}
+function lpRafraichir(){
+  // après une action, un rejeu ou un renderTree : la liste suit ; vide → fermée
+  if(!lpEtat||lpEtat.cache||skLienRe||(typeof skRedef!=='undefined'&&skRedef))return;
+  const sk=lpSketch(lpEtat.sk);
+  if(!sk||!lpListe(sk).length){lpFermer();return;}
+  lpDessiner();
+}
+function lpPlacer(){
+  // dans la vue 3D (ou celle de l'esquisse ouverte), à droite, sous les boutons de vue et le cube :
+  // jamais sur le ruban ni sur la barre d'esquisse
+  const E=lpEtat;if(!E||!E.el||!E.el.style)return;
+  try{
+    let R=null;
+    const ov=document.getElementById('sketchOverlay');
+    if(ov&&ov.getBoundingClientRect){const b=ov.getBoundingClientRect();if(b.width>200&&b.height>150)R=b;}
+    if(!R&&typeof renderer!=='undefined'&&renderer&&renderer.domElement){const b=renderer.domElement.getBoundingClientRect();if(b.width>200&&b.height>150)R=b;}
+    if(!R)return;
+    const W=window.innerWidth||1024,top=Math.round(R.top+96),right=Math.max(8,Math.round(W-R.right+12));
+    E.el.style.top=top+'px';E.el.style.right=right+'px';
+    E.el.style.maxHeight=Math.max(160,Math.round(R.bottom-top-12))+'px';
+  }catch(e){}
+}
+try{window.addEventListener('resize',()=>{if(lpEtat&&!lpEtat.cache)lpPlacer();});}catch(e){}
+function lpBouton(txt,titre,fn,cls){
+  const b=document.createElement('button');b.className='lpB'+(cls?' '+cls:'');b.type='button';b.textContent=txt;b.title=titre;
+  b.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();fn();});
+  return b;
+}
+function lpDessiner(){
+  const E=lpEtat;if(!E||!E.el)return;
+  const sk=lpSketch(E.sk);if(!sk)return;
+  const L=lpListe(sk),el=E.el;
+  el.textContent='';
+  lpPlacer();
+  const h=document.createElement('div');h.className='lpH';
+  const t=document.createElement('div');t.className='lpT';t.textContent='⚠ Liens perdus — « '+sk.name+' »';h.appendChild(t);
+  const x=document.createElement('span');x.className='lpX';x.textContent='✕';x.title='Fermer (le ⚠ de l’arbre la rouvre)';
+  x.addEventListener('click',ev=>{ev.stopPropagation();lpFermer();});h.appendChild(x);
+  el.appendChild(h);
+  const s=document.createElement('div');s.className='lpS';
+  const n=L.length;
+  s.textContent=n+' élément'+(n>1?'s':'')+' ne retrouve'+(n>1?'nt':'')+' plus '+(n>1?'leur':'sa')+' face ou '+(n>1?'leur':'son')+' arête. Survolez une ligne pour la voir.';
+  el.appendChild(s);
+  const box=document.createElement('div');box.className='lpL';
+  const ouverte=skEdit&&skEdit.id===sk.id,autre=skEdit&&skEdit.id!==sk.id;
+  L.forEach(it=>{
+    const r=document.createElement('div');r.className='lpR';r.title=it.nom+' — '+it.long;
+    const ic=document.createElement('span');ic.className='lpI';ic.textContent=it.ico;r.appendChild(ic);
+    const nm=document.createElement('span');nm.className='lpN';nm.textContent=it.nom;r.appendChild(nm);
+    if(it.verif){const v=document.createElement('span');v.className='lpV';v.textContent='à vérifier';r.appendChild(v);}
+    const w=document.createElement('span');w.className='lpW';w.textContent=it.raison;r.appendChild(w);
+    if(it.reat)r.appendChild(lpBouton('Réattribuer',it.k==='face'?'Cliquer la nouvelle face dans la vue 3D (la fenêtre se cache le temps du choix)':
+      'Cliquer la nouvelle arête dans l’esquisse — appui long = liste (la fenêtre se cache le temps du choix). Cotes et contraintes restent.',()=>lpReattribuer(it)));
+    if(it.garder)r.appendChild(lpBouton('Garder','L’arête où elle s’est raccrochée est la bonne : la garder',()=>lpGarder(it)));
+    if(it.couper&&!(it.k==='face'&&autre))r.appendChild(lpBouton('Couper',it.k==='face'?'Le plan reste où il est et ne suit plus aucune face':
+      'L’élément reste à sa place, fixé (📌), et ne suit plus rien',()=>lpCouper(it)));
+    if(it.suppr){
+      let p='';try{const e=entById(sk,it.eid);if(e)p=lpPerdusTexte(lpPerdus(sk,e));}catch(e2){}
+      r.appendChild(lpBouton('Supprimer','Supprimer l’élément'+(p?' ('+p+' partiront avec lui)':''),()=>lpSupprimer(it),'dg'));
+    }
+    r.addEventListener('pointerenter',()=>{lpSurvol=it.eid?{sk:sk.id,eid:it.eid}:null;if(ouverte)try{drawSketch2D();}catch(e){}});
+    r.addEventListener('pointerleave',()=>{lpSurvol=null;if(ouverte)try{drawSketch2D();}catch(e){}});
+    box.appendChild(r);
+  });
+  el.appendChild(box);
+  const f=document.createElement('div');f.className='lpF';
+  if(L.some(it=>it.couper))f.appendChild(lpBouton('Couper tous les liens','Tous les éléments restent à leur place et ne suivent plus la pièce',lpToutCouper));
+  if(L.some(it=>it.suppr))f.appendChild(lpBouton('Supprimer les éléments perdus','Supprimer tous les éléments de la liste (pas la face)',lpToutSupprimer,'dg'));
+  f.appendChild(lpBouton('Plus tard','Fermer — le ⚠ de l’arbre et de la timeline la rouvre',lpFermer));
+  el.appendChild(f);
+}
+function lpAuto(sk){
+  // à l'ouverture d'une esquisse (openSketch) : la fenêtre s'ouvre si elle a des liens perdus
+  if(lpSilence||!sk)return;
+  if(lpListe(sk).length)lpOuvrir(sk.id);
+  else if(lpEtat&&lpEtat.sk!==sk.id&&!lpEtat.cache)lpFermer();
+}
+
+/* ----- dessin dans l'esquisse (appelé par drawSketch2D, 50-esquisse-4) ----- */
+function lpDessinSk(sk){
+  const ids=[];
+  if(lpSurvol&&lpSurvol.sk===sk.id)ids.push([lpSurvol.eid,'']);
+  if(skLienRe&&skLienRe.sk===sk.id)ids.push([skLienRe.eid,'6 4']);
+  ids.forEach(([id,tir])=>{
+    const e=entById(sk,id),P=sk.points||{};if(!e)return;
+    const st={fill:'none',stroke:'#ff9f0a','stroke-width':4,opacity:0.9};if(tir)st['stroke-dasharray']=tir;
+    if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(!A||!B)return;const[a,b]=w2s(A.x,A.y),[c,d]=w2s(B.x,B.y);skEl('line',Object.assign({x1:a,y1:b,x2:c,y2:d},st));}
+    else if(e.t==='circle'){const C=P[e.pc];if(!C)return;const[a,b]=w2s(C.x,C.y);skEl('circle',Object.assign({cx:a,cy:b,r:e.r*skView.s},st));}
+    else if(e.t==='arc'){const C=P[e.pc],A=P[e.pa],B=P[e.pb];if(!C||!A||!B)return;
+      let dd=Math.atan2(B.y-C.y,B.x-C.x)-Math.atan2(A.y-C.y,A.x-C.x);while(dd<=0)dd+=Math.PI*2;
+      const[a,b]=w2s(A.x,A.y),[c,d]=w2s(B.x,B.y),R=e.r*skView.s;
+      skEl('path',Object.assign({d:`M ${a} ${b} A ${R} ${R} 0 ${dd>Math.PI?1:0} 0 ${c} ${d}`},st));}
+    else if(e.t==='cpoint'){const Q=P[e.p];if(!Q)return;const[a,b]=w2s(Q.x,Q.y);skEl('rect',Object.assign({x:a-6,y:b-6,width:12,height:12},st,{'stroke-width':2.5}));}
+    else if(e.t==='spline'){let pl=null;try{pl=skSplinePoly(sk,e);}catch(x){pl=null;}
+      if(pl&&pl.length>1)skEl('path',Object.assign({d:'M '+pl.map(q=>{const s=w2s(q[0],q[1]);return s[0].toFixed(1)+' '+s[1].toFixed(1);}).join(' L ')},st));}
+  });
 }
 
 /* ═══════════════ 51-parametres-mesure.js — parametres mesure ═══════════════ */
@@ -38137,6 +38619,7 @@ svg.addEventListener('dblclick',e=>{
 /* ⧉ Projeter : le clic projette au relâcher ; l'appui long (90-15) choisit dans une liste */
 let skProjAppui=null; // {sk, wx, wy} : clic posé, en attente du relâcher
 function skProjeterClic(sk,wx,wy){
+  if(skLienRe&&lpReClic(sk,wx,wy))return; // V0.99.82 : Réattribuer un lien perdu (50-esquisse-97)
   if(skpClic(sk,wx,wy))return; // point, ligne ou courbe d'une autre esquisse (50-esquisse-8)
   {const oh=skOrigHit(sk,wx,wy);if(oh){skPushUndo();skOrigMaterialize(sk,{x:oh.x,y:oh.y,orig:oh.orig,lab:oh.lab});skProjectHover=null;
     skStatus('Centre « '+oh.lab+' » projeté : point de construction fixe, qui suit le repère.');afterEdit();return;}}
@@ -38152,6 +38635,7 @@ function skProjeterClic(sk,wx,wy){
 }
 function skProjeterPr(sk,pr){
   // pr : arête 3D (projectEdgeAt) ou élément choisi dans la liste de l'appui long (projectEdgesAt)
+  if(skLienRe){lpReChoix(sk,pr);return;} // V0.99.82 : Réattribuer un lien perdu (50-esquisse-97)
   if(pr.skSrc){skpProjeter(sk,pr);return;} // élément d'une autre esquisse
   skPushUndo();
   const eid=skProjectCreate(sk,pr);
@@ -38374,6 +38858,7 @@ svg.addEventListener('pointermove',e=>{
   if(skPan){skView.cx=skPan.cx-(e.clientX-skPan.px)/skView.s;skView.cy=skPan.cy+(e.clientY-skPan.py)/skView.s;drawSketch2D();return;}
   if(skTool==='project'){
     if(typeof choixMenuOuvert==='function'&&choixMenuOuvert())return; // liste de l'appui long : l'élément survolé dans la liste reste allumé
+    if(skLienRe){lpReSurvol(sk,wx,wy);return;} // V0.99.82 : Réattribuer un lien perdu (50-esquisse-97)
     const oh=skOrigHit(sk,wx,wy),ho=oh?{kind:'pt',p:{kind:'origin',e:[],x:oh.x,y:oh.y},x:oh.x,y:oh.y}:null;
     if(JSON.stringify(ho)!==JSON.stringify(skPlHover)){skPlHover=ho;if(oh)skProjectHover=null;drawSketch2D();}
     if(oh){skStatus('⧉ Centre « '+oh.lab+' » — clic pour le projeter (point fixe qui suit le repère).');return;}
@@ -38708,6 +39193,7 @@ function skEscapeToSelect(){
 }
 function skCancelDraft(){
   try{if(skDimEditInp)skDimEditInp._cancel();}catch(e){} // V0.11.23 : Échap referme aussi la saisie d’une cote
+  try{if(skLienRe)lpReAnnuler();}catch(e){} // V0.99.82 : Échap, autre outil, clic droit → la fenêtre des liens perdus revient
   skFilletSess=null;skCornerPick=null; // nouvelle passe de congés : nouvelle cote
   if(skDimPlace&&skEdit){skEdit.dims=skEdit.dims.filter(x=>x.id!==skDimPlace.id);skDimPlace=null;} // Échap pendant le placement annule la cote
   skChain=null;skArcC=null;skArcA1=null;skArcPa=null;skSpl=null;skPendPt=null;skCoinA=null;skCornA=null;skOffArm=null;skDraft=null;skDown=null;skDrag=null;skDragEnt=null;skDragWalk=null;skBox=null;skDyn=null;skDimDrag=null;skPan=null;skInfer=null;skMsg='';skDimLine=null;skDimRef=null;skProjectHover=null;if(typeof skIsectReset==='function')skIsectReset();hideSkCtx();if(skEdit){cleanupSk(skEdit);drawSketch2D();renderSkPanel();}}
@@ -39258,11 +39744,15 @@ function isectSegs(c,n){
 function skIsectTrack(sk,e){
   const src=e.isect;if(!src||src.mode==='mesh')return false;
   const res=skIsectCurvesCached(sk,src);
+  // V0.99.82 : section disparue → ⚠ Liens perdus (50-esquisse-97) ; sans noyau (res null) : rien à dire
+  if(res&&res.curves&&!res.curves.length)lpNoteSuivi(sk,e,'sa source ne coupe plus le plan');
   if(!res||!res.curves||!res.curves.length)return false;
   e.isect=JSON.parse(JSON.stringify(res.src));
   const P=sk.points;
   const want=(e.seg||e.t==='spline')?'curve':e.t;
-  const cands=res.curves.filter(c=>c.type===want);if(!cands.length)return false;
+  const cands=res.curves.filter(c=>c.type===want);
+  lpNoteSuivi(sk,e,cands.length?null:'sa section n’a plus la même forme');
+  if(!cands.length)return false;
   // candidat : le plus proche du milieu 3D mémorisé (identité), sinon de la position 2D
   const here=()=>{
     if(e.t==='circle'){const C=P[e.pc];return C?[C.x,C.y]:null;}
@@ -85574,6 +86064,7 @@ function docResetEmpty(){
   asm=null;asmMode='part';asmUndoStack=[];asmRedoStack=[]; // assemblage (46)
   try{document.body.removeAttribute('data-asm');asmCtxDraw();}catch(e){}
   try{occCkClear();}catch(e){}
+  try{NOMS_PERTES_ESQ.clear();lpFermer();}catch(e){} // V0.99.82 : avertissements et fenêtre des liens perdus du document d'avant
 }
 if($('btnNew'))$('btnNew').onclick=()=>{
   if(!confirm('Nouveau modèle ? Le document courant non sauvé sera perdu.'))return;

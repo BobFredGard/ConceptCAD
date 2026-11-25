@@ -204,6 +204,7 @@ function docResetEmpty(){
   asm=null;asmMode='part';asmUndoStack=[];asmRedoStack=[]; // assemblage (46)
   try{document.body.removeAttribute('data-asm');asmCtxDraw();}catch(e){}
   try{occCkClear();}catch(e){}
+  try{NOMS_PERTES_ESQ.clear();lpFermer();}catch(e){} // V0.99.82 : avertissements et fenêtre des liens perdus du document d'avant
 }
 if($('btnNew'))$('btnNew').onclick=()=>{
   if(!confirm('Nouveau modèle ? Le document courant non sauvé sera perdu.'))return;

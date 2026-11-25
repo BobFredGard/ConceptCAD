@@ -223,11 +223,15 @@ function isectSegs(c,n){
 function skIsectTrack(sk,e){
   const src=e.isect;if(!src||src.mode==='mesh')return false;
   const res=skIsectCurvesCached(sk,src);
+  // V0.99.82 : section disparue → ⚠ Liens perdus (50-esquisse-97) ; sans noyau (res null) : rien à dire
+  if(res&&res.curves&&!res.curves.length)lpNoteSuivi(sk,e,'sa source ne coupe plus le plan');
   if(!res||!res.curves||!res.curves.length)return false;
   e.isect=JSON.parse(JSON.stringify(res.src));
   const P=sk.points;
   const want=(e.seg||e.t==='spline')?'curve':e.t;
-  const cands=res.curves.filter(c=>c.type===want);if(!cands.length)return false;
+  const cands=res.curves.filter(c=>c.type===want);
+  lpNoteSuivi(sk,e,cands.length?null:'sa section n’a plus la même forme');
+  if(!cands.length)return false;
   // candidat : le plus proche du milieu 3D mémorisé (identité), sinon de la position 2D
   const here=()=>{
     if(e.t==='circle'){const C=P[e.pc];return C?[C.x,C.y]:null;}

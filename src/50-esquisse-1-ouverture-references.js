@@ -17,6 +17,7 @@ function sketchFaceLabel(sk){
   if(!sk)return '?';
   if(sk.fao)return 'XY du posage'; // V0.23.20 : esquisse FAO
   if(sk.plane==='CG'){const el=sk.cg&&cgGet(sk.cg.id);return (el?el.name:'construction ?')+(sk.cg&&sk.cg.sub?' · '+sk.cg.sub:'');}
+  if(sk.plane==='FACE'&&sk.origin&&sk.planFige)return 'plan figé @('+sk.origin.map(v=>(+v).toFixed(1)).join(', ')+')'; // V0.99.82 : lien à la face coupé
   if(sk.plane==='FACE'&&sk.origin)return 'FACE @('+sk.origin.map(v=>(+v).toFixed(1)).join(', ')+')'+(sk.host&&sk.host.name?' · '+sk.host.name:(!(sk.host&&sk.host.feat)&&sk.hostFace&&sk.hostFace.nom?' · '+(sk.hostFace.name||'face nommée'):''));
   return sk.plane;
 }
@@ -365,7 +366,7 @@ function skFaceParNom(L,ref){
 }
 function skFaceNommeeSuit(sk){
   // → true si le plan de l'esquisse a bougé
-  if(!sk||sk.plane!=='FACE'||(sk.host&&sk.host.feat)||!sk.axN||!sk.origin)return false;
+  if(!sk||sk.plane!=='FACE'||sk.planFige||(sk.host&&sk.host.feat)||!sk.axN||!sk.origin)return false; // planFige : lien coupé (50-esquisse-97)
   if(projImportsEnAttente())return false;
   const L=skFacesPlanes(sk);if(!L||!L.length)return false;
   const N=new THREE.Vector3(+sk.axN[0]||0,+sk.axN[1]||0,+sk.axN[2]||0);
@@ -518,7 +519,7 @@ function projEtat(sk){
 }
 function projEstProjetee(sk,e){
   // même règle que la boucle de mise à jour : projetée déclarée, ou ligne de construction aux deux bouts fixes
-  return !!(e&&(e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e))));
+  return !!(e&&(e.proj||e.isProj||(e.construction&&e.t==='line'&&!e.sansLien&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e))));
 }
 function projSimple(sk){
   return !sk.entities.some(e=>e&&(e.isect||e.skSrc||e.ext||((e.orig||e.pierce)&&e.t==='cpoint')));
@@ -551,13 +552,15 @@ function updateAssociativeProjections1(sk){
     if(e.skSrc){if(skpTrack(sk,e))changed=true;continue;} // projection d'une autre esquisse (50-esquisse-8)
     if(e.orig&&e.t==='cpoint'){if(skOrigTrack(sk,e))changed=true;continue;} // centre de repère (50-esquisse-7)
     if(e.pierce&&e.t==='cpoint'){if(skPlTrackPierce(sk,e))changed=true;continue;} // V0.20.1 : traversée du plan
-    const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e));
+    const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&!e.sansLien&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e));
     if(!isProj) continue;
     // V0.8.1 : arête d'un autre composant — ses arêtes, vues depuis ce composant
     let EO;
     if(e.ext){
       if(typeof asmSkExtEdges!=='function')continue;
-      EO=asmSkExtEdges(e.ext);if(!EO)continue;
+      EO=asmSkExtEdges(e.ext);
+      if(!EO){lpNoteExt(sk,e,false);continue;} // V0.99.82 : instance disparue → ⚠ Liens perdus (50-esquisse-97)
+      lpNoteExt(sk,e,true);
       const sg=asmSkExtSig(e.ext);if(sg!=null)e.ext.sig=sg;
     }
     if(e.t==='line'){
@@ -966,6 +969,7 @@ function openSketch(id){
   // Les mises à niveau ci-dessus (rdV, chk, audit) ne sont pas une modification : la référence du
   // filet les inclut, sans quoi ouvrir puis fermer une esquisse laissait une étape « vide »
   try{docBaseSync();}catch(e){}
+  try{lpAuto(skEdit);}catch(e){} // V0.99.82 : liens perdus → la fenêtre s'ouvre (50-esquisse-97)
 }
 function skIsGhost(sk){
   // Esquisse fantôme : rien de dessiné et rien ne la cite. Elle encombrerait le fil pour rien.
@@ -985,6 +989,7 @@ function skGhostUndo(sk){
 }
 function closeSketch(save){
   try{if(skDimEditInp)skDimEditInp._cancel();}catch(e){} // V0.11.23
+  try{if(skLienRe)lpReAnnuler();}catch(e){} // V0.99.82 : Réattribuer en cours → la fenêtre des liens perdus revient
   skOpenAt=0;
   $('sketchOverlay').classList.remove('open');
   try{$('skStatWrap').style.display='none';}catch(e){}

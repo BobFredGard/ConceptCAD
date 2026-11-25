@@ -354,7 +354,10 @@ function skOrigMaterialize(sk,p){
 }
 function skOrigTrack(sk,e){
   // rejeu : le centre projeté suit son repère (repère de construction déplacé, esquisse déplacée)
-  const Q=sk.points[e.p],p=skOrigPos3(e.orig);if(!Q||!p)return false;
+  const Q=sk.points[e.p],p=skOrigPos3(e.orig);
+  // V0.99.82 : repère supprimé → ⚠ Liens perdus (50-esquisse-97)
+  if(Q&&e.orig&&e.orig.cg)lpNoteSuivi(sk,e,p?null:'son repère n’existe plus');
+  if(!Q||!p)return false;
   const q=skOrigTo2(sk,p);if(Math.hypot(q[0]-Q.x,q[1]-Q.y)<=1e-6)return false;
   Q.x=q[0];Q.y=q[1];return true;
 }
