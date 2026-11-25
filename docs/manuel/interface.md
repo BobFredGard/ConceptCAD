@@ -2,6 +2,8 @@
 
 # Interface
 
+![Le ruban de l’espace CAO, avec la liste « Créer » ouverte : chaque fonction, son raccourci et son épingle](../captures/cao-menus.png)
+
 Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **RENDU**.
 - **Bandeau** : barre rapide (annuler, rétablir, fichiers), **recherche de commandes** (`Ctrl+K`), état du noyau, **Régénérer**, nom du document (● = modifications non enregistrées ; les calculs faits en fond, comme la remise à jour des parcours FAO, ne l’allument pas) et version.
 - **Ruban à icônes** propre à chaque espace ; en esquisse, il laisse la place au bandeau d'esquisse.

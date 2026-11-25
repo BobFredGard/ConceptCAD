@@ -133,6 +133,7 @@
   - Comme le post Fusion des Spinner : table remise à plat par `CYCLE800` en début de programme, plan redonné après chaque changement d'outil, brut décrit à la CN par `WORKPIECE` (« box » de la simulation Siemens).
 - **Exporter G-code** : un programme par posage non gelé ; le menu du posage exporte le sien seul. Une fenêtre « Enregistrer sous » permet de choisir le dossier et le nom du programme (plusieurs posages : choix du dossier, un fichier par posage). Le dernier dossier choisi est proposé la fois suivante. Sous Firefox, le programme part dans les Téléchargements comme avant.
 - **G-code** multi-outils, cycles du dialecte (CYCLE81 à 84 ; Fagor G81 avec temporisation K, G83 compté depuis le plan d’approche, G84), avance F modale. *Validez toujours un premier programme à vide sur la machine.*
+- **Essais sur machine** : les programmes ont été essayés sur une vraie **Fagor 8065** avant la V1.0.0 ; les dernières versions n’ont corrigé que de tous petits défauts relevés pendant ces essais.
 - **Cache des parcours** : rien n'est recalculé tant que la géométrie ne change pas.
 
 ---

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**784 versions**, de `2026-09-28b` à `V0.99.97` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**785 versions**, de `2026-09-28b` à `V1.0.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8719,3 +8719,20 @@ Sert aussi à la révolution et au balayage (même constructeur de contour).
 - Renfort, opération 3 : approche droit au-dessus de l'entrée, niveau −9,5, sortie, retour à plat au début de l'entrée, rapide sur place jusqu'à −18,5, 1 mm en avance, même entrée à −19,5 ; plus aucune remontée entre les niveaux (rapides 89,4 → 59,1 mm). Opération 2 : approche droit au-dessus de l'entrée en matière (bout droit), plus de traversée (rapides 284 → 40,5 mm).
 
 **Test** : `tests/test_fao_contour_niveaux.cjs` (nouveau, 19 contrôles : deux niveaux, même entrée, aucun rapide entre les niveaux, passage à plat puis plongée sur place, dans le libre, rapides, pente inchangée, sortie loin = remontée, vide : passages gardés, rapide sur place jusqu'à 1 mm au-dessus, approche au-dessus de la vraie entrée, purge hors brut : descente gardée, retrait comme avant, remontée seulement à l'endroit retiré, descente sur place sans remonter, zone : idem, clé) ; inscrit dans tests/run.cjs et run-fast.cjs ; `test_fao_arcs_correction` : le passage entre niveaux compte comme une plongée. npm run ci vert. Banc des parcours : 26/31 identiques, les 5 contours sur profil changent comme attendu et sont acceptés (rapides −23 à −80 %, remontées −30 à −89 %, temps −0,3 à −2,9 %). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.0 - Première version stable : essais machine sur une Fagor 8065, README refait avec les nouveaux menus et de nouvelles captures
+
+**Décision de Fred** : « Livre et on passe en V1.0.0. Il faut indiquer que les essais machine ont été faits sur une Fagor 8065 et que les dernières versions ont corrigé de tous petits défauts. », puis « Peut-être mettre à jour le Readme en profondeur dans cette V1.0.0 », « Avec les nouveaux menus », « et de nouvelles captures écran ».
+
+**Essais machine** : les programmes de ConceptCAD ont été essayés sur une vraie machine, une **Fagor 8065**. Les dernières versions n'ont corrigé que de tous petits défauts relevés pendant ces essais (V0.99.84 à V0.99.97 : pente et entrées des contours, fraise 3 tailles, surfaçage, usinage grande vitesse HSC, congés en G2 / G3, chanfrein à pointe vive, correction de Ø des fraises, liaisons entre les niveaux).
+
+**Numéro** : V0.99.97 → **V1.0.0** (Fred : la V1.0 vient après ses essais sur machine).
+
+**README refait en profondeur** :
+- Encadré V1.0.0 sous la version : essais machine sur une Fagor 8065, tout petits défauts corrigés par les dernières versions.
+- Nouvelle section **Les menus** : bandeau du haut, ruban en groupes façon Fusion 360 (nom du groupe = liste de toutes ses fonctions avec leur raccourci, épingle 📌), arborescence, panneau Paramètres flottant, timeline ; tableau des groupes du ruban de chaque espace (CAO, Assemblage, FAO, PLAN, RENDU), lus dans `src/97-interface-moderne.js`.
+- Sections CAO, Assemblage, FAO, PLAN et RENDU mises à jour avec ce qui est arrivé depuis V0.33.0 : texte dans l'esquisse, congé variable, gorge de joint torique, import IGES, relations entre faces, « Jusqu'à » une autre pièce, joints et douilles Ensat, Ébauche 3D Escargot / Contours / brut restant, gamme de perçage automatique, G2 / G3, HSC Fagor, calculs multicœurs, filigranes, rugosité, coupe locale… ; nouvelles sections « Faire dessiner par l'IA » et « Sur téléphone et tablette » ; Premiers pas : groupes du ruban.
+
+**Captures neuves** (`docs/captures/`, prises par `node tools/captures.cjs` dans un vrai Chromium, interface V1.0.0) : les 7 captures de l'interface refaites (elles dataient de V0.33.0, avant le bandeau sombre et les groupes du ruban), et 2 nouvelles : `cao-menus.png` (liste « Créer ▾ » ouverte) et `assemblage-engrenages.png` (Engrenages en mode Assembler). `tools/captures.cjs` : captures `menus` et `assemblage`, message d'état vidé avant la photo (`calme`). L'image de tête en lancer de rayons (`rendu-pedale.jpg`) est gardée. Manuel : images ajoutées aux pages Interface et Assemblage, ligne « Essais sur machine » dans la page FAO.
+
+**Test** : `node build.js --check` ; `npm run ci` vert. Aucun changement de calcul : CACHE_VER et FORMES_VER inchangés.

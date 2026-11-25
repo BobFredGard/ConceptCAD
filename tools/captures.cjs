@@ -25,6 +25,8 @@ async function ouvrir(page,nom){
   await page.waitForTimeout(800);
 }
 const espace=(page,w)=>page.locator('[data-mfws="'+w+'"]').first().click().then(()=>page.waitForTimeout(1500));
+// V1.0.0 : message d'état vidé avant la photo (ex. « trajectoires écrites par un ancien moteur » des exemples)
+const calme=page=>page.evaluate(()=>{try{faceEl.textContent='';}catch(e){}});
 const photo=(page,nom)=>page.screenshot({path:path.join(SORTIE,nom+'.png')}).then(()=>console.log('  '+nom+'.png'));
 
 const ruban=(page,nom)=>page.locator('#mfRibbon button.mfRb:visible',{hasText:nom}).first();
@@ -37,8 +39,27 @@ async function regenerer(page){
 
 const CAPTURES={
   // un document par capture : ouvrir un 2e fichier par-dessus le 1er (modifié) attend une confirmation
-  async cao(page){await ouvrir(page,'Perçages');await photo(page,'cao-percages');},
-  async caoCrochet(page){await ouvrir(page,'Crochet');await photo(page,'cao-crochet');},
+  async cao(page){await ouvrir(page,'Perçages');await calme(page);await photo(page,'cao-percages');},
+  async caoCrochet(page){await ouvrir(page,'Crochet');await calme(page);await photo(page,'cao-crochet');},
+  // V1.0.0 : les menus du ruban (groupes façon Fusion 360) — liste « Créer ▾ » ouverte
+  async menus(page){
+    await ouvrir(page,'Perçages');await calme(page);
+    await page.locator('#mfRibbon .mfGrpT:visible',{hasText:'Créer'}).first().click();
+    await page.waitForTimeout(800);
+    await photo(page,'cao-menus');
+  },
+  // V1.0.0 : assemblage (paire d'engrenages) en mode Assembler, ruban des composants
+  async assemblage(page){
+    // la racine d'un assemblage n'a pas de corps à elle : attendre la fin du rejeu seulement
+    await page.setInputFiles('#fileProj',EX('Engrenages'));
+    await page.waitForFunction(()=>doc&&doc.name==='Engrenages'&&builtEngine==='exact'&&rebuildDepth===0,null,{timeout:180000});
+    await page.waitForTimeout(3000);
+    await page.evaluate(()=>{if(typeof asmMode!=='undefined'&&asmMode!=='asm')asmToggle();});
+    // un peu plus près : les engrenages remplissent la vue
+    await page.evaluate(()=>{const t=controls.target;camera.position.sub(t).multiplyScalar(0.62).add(t);controls.update();});
+    await page.waitForTimeout(3000);await calme(page);
+    await photo(page,'assemblage-engrenages');
+  },
   async fao(page){
     await ouvrir(page,'Perçages');
     await espace(page,'fao');
