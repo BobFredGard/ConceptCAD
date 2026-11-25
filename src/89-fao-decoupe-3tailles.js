@@ -38,9 +38,12 @@ function faoSlotCutGeom(op,tool){
   const zd=faoR1(R+10);
   const lin=isFinite(+op.slotLin)&&+op.slotLin>=0?+op.slotLin:zd;
   const lout=isFinite(+op.slotLout)&&+op.slotLout>=0?+op.slotLout:zd;
-  const z0=+op.zbot;
+  // V0.99.93 : « à travers » (tronçonner) — le plan de coupe est le DESSUS du disque, la découpe
+  // descend de sa hauteur sous ce plan et traverse toute la matière (pièce et brut)
+  const thru=op.slotThru===true&&dir!=='edge';
+  const z0=thru?+op.zbot-h:+op.zbot;
   return {D:g.D,R:R,ep:ep,col:g.dDeg.v,h:h,dr:dr,z0:z0,z1:z0+h,pmax:pmax,lin:lin,lout:lout,zDef:zd,
-    dir:dir,side:faoSlotCutSide(op)};
+    dir:dir,side:faoSlotCutSide(op),thru:thru};
 }
 function faoSlotCutWalls(mesh,o){
   // Faces de la pièce que le disque vient tailler. Selon X / Y : section de la pièce dans
@@ -61,6 +64,8 @@ function faoSlotCutWalls(mesh,o){
   }
   const s=o.stock;
   if(!(x1>=x0)&&!mesh&&s&&faoStockValid(s)&&z1>+s.z0&&z0<+s.z1){ x0=+s.x0; x1=+s.x1; y0=+s.y0; y1=+s.y1; }
+  // V0.99.93 : à travers, la matière à couper est aussi le brut (sous la pièce, il est seul)
+  if(o.thru&&s&&faoStockValid(s)&&z1>+s.z0&&z0<+s.z1){ add(+s.x0,+s.y0); add(+s.x1,+s.y1); }
   if(!(x1>=x0&&y1>=y0))return out;
   const r3=function(v){return Math.round(v*1000)/1000;};
   out.box={x0:r3(x0),x1:r3(x1),y0:r3(y0),y1:r3(y1)};
@@ -68,11 +73,11 @@ function faoSlotCutWalls(mesh,o){
     if(o.dir==='Y'){
       const xw=sd==='-'?x0:x1;
       // A→B selon +Y : gauche = −X
-      out.walls.push({W:[[xw,y0],[xw,y1]],s:sd==='-'?1:-1,side:sd==='-'?'X−':'X+',at:r3(xw),from:r3(y0),to:r3(y1)});
+      out.walls.push({W:[[xw,y0],[xw,y1]],s:sd==='-'?1:-1,side:sd==='-'?'X−':'X+',at:r3(xw),from:r3(y0),to:r3(y1),wid:x1-x0});
     }else{
       const yw=sd==='-'?y0:y1;
       // A→B selon +X : gauche = +Y
-      out.walls.push({W:[[x0,yw],[x1,yw]],s:sd==='-'?-1:1,side:sd==='-'?'Y−':'Y+',at:r3(yw),from:r3(x0),to:r3(x1)});
+      out.walls.push({W:[[x0,yw],[x1,yw]],s:sd==='-'?-1:1,side:sd==='-'?'Y−':'Y+',at:r3(yw),from:r3(x0),to:r3(x1),wid:y1-y0});
     }
   });
   return out;
@@ -135,6 +140,8 @@ function faoGenSlotCut(mesh,o){
   o=o||{};
   const moves=[];
   const diag={slot:1,cut:1,dir:o.dir||'X',walls:[],levels:0,passes:0,noEntry:0,neck:0,neckN:0,thick:0,over:0,noPart:0,trav:0,zb:null,zt:null};
+  const thru=!!o.thru&&o.dir!=='edge'; // V0.99.93 : à travers (plan de coupe = dessus du disque)
+  if(thru){diag.thru=1;diag.thruW=0;}
   try{moves.diag=diag;}catch(e){}
   const D=isFinite(+o.toolD)&&+o.toolD>0?+o.toolD:10,r=D/2;
   const ep=isFinite(+o.ep)&&+o.ep>0?+o.ep:Math.max(1,D*0.12);
@@ -145,24 +152,32 @@ function faoGenSlotCut(mesh,o){
   if(!isFinite(zbot))return moves;
   const r3=function(v){return Math.round(v*1000)/1000;};
   const hS=isFinite(+o.slotH)&&+o.slotH>0?+o.slotH:ep;
-  const zb=zbot+RA.axial,zt=zbot+hS-RA.axial;
-  diag.zb=r3(zbot);diag.zt=r3(zbot+hS);
+  const zb0=thru?zbot-hS:zbot; // dessous de la découpe
+  const zb=zb0+RA.axial,zt=zb0+hS-RA.axial;
+  diag.zb=r3(zb0);diag.zt=r3(zb0+hS);
   if(zt-zb<ep-1e-6)diag.thick=r3(ep-Math.max(0,zt-zb));
   // --- parois à tailler
   let walls=[];
-  if(o.dir==='edge'){const w=faoSlotCutEdgeWall(mesh,o.limit,zbot,zbot+hS);if(w)walls=[w];}
-  else walls=faoSlotCutWalls(mesh,{z0:zbot,z1:zbot+hS,dir:o.dir==='Y'?'Y':'X',side:o.side,stock:o.stock}).walls;
+  if(o.dir==='edge'){const w=faoSlotCutEdgeWall(mesh,o.limit,zb0,zb0+hS);if(w)walls=[w];}
+  else walls=faoSlotCutWalls(mesh,{z0:zb0,z1:zb0+hS,dir:o.dir==='Y'?'Y':'X',side:o.side,stock:o.stock,thru:thru}).walls;
   diag.walls=walls.map(function(w){return {side:w.side,at:w.at,from:w.from,to:w.to};});
   if(!walls.length){diag.noPart=1;return moves;}
   // --- passes : distance du centre du disque à la face (rayon + surépaisseur − profondeur)
   const dr=isFinite(+o.dr)?+o.dr:0;
-  let dFin=r+RA.radial-dr;
-  if(dFin<0.05){diag.over=1;dFin=0.05;}
   const fin=isFinite(+o.fin)&&+o.fin>0?+o.fin:0;
   const nR=Math.max(1,Math.min(20,Math.round(isFinite(+o.nR)?+o.nR:1)));
   const aeR=isFinite(+o.ae)&&+o.ae>0?+o.ae:Math.max(0.2,D*0.1);
-  const offs=[];for(let k=nR-1;k>=0;k--)offs.push(dFin+fin+k*aeR);
-  if(fin>0)offs.push(dFin);
+  const offsFor=function(w){
+    // à travers : toute la largeur de matière + 1 mm de sortie (des deux côtés : la moitié + 1,
+    // soit 2 mm de recouvrement au milieu), sans surépaisseur de paroi
+    let drW=dr,rad=RA.radial;
+    if(thru){const W=isFinite(w.wid)?w.wid:0;if(W>diag.thruW)diag.thruW=r3(W);drW=(o.side==='both'?W/2:W)+1;rad=0;}
+    let dFin=r+rad-drW;
+    if(dFin<0.05){diag.over=1;dFin=0.05;}
+    const offs=[];for(let k=nR-1;k>=0;k--)offs.push(dFin+fin+k*aeR);
+    if(fin>0)offs.push(dFin);
+    return offs;
+  };
   const climb=o.sens!=='opp';
   const zd=r+10;
   const lin=isFinite(+o.lin)&&+o.lin>=0?+o.lin:zd,lout=isFinite(+o.lout)&&+o.lout>=0?+o.lout:zd;
@@ -195,7 +210,7 @@ function faoGenSlotCut(mesh,o){
   const unit=function(a,b){const l=Math.hypot(b[0]-a[0],b[1]-a[1]);return l>1e-12?[(b[0]-a[0])/l,(b[1]-a[1])/l]:[1,0];};
   walls.forEach(function(w){
     // sens de marche : avalant = matière à droite de l'avance, donc côté libre à gauche
-    const fwd=(w.s>0)===climb;
+    const fwd=(w.s>0)===climb,offs=offsFor(w);
     // niveau par niveau (de haut en bas), de la passe la moins profonde à la plus profonde
     levels.forEach(function(z){
       offs.forEach(function(d){
@@ -235,7 +250,7 @@ function faoSlotCutMoves(op,job,base){
   const mv=faoGenSlotCut(ms,Object.assign({},base,{
     toolD:G.D,ep:G.ep,rn:G.col/2,zbot:+op.zbot,slotH:op.slotH,dr:G.dr,lin:G.lin,lout:G.lout,
     dir:G.dir,side:G.side,limit:op.limit,ap:op.ap,nR:op.nR,ae:op.ae,fin:op.fin,
-    radial:RA.radial,axial:RA.axial,sens:op.sens==='opp'?'opp':'climb',stock:job&&job.stock,
+    radial:RA.radial,axial:RA.axial,sens:op.sens==='opp'?'opp':'climb',stock:job&&job.stock,thru:G.thru,
     clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null,part:ob?ob.part:null}));
   try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
   return mv;
@@ -244,7 +259,7 @@ function faoSlotCutLabel(op,job){
   const t=faoToolById(job,op.toolId),G=faoSlotCutGeom(op,t),f=function(z){return +(+z).toFixed(3);};
   const tr=G.dir==='edge'?((op.limit&&op.limit.nEdges)?'le long de '+op.limit.nEdges+' arête(s)':'(arête à sélectionner)')
     :'selon '+G.dir+' '+(G.side==='both'?'des deux côtés':'côté '+(G.dir==='Y'?'X':'Y')+(G.side==='+'?'+':'−'));
-  return 'Découpe 3 tailles '+tr+' Z '+f(G.z0)+' -> '+f(G.z1)+' prof. '+f(G.dr);
+  return 'Découpe 3 tailles '+tr+' Z '+f(G.z0)+' -> '+f(G.z1)+(G.thru?' à travers':' prof. '+f(G.dr));
 }
 // Fiche de l'opération (src/88-fao-80-interface.js)
 function faoSlotCutRows(d,setup,op){
@@ -297,32 +312,40 @@ function faoSlotCutRows(d,setup,op){
   if(G){
     const r2=faoRow();
     r2.appendChild(faoLab(dir==='edge'?'décalage dans la paroi':'profondeur'));
-    r2.appendChild(faoNumFx(op,'slotDr',G.dr,function(v){op.slotDr=v;},48,0.5,
+    if(dir!=='edge')r2.appendChild(faoSel([ // V0.99.93 : tronçonner
+      ['val','valeur','Le disque entre dans la face de la pièce de la profondeur donnée ; le plan de coupe est le dessous du disque.'],
+      ['thru','à travers','Tronçonner : le disque traverse toute la matière (pièce et brut) et ressort de l’autre côté ; le plan de coupe est le dessus du disque (la face qui reste sous la pièce).']],
+      G.thru?'thru':'val',function(v){ if(v==='thru')op.slotThru=true; else delete op.slotThru; },
+      'Profondeur donnée, ou à travers (tronçonner).'));
+    if(!G.thru)r2.appendChild(faoNumFx(op,'slotDr',G.dr,function(v){op.slotDr=v;},48,0.5,
       dir==='edge'?'Décale la fraise par rapport à l’arête : + = elle entre plus loin dans la matière, − = elle reste en retrait (0 = jusqu’à l’arête).'
         :'Profondeur de la découpe depuis la face la plus avancée de la pièce (mm) : le disque vient tout seul sur la face, puis entre de cette valeur. Au plus '+(+G.pmax.toFixed(2))+' mm avant que le col frotte.'));
     r2.appendChild(faoLab('hauteur'));
     r2.appendChild(faoNumFx(op,'slotH',G.h,function(v){op.slotH=Math.max(0.05,v);},48,0.1,
-      'Hauteur de la découpe au-dessus du plan de coupe (défaut : l’épaisseur du disque, '+G.ep+' mm = une seule passe).'));
+      (G.thru?'Hauteur de la découpe sous le plan de coupe':'Hauteur de la découpe au-dessus du plan de coupe')+' (défaut : l’épaisseur du disque, '+G.ep+' mm = une seule passe).'));
     d.appendChild(r2);
     const inf=document.createElement('div');inf.className='fao-meta';
     const gd=op.geoDiag||{};
     const nZ=G.h>G.ep+1e-6?Math.ceil((G.h-G.ep)/Math.max(0.05,Math.min(G.ep,+op.ap>0?+op.ap:G.ep))-1e-6)+1:1;
-    let s=(isFinite(G.z0)?'Découpe de Z '+(+G.z0.toFixed(3))+' à Z '+(+G.z1.toFixed(3))+' (plan de coupe : Bas, onglet Hauteurs) · ':'')+
+    let s=(isFinite(G.z0)?'Découpe de Z '+(+G.z0.toFixed(3))+' à Z '+(+G.z1.toFixed(3))+(G.thru?' (plan de coupe = dessus du disque, onglet Hauteurs) · ':' (plan de coupe : Bas, onglet Hauteurs) · '):'')+
       nZ+' passe(s) en hauteur · disque Ø'+G.D+' × '+G.ep+' · col Ø'+G.col+' : '+(+G.pmax.toFixed(2))+' mm de profondeur au plus';
     if(gd.cut&&(gd.walls||[]).length&&!op.stale)s+=' · '+gd.walls.map(function(w){
       return w.at!==null&&w.at!==undefined?('face '+w.side+' à '+(dir==='Y'?'X ':'Y ')+w.at+', de '+(dir==='Y'?'Y ':'X ')+w.from+' à '+w.to):'arête';}).join(' ; ');
     if(gd.cut&&gd.trav>0&&!op.stale)s+=' · traverse jusqu’à '+gd.trav+' mm de brut avant la pièce'; // V0.99.91
+    if(G.thru&&gd.cut&&gd.thruW>0&&!op.stale)s+=' · à travers : '+gd.thruW+' mm de matière (+ 1 mm de sortie)'; // V0.99.93
     inf.textContent=s;
     d.appendChild(inf);
     const warn=function(x){const a=document.createElement('div');a.className='fao-alert';a.textContent='⚠ '+x;d.appendChild(a);};
     if(gd.cut&&!op.stale){
-      if(gd.noPart)warn(dir==='edge'?'Aucune arête : cliquez l’arête à suivre.':'Aucune pièce à la hauteur de la découpe : vérifiez le plan de coupe (Bas) dans l’onglet Hauteurs.');
+      if(gd.noPart)warn(dir==='edge'?'Aucune arête : cliquez l’arête à suivre.':G.thru?'Ni pièce ni brut sous le plan de coupe : vérifiez le plan de coupe dans l’onglet Hauteurs.'
+        :'Aucune pièce à la hauteur de la découpe : vérifiez le plan de coupe (Bas) dans l’onglet Hauteurs. Pour couper sous la pièce (tronçonner) : profondeur « à travers ».');
       if(gd.noEntry)warn(gd.noEntry+' passe(s) où le disque descend ou remonte dans la matière : quelque chose gêne là où il descend (autre partie de la pièce, bridage…) : changez la longueur de la zone d’entrée ou de sortie (onglet Entrées).');
       if(gd.neck>0)warn('Le col (Ø'+G.col+') frotte la matière au-dessus de la découpe (jusqu’à '+gd.neck+' mm) : profondeur trop grande pour cette fraise (maxi '+(+G.pmax.toFixed(2))+' mm), ou trop de brut à traverser devant la pièce.');
       if(gd.thick>0)warn('Disque plus épais que la découpe : il taille '+gd.thick+' mm plus haut que demandé.');
-      if(gd.over)warn('Profondeur plus grande que le rayon du disque : la fraise est ramenée sur la face.');
+      if(gd.over)warn(G.thru?'Matière trop large pour la traverser d’un seul côté avec ce disque (au plus son rayon, '+G.R+' mm) : coupez des deux côtés (Côté : Les deux) ou prenez un plus grand disque.'
+        :'Profondeur plus grande que le rayon du disque : la fraise est ramenée sur la face.');
     }
-    if(!(G.dr>0)&&dir!=='edge')warn('Profondeur 0 : le disque touche la pièce sans la tailler.');
+    if(!(G.dr>0)&&dir!=='edge'&&!G.thru)warn('Profondeur 0 : le disque touche la pièce sans la tailler.');
   }
   d.appendChild(faoH('Passes (mm)'));
   const rP=faoRow();

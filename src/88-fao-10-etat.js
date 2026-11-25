@@ -186,7 +186,7 @@ function faoSanitiseOps(s){
       // V0.99.85 : fraise 3 tailles — hauteur et décalages de la rainure (absents = défauts)
       if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
       ['slotDz','slotDr'].forEach(function(k){if(k in op&&!isFinite(+op[k]))delete op[k];});
-      ['cutDir','cutSide'].forEach(function(k){delete op[k];});
+      ['cutDir','cutSide','slotThru'].forEach(function(k){delete op[k];});
       // V0.99.89 : entrée droite de la 3 tailles (absent = arc) et ses zones d'entrée / sortie
       if(op.slotLead!=='droite'){delete op.slotLead;delete op.slotLin;delete op.slotLout;}
       else ['slotLin','slotLout'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
@@ -198,13 +198,14 @@ function faoSanitiseOps(s){
       if('slotDr' in op&&!isFinite(+op.slotDr))delete op.slotDr;
       ['slotLin','slotLout'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
       if(op.cutDir!=='edge')delete op.limit;
+      if(op.slotThru!==true||op.cutDir==='edge')delete op.slotThru; // V0.99.93 : à travers (absent = profondeur)
       ['cside','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotDz','slotLead'].forEach(function(k){delete op[k];});
     }else if(op.type==='chamfer'){ // V0.7.9 : chanfrein — côté, entrées, recouvrement, largeur, décalage de pointe
       if(op.cside!=='ext'&&op.cside!=='int'&&op.cside!=='auto')delete op.cside;
       ['leadR','overlap','w','tipOff','z'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&(k==='z'||+op[k]>=0)))delete op[k];});
-      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout','slotLead'].forEach(function(k){delete op[k];});
+      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout','slotLead','slotThru'].forEach(function(k){delete op[k];});
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
-    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout','slotLead'].forEach(function(k){delete op[k];});
+    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout','slotLead','slotThru'].forEach(function(k){delete op[k];});
     if(!(op.type==='contour'&&op.strat==='profil'))delete op.sautVide;
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout

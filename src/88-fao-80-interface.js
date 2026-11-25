@@ -1223,7 +1223,9 @@ function faoPlanesCard(setup,op){
   if(faoHtsOps(op)){
     const slot=faoContourSlotOp(op,setup); // V0.99.85 : fraise 3 tailles — hauteur de rainure dans la fiche Contour
     const cut=faoSlotCut(op); // V0.99.86 : découpe 3 tailles — Bas = plan de coupe
-    if(cut)box.appendChild(faoHelp('Plan de coupe = dessous du disque (référence + décalage, ou une face cliquée). Haut : non utilisé — la découpe monte de sa hauteur (onglet Zone).'));
+    if(cut)box.appendChild(faoHelp(op.slotThru===true&&op.cutDir!=='edge' // V0.99.93 : à travers
+      ?'Plan de coupe = DESSUS du disque, la face qui reste sous la pièce (référence + décalage, ou une face cliquée ; ex. Bas du modèle − 1 = 1 mm de surépaisseur). Haut : non utilisé — la découpe descend de sa hauteur sous ce plan (onglet Zone).'
+      :'Plan de coupe = dessous du disque (référence + décalage, ou une face cliquée). Haut : non utilisé — la découpe monte de sa hauteur (onglet Zone).'));
     else if(slot)box.appendChild(faoHelp('Haut : non utilisé par la fraise 3 tailles — la rainure monte de sa hauteur (fiche Contour) au-dessus du Bas.'));
     else box.appendChild(faoHtRow('top','Haut',setup,op));
     box.appendChild(faoHtRow('bot',cut?'Plan de coupe':'Bas',setup,op));
@@ -1297,8 +1299,8 @@ const FAO_TAB_HELP={
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
 // V0.99.86 : aide propre à la découpe 3 tailles (src/89-fao-decoupe-3tailles.js)
 const FAO_TAB_HELP_CUT={
-  'Zone':'Sens de la découpe (X, Y ou une arête), côté de la pièce, profondeur depuis sa face et hauteur de la découpe.',
-  'Hauteurs':'Dégagement, Retrait, puis le plan de coupe (dessous du disque) : depuis le brut, le modèle ou une face cliquée, plus un décalage.',
+  'Zone':'Sens de la découpe (X, Y ou une arête), côté de la pièce, profondeur depuis sa face ou à travers (tronçonner), et hauteur de la découpe.',
+  'Hauteurs':'Dégagement, Retrait, puis le plan de coupe (dessous du disque ; dessus en « à travers ») : depuis le brut, le modèle ou une face cliquée, plus un décalage.',
   'Entrées':'Le disque descend hors de la pièce, entre tout droit et ressort tout droit : longueur des zones d’entrée et de sortie.'};
 function faoTabHelp(n,op){ return (op&&op.type==='slotcut'&&FAO_TAB_HELP_CUT[n])||FAO_TAB_HELP[n]||''; }
 function faoTabOf(t){

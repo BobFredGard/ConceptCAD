@@ -11,7 +11,10 @@
 // 6. défauts, sanitise, bouton, aiguillage (brut ajusté / brut plus grand), libellé, fiche ;
 // 7. V0.99.91 : le brut est de la matière à couper — brut plus long que la pièce : le disque le
 //    traverse, zones comptées depuis le bord du brut, descente hors du brut ; brut aussi devant la
-//    face : traversé aussi, et le col frotte s'il y en a trop.
+//    face : traversé aussi, et le col frotte s'il y en a trop ;
+// 8. V0.99.93 : « à travers » (tronçonner, demande de Fred sur le Renfort : « couper la pièce après
+//    usinage par dessous, à 1mm de la face finie », choix « Plan = dessus du disque ») — plan de
+//    coupe = dessus du disque, le disque traverse le brut sous la pièce, d'un côté ou des deux.
 const {loadApp}=require('./appvm.cjs');
 const vm=require('vm');
 (async()=>{
@@ -133,6 +136,54 @@ const vm=require('vm');
     "const txt=card?all(card).map(n=>String(n.textContent||'')).join('|'):'';",
     "att(card&&/Zone de découpe/.test(txt)&&/Trajet/.test(txt)&&/profondeur/.test(txt)&&/zone d’entrée/.test(txt)&&/zone de sortie/.test(txt)&&/Plan de coupe/.test(txt),'fiche : trajet, profondeur, zones d’entrée et de sortie, plan de coupe');",
     "att(card&&!/Attaches/.test(txt)&&!/Îlot/.test(txt),'fiche : ni attaches ni îlot');",
+    // --- 8. V0.99.93 : à travers (tronçonner) — comme le Renfort : barre 251 × 17 posée sur 15 mm de
+    // brut, plan de coupe 1 mm sous la face finie = dessus du disque ; disque Ø80 × 4, col Ø32
+    "const BAR=mkBox(-125.5,125.5,-8.5,8.5,-18.5,0),stB={x0:-130.5,y0:-13.5,z0:-33.5,x1:130.5,y1:13.5,z1:1};",
+    "const nkB=function(x,y){return dRect(x,y,-125.5,125.5,-8.5,8.5)<16?0:-1/0;};",
+    "const oT={toolD:80,ep:4,rn:16,secu:30,zbot:-19.5,dir:'X',side:'-',nR:1,fin:0,sens:'climb',stock:stB,thru:true,neckTop:nkB};",
+    "const mT=faoGenSlotCut(BAR,oT),gT=mT.diag||{},cT=cuts(mT);",
+    "p('à travers : diag '+JSON.stringify(gT));",
+    "att(gT.thru===1&&gT.zb===-23.5&&gT.zt===-19.5,'à travers : le plan de coupe est le dessus du disque (Z −23,5 → −19,5)');",
+    "att(gT.walls.length===1&&gT.walls[0].at===-13.5&&gT.walls[0].from===-130.5&&gT.walls[0].to===130.5&&gT.thruW===27,'à travers : sous la pièce, le brut est la matière (face Y− à −13,5, 27 mm de large)');",
+    "att(cT.length>=4&&cT.every(m=>Math.abs(m.y+25.5)<1e-6&&Math.abs(m.z+23.5)<1e-6),'à travers : passe à y −25,5 (le disque sort de 1 mm, à y 14,5), z −23,5');",
+    "att(Math.max.apply(null,cT.map(m=>m.x))===180.5&&Math.min.apply(null,cT.map(m=>m.x))===-180.5,'à travers : descente et remontée hors du brut (X ±180,5)');",
+    "att(gT.neck===0&&!gT.over&&!gT.noPart&&!gT.noEntry,'à travers : col Ø32 à 1 mm de la pièce, aucune alerte');",
+    // des deux côtés : la moitié + 1 de chaque côté, 2 mm de recouvrement au milieu
+    "const mT2=faoGenSlotCut(BAR,Object.assign({},oT,{side:'both'}));const ys2=cuts(mT2).map(m=>m.y);",
+    "att(mT2.diag.passes===2&&ys2.some(y=>Math.abs(y+39)<1e-6)&&ys2.some(y=>Math.abs(y-39)<1e-6),'à travers des deux côtés : passes à y −39 et 39 (disque jusqu’à 1 et −1)');",
+    // hauteur 8 : deux niveaux sous le plan
+    "const gT3=faoGenSlotCut(BAR,Object.assign({},oT,{slotH:8})).diag;",
+    "att(gT3.levels===2&&gT3.zb===-27.5&&gT3.zt===-19.5,'à travers, hauteur 8 : deux niveaux, de −27,5 à −19,5');",
+    // trop large pour un côté : alerte ; des deux côtés : passe
+    "const stW={x0:-130.5,y0:-35,z0:-33.5,x1:130.5,y1:35,z1:1};",
+    "att(faoGenSlotCut(BAR,Object.assign({},oT,{stock:stW})).diag.over===1&&!faoGenSlotCut(BAR,Object.assign({},oT,{stock:stW,side:'both'})).diag.over,'à travers : 70 mm trop large d’un côté pour un disque Ø80, des deux côtés oui');",
+    // sans « à travers », plan sous la pièce : aucune pièce (comportement inchangé)
+    "att(faoGenSlotCut(BAR,Object.assign({},oT,{thru:false,zbot:-24})).diag.noPart===1,'sans « à travers », plan sous la pièce : aucune pièce (inchangé)');",
+    "att(faoSlotCutGeom({zbot:8,slotThru:true,cutDir:'edge'},T3).thru===false&&faoSlotCutGeom({zbot:8,slotThru:true},T3).z0===5,'géométrie : à travers ignoré le long d’une arête ; selon X, la découpe descend sous le plan (Z 5 → 8)');",
+    // sanitise
+    "const sT={id:'t',type:'slotcut',slotThru:true},sT2={id:'t2',type:'slotcut',slotThru:true,cutDir:'edge'},sT3={id:'t3',type:'slotcut',slotThru:1},sT4={id:'t4',type:'contour',strat:'profil',slotThru:true};",
+    "faoSanitiseOps({ops:[sT,sT2,sT3,sT4]});",
+    "att(sT.slotThru===true&&!('slotThru' in sT2)&&!('slotThru' in sT3)&&!('slotThru' in sT4),'sanitise : à travers gardé en découpe selon X / Y seulement');",
+    // aiguillage : brut seulement sous le plan (le dessus déjà usiné, comme après les contours du Renfort)
+    "const T80={id:'T80',num:25,name:'3T D80',kind:'slot',d:80,flutes:10,vc:750,fz:0.015,lc:4};",
+    "const jobT=faoDefaultJob();jobT.stock={x0:-130.5,y0:-13.5,z0:-33.5,x1:130.5,y1:13.5,z1:-19.5};jobT.tools=[T80];",
+    "const opT=faoOpDefaults('slotcut');opT.id='t1';opT.toolId='T80';opT.zbot=-19.5;opT.slotThru=true;jobT.ops=[opT];",
+    "faoActiveMesh=function(){return {mesh:BAR,box:{x0:-125.5,y0:-8.5,x1:125.5,y1:8.5}};};",
+    "let mvT=[];try{mvT=faoOpMoves(opT,jobT);}catch(e){att(false,'à travers, aiguillage : exception '+e.message);}",
+    "p('à travers, aiguillage : diag '+JSON.stringify(opT.geoDiag));",
+    "att(cuts(mvT).length>=4&&cuts(mvT).every(m=>Math.abs(m.y+25.5)<1e-6&&Math.abs(m.z+23.5)<1e-6)&&opT.geoDiag.neck===0&&!opT.geoDiag.noEntry,'à travers, aiguillage : passe à y −25,5, z −23,5, aucune alerte');",
+    // brut encore plein au-dessus (rien d'usiné avant) : le col le frotte → alerte
+    "const jobU=faoDefaultJob();jobU.stock=Object.assign({},stB);jobU.tools=[T80];const opU=Object.assign({},opT,{id:'t2'});jobU.ops=[opU];",
+    "try{faoOpMoves(opU,jobU);}catch(e){att(false,'à travers, brut plein : exception '+e.message);}",
+    "faoActiveMesh=keepAM;",
+    "att(opU.geoDiag&&opU.geoDiag.neck>0,'à travers, brut plein au-dessus de la coupe : le col frotte, alerte (vu '+(opU.geoDiag&&opU.geoDiag.neck)+')');",
+    "att(/Z -23.5 -> -19.5 à travers/.test(faoOpLabel(opT,jobT)),'à travers : libellé '+faoOpLabel(opT,jobT));",
+    "const kT1=JSON.stringify(faoOpSig(opT));delete opT.slotThru;const kT0=JSON.stringify(faoOpSig(opT));opT.slotThru=true;",
+    "att(kT1!==kT0,'clé : « à travers » change le parcours');",
+    "const keepS2=faoSetup;faoSetup=function(){return jobT;};let cardT=null;try{cardT=faoOpCardElement(jobT,opT,0);}catch(e){att(false,'fiche à travers : exception '+e.message);}faoSetup=keepS2;",
+    "const txtT=cardT?all(cardT).map(n=>String(n.textContent||'')).join('|'):'';",
+    "att(/à travers/.test(txtT)&&/dessus du disque/.test(txtT)&&/27 mm de matière/.test(txtT),'fiche à travers : choix, plan = dessus du disque, largeur traversée');",
+    "att(/Pour couper sous la pièce/.test(txt)===false,'fiche ordinaire : pas d’alerte sans raison');",
     "if(ATT.length){p('');p('ECHECS ('+ATT.length+') :');ATT.forEach(function(m){p('  x '+m);});}",
     "else p('TOUT EST CONFORME');",
     "return {txt:P.join(String.fromCharCode(10)),ko:ATT.length};"
