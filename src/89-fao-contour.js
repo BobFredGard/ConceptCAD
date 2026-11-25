@@ -465,15 +465,16 @@ function faoContourRows(d,setup,op){
     const zd=Math.round((toolD/2+10)*10)/10;
     const rZ=faoRow();
     rZ.appendChild(faoLab('zone d’entrée')); rZ.appendChild(faoNumFx(op,'slotLin',isFinite(+op.slotLin)?+op.slotLin:zd,function(v){op.slotLin=Math.max(0,v);},48,1,
-      'Distance entre le début de la passe et le centre du disque quand il descend, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
+      'Distance entre le bord de la matière (la pièce, ou le brut qui dépasse : le disque le traverse) et le centre du disque quand il descend, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
     rZ.appendChild(faoLab('zone de sortie')); rZ.appendChild(faoNumFx(op,'slotLout',isFinite(+op.slotLout)?+op.slotLout:zd,function(v){op.slotLout=Math.max(0,v);},48,1,
-      'Distance entre la fin de la passe et le centre du disque quand il remonte, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
+      'Distance entre le bord de la matière (la pièce, ou le brut qui dépasse : le disque le traverse) et le centre du disque quand il remonte, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
     d.appendChild(rZ);
     const gdl=op.geoDiag||{};
     if(gdl.slot&&!op.stale&&(gdl.lineN||gdl.perpN)){
       const iz=document.createElement('div');iz.className='fao-meta';
       iz.textContent=(gdl.lineN?gdl.lineN+' passe(s) entrée et sortie dans le prolongement':'')+(gdl.lineN&&gdl.perpN?' · ':'')+
-        (gdl.perpN?gdl.perpN+' passe(s) perpendiculaire(s) : pas de place dans le prolongement (allongez ou raccourcissez les zones, ou départ à un coin saillant)':'');
+        (gdl.perpN?gdl.perpN+' passe(s) perpendiculaire(s) : pas de place dans le prolongement (allongez ou raccourcissez les zones, ou départ à un coin saillant)':'')+
+        (gdl.trav>0?' · traverse jusqu’à '+gdl.trav+' mm de brut avant la pièce':''); // V0.99.91
       d.appendChild(iz);
     }
   }

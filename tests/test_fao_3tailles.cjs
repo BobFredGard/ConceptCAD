@@ -177,12 +177,14 @@ const vm=require('vm');
     "att(/Contour 3 tailles 4 arêtes rainure 11 -> 14/.test(faoOpLabel(op,job)),'libellé : '+faoOpLabel(op,job));",
     "const opP=faoOpDefaults('pocket');opP.id='p1';opP.toolId='TS';",
     "att(faoOpMoves(opP,job).length===0,'3 tailles dans une poche : aucun parcours');",
-    // entrée droite par l'aiguillage : brut plein autour du bossage -> pas de prolongement dégagé, perpendiculaire
+    // entrée droite par l'aiguillage : brut plein autour du bossage -> V0.99.91 : le disque traverse le brut
+    // dans le prolongement (matière à couper) et descend hors du brut ; le col frotte (brut au-dessus)
     "op.slotLead='droite';faoActiveMesh=function(){return {mesh:BOSS,box:{x0:0,y0:0,x1:100,y1:60}};};",
     "let mvDS=[];try{mvDS=faoOpMoves(op,job);}catch(e){att(false,'dispatch droite : exception '+e.message);}",
     "faoActiveMesh=keepAM;const gDS=op.geoDiag||{};",
     "p('dispatch, entrée droite : '+mvDS.length+' moves, diag '+JSON.stringify(gDS));",
-    "att(gDS.perpN===1&&gDS.lineN===0&&isArcFree(mvDS)&&verts(mvDS).every(m=>m.x<-10||m.x>110||m.y<-10||m.y>70),'dispatch, entrée droite : brut plein → perpendiculaire, sans arc, descente hors du brut');",
+    "att(gDS.lineN===1&&gDS.perpN===0&&gDS.trav>5&&isArcFree(mvDS)&&verts(mvDS).every(m=>m.x<-10||m.x>110||m.y<-10||m.y>70),'dispatch, entrée droite : brut plein traversé dans le prolongement, sans arc, descente hors du brut (vu '+verts(mvDS).map(m=>m.x.toFixed(1)+','+m.y.toFixed(1)).join(' ')+')');",
+    "att(gDS.neck>0,'dispatch, entrée droite : brut plein au-dessus de la rainure → le col frotte (alerte gardée)');",
     "op.slotLin=200;const kL=JSON.stringify(faoOpSig(op));delete op.slotLin;",
     "att(/slotLead/.test(kL)&&/slotLin/.test(kL),'clé : l’entrée droite et ses zones changent le parcours');",
     // (sans corps construit, faoOpMovesKey rend null : la signature de l'opération en est le cœur)
@@ -200,7 +202,7 @@ const vm=require('vm');
     "const txt=card?all(card).map(n=>String(n.textContent||'')).join('|'):'';",
     "att(card&&/Rainure \\(fraise 3 tailles\\)/.test(txt)&&/décalage dans la paroi/.test(txt)&&/décalage en hauteur/.test(txt),'fiche : section Rainure avec les décalages');",
     "att(card&&!/Attaches/.test(txt)&&!/Rapide dans le vide/.test(txt),'fiche : ni attaches ni rapide dans le vide');",
-    "att(card&&/zone d’entrée/.test(txt)&&/zone de sortie/.test(txt)&&!/\\|rayon\\|/.test(txt)&&/perpendiculaire/.test(txt),'fiche, entrée droite : zones d’entrée / sortie, pas de rayon, passe perpendiculaire annoncée');",
+    "att(card&&/zone d’entrée/.test(txt)&&/zone de sortie/.test(txt)&&!/\\|rayon\\|/.test(txt)&&/dans le prolongement/.test(txt)&&/traverse jusqu’à [0-9.]+ mm de brut/.test(txt),'fiche, entrée droite : zones d’entrée / sortie, pas de rayon, brut traversé annoncé');",
     "delete op.slotLead;faoSetup=function(){return job;};let card2=null;try{card2=faoOpCardElement(job,op,0);}catch(e){}faoSetup=keepS;",
     "const txt2=card2?all(card2).map(n=>String(n.textContent||'')).join('|'):'';",
     "att(card2&&/\\|rayon\\|/.test(txt2)&&!/zone d’entrée/.test(txt2)&&/\\|entrée\\|/.test(txt2),'fiche, entrée en arc : rayon, pas de zones, choix de l’entrée');",

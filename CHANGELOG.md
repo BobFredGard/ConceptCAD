@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**777 versions**, de `2026-09-28b` à `V0.99.90` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**778 versions**, de `2026-09-28b` à `V0.99.91` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8621,3 +8621,13 @@ Manuel Fonctions 3D.
 **Correctif** : `src/88-fao-30-parcours.js`, `faoFacingUne` : quand le Ø de la fraise est au moins égal à la largeur du brut vue dans le sens d'usinage (X, Y ou direction cliquée), une seule ligne au milieu, à chaque niveau (passes en Z, passes de finition, « toujours dans le même sens » compris) ; le compteur « N lignes » de la fiche affiche 1 (`faoFacingCount`). Les anciens documents pilotés par « Passes » (`op.np`) gardent leur pilotage. Brut plus large que la fraise : parcours inchangé. Clé du cache (`src/88-fao-50-caches-dispatch.js`, `faoFacingUneOp`) : seuls les surfaçages devenus « une ligne » sont à régénérer ; CACHE_VER et FORMES_VER inchangés. Infobulle de l'écart complétée (`src/88-fao-80-interface.js`).
 
 **Test** : `tests/test_fao_surfacage_finition.cjs` (+16 : Ø50 et Ø30 sur 30 de large = 1 ligne à Y 15, coins couverts ; Ø29,9 = 3 lignes comme avant ; passes en Z + finition = une ligne par niveau en va-et-vient ; même sens ; sens Y ; ancien pilotage « Passes » gardé ; brut large inchangé ; clé marquée seulement pour la ligne unique). Banc des parcours : 31/31 identiques (les 5 surfaçages de référence ont une fraise plus étroite que le brut). Vérifié dans l'aperçu sur la pièce Perçages (brut 110 × 75, 2 passes en Z) : fraise Ø80, fiche « 1 ligne », une ligne à Y 0 à Z 22,5 puis retour à Z 20 ; Torique D25 d'origine : « 6 lignes », inchangé. Manuel FAO.
+
+## V0.99.91 - FAO : la fraise 3 tailles traverse le brut
+
+**Demande de Fred** : « il faudrait prendre le brut car c'est de la matière à couper.... » ; à la question « Que doit faire la fraise 3 tailles quand le brut dépasse de la pièce ? » : « Traverser le brut » ; puis « le brut en compte aussi ! ».
+
+**Cause** : en Découpe 3 tailles (V0.99.86) et en Contour 3 tailles entrée Droite (V0.99.89), les zones d'entrée et de sortie se comptaient depuis le bout de la passe sur la pièce. Quand le brut dépassait de la pièce, le point de descente tombait dans le brut : la Découpe affichait « pas de place pour descendre », le Contour se rabattait sur une entrée perpendiculaire. Le brut était traité comme un obstacle, alors que c'est de la matière à couper.
+
+**Correctif** : `src/89-fao-contour-3tailles.js` : `faoSlotObstacles` rend aussi la pièce seule (`part`, le modèle sous le disque) ; nouveau `faoSlotMatEdge` : depuis le bout de la passe, dans le prolongement, longueur du brut d'un seul tenant (brut, brut restant après les opérations d'avant) que le disque traverse après avoir quitté la pièce, bord affiné par dichotomie ; la zone d'entrée / de sortie se compte depuis ce bord, donc le disque descend et remonte toujours hors du brut et traverse le brut tout droit en coupant. La pièce, elle, ne se traverse jamais : si la ligne retombe sur la pièce, la zone se compte depuis la passe comme avant (alerte ou entrée perpendiculaire). Rien ne dépasse : parcours identiques. Contour en Droite : le coin de départ doit toujours quitter la pièce dans la zone (pas de sortie qui longe un côté) ; `88-fao-50` et la Découpe transmettent la pièce. Fiches : « traverse jusqu'à n mm de brut avant la pièce » ; infobulles des zones (« bord de la matière : la pièce, ou le brut qui dépasse ») ; l'alerte du col rappelle qu'il peut y avoir trop de brut à traverser devant la pièce (le col, plus étroit, frotte s'il passe dans le brut au-dessus de la coupe).
+
+**Test** : `tests/test_fao_decoupe_3tailles.cjs` (brut plus long que la pièce : traversé sans alerte, 30 mm de brut à 1 mm près, descente à X 130 et remontée à X −20 hors du brut, fiche ; brut aussi devant la face : traversé, alerte du col) ; `tests/test_fao_3tailles.cjs` (aiguillage avec brut plein : entrée et sortie dans le prolongement, sans arc, descente hors du brut, col signalé ; fiche). Les deux suites ajoutées à `tests/run-fast.cjs` (elles ne tournaient pas avec `npm run ci`). Banc des parcours : 31/31 identiques. Manuel FAO. CACHE_VER et FORMES_VER inchangés.

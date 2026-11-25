@@ -8,7 +8,10 @@
 // 4. alertes : col qui frotte (profondeur 7 > 6), descente dans la matière (zone trop
 //    courte), disque plus épais que la découpe, pas de pièce à cette hauteur ;
 // 5. le long d'une arête droite (chaîne ouverte d'une seule arête) ;
-// 6. défauts, sanitise, bouton, aiguillage (brut ajusté / brut plus grand), libellé, fiche.
+// 6. défauts, sanitise, bouton, aiguillage (brut ajusté / brut plus grand), libellé, fiche ;
+// 7. V0.99.91 : le brut est de la matière à couper — brut plus long que la pièce : le disque le
+//    traverse, zones comptées depuis le bord du brut, descente hors du brut ; brut aussi devant la
+//    face : traversé aussi, et le col frotte s'il y en a trop.
 const {loadApp}=require('./appvm.cjs');
 const vm=require('vm');
 (async()=>{
@@ -100,11 +103,22 @@ const vm=require('vm');
     "att(cuts(mvD).length>=4&&cuts(mvD).every(m=>Math.abs(m.y-5)<1e-6&&Math.abs(m.z-8)<1e-6),'aiguillage : passe à y 5, z 8');",
     "att(op.geoDiag&&op.geoDiag.cut===1&&!op.geoDiag.noEntry&&op.geoDiag.neck===0,'aiguillage : brut ajusté, aucune alerte');",
     "att(/^Découpe 3 tailles selon X côté Y− Z 8 -> 11 prof\\. 5 \\[T12 D20\\]/.test(faoOpLabel(op,job)),'libellé : '+faoOpLabel(op,job));",
-    // brut plus grand que la pièce : la descente tombe dans le brut → signalée
+    // V0.99.91 : brut plus long que la pièce (X 0..110, face Y− à la pièce) : traversé, descente hors du brut
+    "const job3=faoDefaultJob();job3.stock={x0:0,y0:10,z0:0,x1:110,y1:50,z1:20};job3.tools=[T3];",
+    "const op3=faoOpDefaults('slotcut');op3.id='d3';op3.toolId='TS';op3.zbot=8;op3.slotDr=5;job3.ops=[op3];",
+    "let mv3=[];try{mv3=faoOpMoves(op3,job3);}catch(e){att(false,'brut long : exception '+e.message);}",
+    "p('brut long : diag '+JSON.stringify(op3.geoDiag));",
+    "const g3=op3.geoDiag||{},k3=cuts(mv3),xs3=k3.map(m=>m.x);",
+    "att(!g3.noEntry&&g3.neck===0&&Math.abs(g3.trav-30)<=1,'brut long : traversé sans alerte, 30 mm de brut au plus (vu '+g3.trav+')');",
+    "att(Math.abs(Math.max.apply(null,xs3)-130)<=1&&Math.abs(Math.min.apply(null,xs3)+20)<=1,'brut long : descente à X 130 (110 + 20), remontée à X −20 (0 − 20), vu '+Math.max.apply(null,xs3)+' / '+Math.min.apply(null,xs3));",
+    "att(k3.every(m=>Math.abs(m.y-5)<1e-6),'brut long : tout droit à y 5');",
+    "att(/traverse jusqu’à [0-9.]+ mm de brut/.test((function(){const k=faoSetup;faoSetup=function(){return job3;};let c=null;try{c=faoOpCardElement(job3,op3,0);}catch(e){}faoSetup=k;const all=function(root){const out=[];(function w(n){out.push(n);(n.children||[]).forEach(w);})(root);return out;};return c?all(c).map(n=>String(n.textContent||'')).join('|'):'';})()),'fiche : brut traversé annoncé');",
+    // brut plus grand aussi devant la face (Y 0) : 10 mm de brut + 5 de profondeur > 6 → le col frotte
     "const job2=faoDefaultJob();job2.stock={x0:0,y0:0,z0:0,x1:110,y1:60,z1:20};job2.tools=[T3];",
     "const op2=faoOpDefaults('slotcut');op2.id='d2';op2.toolId='TS';op2.zbot=8;op2.slotDr=5;job2.ops=[op2];",
     "try{faoOpMoves(op2,job2);}catch(e){att(false,'brut large : exception '+e.message);}",
-    "att(op2.geoDiag&&op2.geoDiag.noEntry>=1,'brut plus grand : descente dans le brut signalée (vu '+(op2.geoDiag&&op2.geoDiag.noEntry)+')');",
+    "p('brut large : diag '+JSON.stringify(op2.geoDiag));",
+    "att(op2.geoDiag&&!op2.geoDiag.noEntry&&op2.geoDiag.neck>0,'brut devant la face : traversé, le col frotte (vu '+JSON.stringify(op2.geoDiag&&{n:op2.geoDiag.noEntry,c:op2.geoDiag.neck})+')');",
     "faoActiveMesh=keepAM;",
     "const opF=faoOpDefaults('slotcut');opF.id='f1';opF.toolId='T1';const jobF=faoDefaultJob();jobF.ops=[opF];",
     "att(faoOpMoves(opF,jobF).length===0,'découpe avec une fraise ordinaire : aucun parcours');",

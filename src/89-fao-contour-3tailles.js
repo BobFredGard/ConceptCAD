@@ -47,7 +47,7 @@ function faoSlotObstacles(op,job,mesh,R,rn){
   // d'un corps-brut, modèle ; sans rien de tout cela : la boîte du brut.
   const gd=Math.max(0.5,R*0.05),tol=0.02;
   const tops=[],necks=[];
-  let G=null;
+  let G=null,partTop=null;
   try{ const M=faoRestMap(op,job,2*R,0); G=M&&M.grid; }catch(e){ G=null; }
   if(G){
     const look=function(rad){
@@ -60,7 +60,7 @@ function faoSlotObstacles(op,job,mesh,R,rn){
   }
   try{ const T=faoStockTop(job,1); if(T){ tops.push(T.dil(R+gd)); if(rn>0)necks.push(T.dil(rn)); } }catch(e){}
   if(mesh&&mesh.v&&mesh.v.length){
-    try{ const dp=faoScDropper(mesh,'flat',2*(R+gd),0,0); tops.push(function(x,y){return dp.tip(x,y);}); }catch(e){}
+    try{ const dp=faoScDropper(mesh,'flat',2*(R+gd),0,0); partTop=function(x,y){return dp.tip(x,y);}; tops.push(partTop); }catch(e){}
     if(rn>0){ try{ const dn=faoScDropper(mesh,'flat',2*rn,0,0); necks.push(function(x,y){return dn.tip(x,y);}); }catch(e){} }
   }
   if(!G){
@@ -76,8 +76,36 @@ function faoSlotObstacles(op,job,mesh,R,rn){
   const mx=function(L,x,y){let m=-1/0;for(let i=0;i<L.length;i++){const v=L[i](x,y);if(v>m)m=v;}return m;};
   return {
     clear:function(x,y,z){ return !(mx(tops,x,y)>z-tol); },
-    neckTop:necks.length?function(x,y){ return mx(necks,x,y); }:null
+    neckTop:necks.length?function(x,y){ return mx(necks,x,y); }:null,
+    // V0.99.91 : la pièce seule (le modèle) — elle ne se traverse pas, le brut si
+    part:partTop?function(x,y,z){ return partTop(x,y)>z-tol; }:null
   };
+}
+// V0.99.91 : le brut est de la matière à couper (demande de Fred : « il faudrait prendre le brut car
+// c'est de la matière à couper », « le brut en compte aussi ! », choix « Traverser le brut »).
+// Entrée / sortie droite : de P (bout de la passe) dans la direction u, longueur de brut d'un seul
+// tenant (brut, brut restant) que le disque traverse après avoir quitté la pièce ; la zone d'entrée
+// / de sortie se compte depuis ce bord. Rc = rayon de dégagement de clear (R + garde) ; part(x,y,z)
+// = le disque touche la pièce (modèle). Rend 0 (zone comptée depuis P, comme avant) si rien que la
+// pièce ne gêne, si la ligne retombe sur la pièce (elle ne se traverse pas) ou si jamais dégagé.
+function faoSlotMatEdge(clear,P,u,z,Rc,step,Lmax,part){
+  if(typeof clear!=='function')return 0;
+  const hasP=typeof part==='function';
+  let left=!hasP,stock=false;
+  for(let L=0;L<=Lmax+1e-9;L+=step){
+    const x=P[0]+u[0]*L,y=P[1]+u[1]*L,inP=hasP&&part(x,y,z);
+    if(inP){ if(left)return 0; }
+    else left=true;
+    if(clear(x,y,z)){
+      if(!stock)return 0;
+      // bord affiné par dichotomie entre le dernier pas encore dans le brut et celui-ci
+      let lo=Math.max(0,L-step),hi=L;
+      for(let k=0;k<6;k++){const m=(lo+hi)/2;if(clear(P[0]+u[0]*m,P[1]+u[1]*m,z))hi=m;else lo=m;}
+      return Math.max(0,hi-Rc);
+    }
+    if(!inP)stock=true;
+  }
+  return 0;
 }
 function faoGenContourSlot(mesh,loop0,o){
   o=o||{};
@@ -149,6 +177,8 @@ function faoGenContourSlot(mesh,loop0,o){
     try{const dp=faoScDropper(mesh,'flat',2*(r+gd),0,0);clear=function(x,y,z){return !(dp.tip(x,y)>z-0.02);};}catch(e){clear=null;}
   }
   if(!clear)clear=function(x,y){return faoDistToPoly(x,y,loop)>=r+gd;};
+  // V0.99.91 : la pièce seule (ne se traverse pas) ; sans elle : tout ce qui gêne est la pièce
+  const part=typeof o.part==='function'?o.part:(typeof o.clear==='function'?null:function(x,y,z){return !clear(x,y,z);});
   let neckTop=typeof o.neckTop==='function'?o.neckTop:null;
   if(!neckTop&&mesh&&rn>0){
     try{const dn=faoScDropper(mesh,'flat',2*rn,0,0);neckTop=function(x,y){return dn.tip(x,y);};}catch(e){neckTop=null;}
@@ -215,6 +245,14 @@ function faoGenContourSlot(mesh,loop0,o){
     return null;
   };
   const tan=function(a,b){const l=Math.hypot(b[0]-a[0],b[1]-a[1]);return l>1e-12?[(b[0]-a[0])/l,(b[1]-a[1])/l]:null;};
+  // V0.99.91 : point de descente dans le prolongement (de P, direction u) — la zone L0 se compte
+  // depuis le bord de la matière que le disque traverse d'abord (pièce, brut, brut restant)
+  if(straight)diag.trav=0;
+  const farPt=function(P,u,L0,z){
+    const e=faoSlotMatEdge(clear,P,u,z,r+gd,stA,Lmax,part)||0;
+    return {Q:[P[0]+u[0]*(L0+e),P[1]+u[1]*(L0+e)],e:e};
+  };
+  const noteTrav=function(e){if(e>0.05&&e>diag.trav)diag.trav=Math.round(e*10)/10;};
   // V0.99.89 : ligne droite de P (sur la passe) à Q (dehors) : n'entame pas le profil plus que la
   // passe ; une fois le disque dégagé (sorti de la matière au-dessus de la passe), plus rien ne
   // le gêne jusqu'à Q, où il peut monter / descendre
@@ -237,9 +275,11 @@ function faoGenContourSlot(mesh,loop0,o){
     for(let i=0;i<n;i++){
       const V=P[i],tI=tan(V,P[i+1]),tO=tan(P[(i-1+n)%n],V);
       if(!tI||!tO||tI[0]*tO[0]+tI[1]*tO[1]>1-1e-9){ok.push(null);continue;} // alignés : départ au coin
-      const A=[V[0]-tI[0]*linL,V[1]-tI[1]*linL],B=[V[0]+tO[0]*loutL,V[1]+tO[1]*loutL];
+      const fA=farPt(V,[-tI[0],-tI[1]],linL,z),fB=farPt(V,tO,loutL,z),A=fA.Q,B=fB.Q;
       if(!clear(A[0],A[1],z)||!clear(B[0],B[1],z)){ok.push(null);continue;} // tri rapide avant les lignes
-      ok.push(lineSafe(V,A,d,z)&&lineSafe(V,B,d,z)?{i:i,V:V,A:A,B:B}:null);
+      // la pièce doit être quittée dans la zone comptée depuis le coin (sinon la ligne longe la pièce)
+      if(part&&(part(V[0]-tI[0]*linL,V[1]-tI[1]*linL,z)||part(V[0]+tO[0]*loutL,V[1]+tO[1]*loutL,z))){ok.push(null);continue;}
+      ok.push(lineSafe(V,A,d,z)&&lineSafe(V,B,d,z)?{i:i,V:V,A:A,B:B,e:Math.max(fA.e,fB.e)}:null);
     }
     const groups=[];let g=null;
     for(let i=0;i<n;i++){if(ok[i]){if(!g){g=[];groups.push(g);}g.push(ok[i]);}else g=null;}
@@ -295,6 +335,7 @@ function faoGenContourSlot(mesh,loop0,o){
         cut(body[0],z,1);
         for(let k=1;k<body.length;k++)cut(body[k],z,0);
         cut(sp.B,z,1);
+        noteTrav(sp.e);
         diag.passes++;diag.lineN++;
         return;
       }
@@ -317,8 +358,8 @@ function faoGenContourSlot(mesh,loop0,o){
     }else{
       const t=tan(pts[0],pts[1]);
       if(straight&&t){ // V0.99.89 : passe ouverte — entrée droite dans le prolongement si dégagée
-        const A=[pts[0][0]-t[0]*linL,pts[0][1]-t[1]*linL];
-        if(lineSafe(pts[0],A,d,z)){e={S:pts[0],t:t,lin:null,Q:pts[0],A:A};inLine=true;}
+        const fA=farPt(pts[0],[-t[0],-t[1]],linL,z),A=fA.Q;
+        if(lineSafe(pts[0],A,d,z)){e={S:pts[0],t:t,lin:null,Q:pts[0],A:A};inLine=true;noteTrav(fA.e);}
       }
       if(!e)e=t?entryAt(pts[0],t,d,z):null;
       if(!e){diag.noEntry++;return;}
@@ -328,8 +369,8 @@ function faoGenContourSlot(mesh,loop0,o){
     const t1=k1>0?tan(pts[k1-1],pts[k1]):null,E=pts[pts.length-1];
     let lout=null,Aout=null,outLine=false;
     if(t1&&straight){ // V0.99.89 : sortie droite dans le prolongement si dégagée
-      const B=[E[0]+t1[0]*loutL,E[1]+t1[1]*loutL];
-      if(lineSafe(E,B,d,z)){Aout=B;outLine=true;}
+      const fB=farPt(E,t1,loutL,z),B=fB.Q;
+      if(lineSafe(E,B,d,z)){Aout=B;outLine=true;noteTrav(fB.e);}
     }
     if(t1&&!Aout){const nf1=freeN(t1);lout=leadArc(E,t1,nf1,d,false);Aout=toAir(lout?lout[lout.length-1]:E,nf1,d,z);}
     if(straight){if(inLine&&outLine)diag.lineN++;else diag.perpN++;}

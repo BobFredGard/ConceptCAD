@@ -34,6 +34,8 @@ const SUITES = [
   'test_fao_escargot_une_entree',
   'test_fao_contours',
   'test_fao_survol',
+  'test_fao_3tailles',
+  'test_fao_decoupe_3tailles',
   'test_fao_brut_restant',
   'test_fao_finition_restante',
   'test_fao_minipasses_pentes',

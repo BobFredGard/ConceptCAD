@@ -712,7 +712,7 @@ function* faoOpMovesIt0(op,job){
         leadR:op.leadR,overlap:op.overlap,ep:g.lc.v,rn:g.dDeg.v/2,
         slotH:op.slotH,dz:op.slotDz,dr:op.slotDr,
         lead:op.slotLead,lin:op.slotLin,lout:op.slotLout, // V0.99.89 : entrée droite
-        clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null}));
+        clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null,part:ob?ob.part:null})); // V0.99.91 : pièce seule
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
     else if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3){
