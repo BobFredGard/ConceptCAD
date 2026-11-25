@@ -443,11 +443,40 @@ function faoContourRows(d,setup,op){
   d.appendChild(rS);
   d.appendChild(faoH('Entrée / sortie'));
   const rE=faoRow();
-  rE.appendChild(faoLab('rayon')); rE.appendChild(faoNumFx(op,'leadR',isFinite(+op.leadR)?+op.leadR:+Math.min(5,Math.max(1,toolD*0.6)).toFixed(2),function(v){op.leadR=Math.max(0.5,v);},44,0.5,
-    'Rayon des quarts de cercle tangents d’entrée et de sortie, côté libre.'));
+  // V0.99.89 : fraise 3 tailles — entrée en arc (défaut) ou droite (demande de Fred :
+  // « Entrée et sortie droite, pas de cercle d'entrée »), src/89-fao-contour-3tailles.js
+  const droite=slot&&op.slotLead==='droite';
+  if(slot){
+    rE.appendChild(faoLab('entrée'));
+    rE.appendChild(faoSel([
+      ['arc','Arc','Approche droite puis quart de cercle tangent au contour, et de même à la sortie.'],
+      ['droite','Droite','Tout droit, sans arc : dans le prolongement de la passe (zones d’entrée et de sortie) là où la place le permet, sinon perpendiculaire au contour.']],
+      droite?'droite':'arc',function(v){ if(v==='droite')op.slotLead='droite'; else delete op.slotLead; },'Forme de l’entrée et de la sortie du disque.'));
+  }
+  if(!droite){
+    rE.appendChild(faoLab('rayon')); rE.appendChild(faoNumFx(op,'leadR',isFinite(+op.leadR)?+op.leadR:+Math.min(5,Math.max(1,toolD*0.6)).toFixed(2),function(v){op.leadR=Math.max(0.5,v);},44,0.5,
+      'Rayon des quarts de cercle tangents d’entrée et de sortie, côté libre.'));
+  }
   rE.appendChild(faoLab('recouvrement')); rE.appendChild(faoNumFx(op,'overlap',isFinite(+op.overlap)?+op.overlap:1,function(v){op.overlap=Math.max(0,v);},44,0.5,
-    'Longueur parcourue au-delà du point de départ avant la sortie (pas de marque).'));
+    droite?'Entrée perpendiculaire seulement : longueur parcourue au-delà du point de départ avant la sortie. Dans le prolongement, le tour revient exactement au départ.'
+      :'Longueur parcourue au-delà du point de départ avant la sortie (pas de marque).'));
   d.appendChild(rE);
+  if(droite){
+    const zd=Math.round((toolD/2+10)*10)/10;
+    const rZ=faoRow();
+    rZ.appendChild(faoLab('zone d’entrée')); rZ.appendChild(faoNumFx(op,'slotLin',isFinite(+op.slotLin)?+op.slotLin:zd,function(v){op.slotLin=Math.max(0,v);},48,1,
+      'Distance entre le début de la passe et le centre du disque quand il descend, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
+    rZ.appendChild(faoLab('zone de sortie')); rZ.appendChild(faoNumFx(op,'slotLout',isFinite(+op.slotLout)?+op.slotLout:zd,function(v){op.slotLout=Math.max(0,v);},48,1,
+      'Distance entre la fin de la passe et le centre du disque quand il remonte, dans le prolongement (défaut : rayon + 10 = '+zd+' mm).'));
+    d.appendChild(rZ);
+    const gdl=op.geoDiag||{};
+    if(gdl.slot&&!op.stale&&(gdl.lineN||gdl.perpN)){
+      const iz=document.createElement('div');iz.className='fao-meta';
+      iz.textContent=(gdl.lineN?gdl.lineN+' passe(s) entrée et sortie dans le prolongement':'')+(gdl.lineN&&gdl.perpN?' · ':'')+
+        (gdl.perpN?gdl.perpN+' passe(s) perpendiculaire(s) : pas de place dans le prolongement (allongez ou raccourcissez les zones, ou départ à un coin saillant)':'');
+      d.appendChild(iz);
+    }
+  }
   // V0.99.18 : rapide dans le vide
   const rV=faoRow();
   const cbV=document.createElement('input'); cbV.type='checkbox'; cbV.checked=op.sautVide!==false;

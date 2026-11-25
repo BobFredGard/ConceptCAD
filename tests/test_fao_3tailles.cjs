@@ -6,6 +6,9 @@
 // 3. alertes : col qui frotte (rainure trop profonde), disque plus épais que la rainure,
 //    aucune entrée par le côté ;
 // 4. gorge intérieure d'une ouverture 20×20 (cadre) : côté intérieur, descente au milieu ;
+// 4b. V0.99.89 : entrée « Droite » — bossage : départ au milieu d'un coin arrondi, entrée et sortie
+//    dans le prolongement (zones rayon + 10 ou choisies), tour complet, rainure complète, aucun arc ;
+//    gorge : perpendiculaire ; arc par défaut inchangé ; sanitise, aiguillage (brut plein), clé, fiche ;
 // 5. fiche outil (clé de parcours, dimensions par défaut), sanitise, simulation (carte de
 //    hauteurs sautée, moteur Lisse = disque + col), obstacles du posage (brut), dispatch, fiche.
 const {loadApp}=require('./appvm.cjs');
@@ -84,6 +87,51 @@ const vm=require('vm');
     "att(cI.filter(m=>!m.ent).every(m=>Math.abs(-dRect(m.x,m.y,20,40,20,40)-4.5)<0.01),'gorge : le tour est à 4,5 des parois');",
     "att(verts(mvI).every(m=>-dRect(m.x,m.y,20,40,20,40)>=6.5-0.01),'gorge : descente là où le disque passe dans l’ouverture');",
     "att(area(cI.filter(m=>!m.ent))>0,'gorge : avalant = sens trigo dans une ouverture');",
+    // --- 4b. V0.99.89 : entrée droite (pas d'arc) — bossage : départ à un coin, dans le prolongement
+    "const dist=function(a,b){return Math.hypot(a.x-b.x,a.y-b.y);};",
+    "const isArcFree=function(mv){const c=mv.filter(m=>!m.r);for(let i=1;i+1<c.length;i++){const a=c[i-1],b=c[i],e=c[i+1];if(!b.ent||a.z!==b.z||b.z!==e.z)continue;const u=[b.x-a.x,b.y-a.y],v=[e.x-b.x,e.y-b.y],lu=Math.hypot(u[0],u[1]),lv=Math.hypot(v[0],v[1]);if(lu<1e-6||lv<1e-6)continue;if(a.ent&&e.ent&&Math.abs((u[0]*v[0]+u[1]*v[1])/(lu*lv)-1)>1e-6)return false;}return true;};",
+    "const mvS=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{lead:'droite'}));",
+    "const dS=mvS.diag||{};",
+    "p('entrée droite : '+mvS.length+' moves, diag '+JSON.stringify(dS));",
+    "att(dS.lineN===1&&dS.perpN===0&&!dS.noEntry,'entrée droite : une passe dans le prolongement (vu '+dS.lineN+' / '+dS.perpN+')');",
+    "const cS=mvS.filter(m=>!m.r);",
+    "att(cS.every(m=>Math.abs(m.z-11)<1e-6),'entrée droite : passe à z 11');",
+    "att(cS.every(m=>dRect(m.x,m.y,30,70,20,40)>=8-0.01),'entrée droite : jamais plus près que 8 mm du contour (pas d’entaille)');",
+    // entrée : descente en A, puis droite jusqu'au départ V, puis la passe part dans la même direction
+    "const iA=mvS.findIndex(m=>!m.r);const A0=mvS[iA],V0=mvS[iA+1],N0=mvS[iA+2];",
+    "att(A0&&A0.ent&&Math.abs(dist(A0,V0)-20)<0.01,'entrée droite : zone d’entrée = rayon + 10 = 20 (vu '+(A0&&V0?dist(A0,V0).toFixed(3):'?')+')');",
+    "const ux=(V0.x-A0.x)/dist(A0,V0),uy=(V0.y-A0.y)/dist(A0,V0),vx=(N0.x-V0.x)/dist(V0,N0),vy=(N0.y-V0.y)/dist(V0,N0);",
+    "att(Math.abs(ux*vx+uy*vy-1)<1e-6,'entrée droite : dans le prolongement du premier segment');",
+    "att(Math.abs(dRect(V0.x,V0.y,30,70,20,40)-8)<0.01,'entrée droite : départ sur la passe (8 mm du contour)');",
+    "att(dRect(A0.x,A0.y,30,70,20,40)>=10.5-0.01,'entrée droite : descente hors du bossage');",
+    // sortie : dernier point de coupe à rayon + 10 du départ, dans le prolongement du segment d'arrivée
+    "const cE=mvS.filter(m=>!m.r);const B0=cE[cE.length-1],E0=cE[cE.length-2],F0=cE[cE.length-3];",
+    "att(Math.abs(E0.x-V0.x)<1e-6&&Math.abs(E0.y-V0.y)<1e-6,'entrée droite : le tour revient exactement au départ');",
+    "att(Math.abs(dist(E0,B0)-20)<0.01,'entrée droite : zone de sortie 20 (vu '+dist(E0,B0).toFixed(3)+')');",
+    "const wx=(E0.x-F0.x)/dist(F0,E0),wy=(E0.y-F0.y)/dist(F0,E0),qx=(B0.x-E0.x)/dist(E0,B0),qy=(B0.y-E0.y)/dist(E0,B0);",
+    "att(Math.abs(wx*qx+wy*qy-1)<1e-6,'entrée droite : sortie dans le prolongement du dernier segment');",
+    "att(dRect(B0.x,B0.y,30,70,20,40)>=10.5-0.01&&verts(mvS).every(m=>dRect(m.x,m.y,30,70,20,40)>=10.5-0.01),'entrée droite : montées et descentes hors du bossage');",
+    "att(isArcFree(mvS),'entrée droite : aucun arc d’entrée ni de sortie');",
+    "att(area(mvS.filter(m=>!m.r&&!m.ent))<0,'entrée droite : avalant = sens horaire');",
+    // le coin de départ reste taillé : tout point de la bande de 2 mm le long du bossage est à r d'un centre
+    "const ctrs=[];for(let i=1;i<cS.length;i++){const a=cS[i-1],b=cS[i],L=dist(a,b),n=Math.max(1,Math.ceil(L/0.25));for(let s=0;s<=n;s++)ctrs.push([a.x+(b.x-a.x)*s/n,a.y+(b.y-a.y)*s/n]);}",
+    "let miss=0;for(let x=30.05;x<70;x+=0.5){[20.05,21.95].forEach(y=>{if(!ctrs.some(c=>Math.hypot(c[0]-x,c[1]-y)<=10.001))miss++;});[39.95,38.05].forEach(y=>{if(!ctrs.some(c=>Math.hypot(c[0]-x,c[1]-y)<=10.001))miss++;});}",
+    "for(let y=20.05;y<40;y+=0.5){[30.05,31.95,69.95,68.05].forEach(x=>{if(!ctrs.some(c=>Math.hypot(c[0]-x,c[1]-y)<=10.001))miss++;});}",
+    "att(miss===0,'entrée droite : rainure complète, coins compris ('+miss+' point(s) non taillé(s))');",
+    "const mvS2=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{lead:'droite',lin:30,lout:15}));",
+    "const c2s=mvS2.filter(m=>!m.r);",
+    "att(Math.abs(dist(c2s[0],c2s[1])-30)<0.01&&Math.abs(dist(c2s[c2s.length-2],c2s[c2s.length-1])-15)<0.01,'entrée droite : zones 30 et 15 respectées');",
+    "const mvS3=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{lead:'droite',slotH:7}));",
+    "att(mvS3.diag.lineN===3&&isArcFree(mvS3),'entrée droite, 3 niveaux : 3 passes dans le prolongement');",
+    // gorge intérieure : pas de prolongement possible -> perpendiculaire, sans arc
+    "const mvIS=faoGenContourSlot(FR,loopI,{toolD:12,ep:2,rn:2,secu:30,zbot:0,dz:8,dr:1.5,nR:1,fin:0,sens:'climb',overlap:1,lead:'droite'});",
+    "p('gorge, entrée droite : diag '+JSON.stringify(mvIS.diag));",
+    "att(mvIS.diag.perpN===1&&mvIS.diag.lineN===0&&!mvIS.diag.noEntry,'gorge, entrée droite : perpendiculaire (pas de prolongement possible)');",
+    "const cIS=mvIS.filter(m=>!m.r);",
+    "att(isArcFree(mvIS)&&cIS.every(m=>-dRect(m.x,m.y,20,40,20,40)>=4.5-0.01),'gorge, entrée droite : sans arc, sans entaille');",
+    "att(verts(mvIS).every(m=>-dRect(m.x,m.y,20,40,20,40)>=6.5-0.01),'gorge, entrée droite : descente dans l’ouverture');",
+    "const mvA=faoGenContourSlot(BOSS,loopB,o);",
+    "att(JSON.stringify(mvA)===JSON.stringify(mv)&&!('lineN' in mvA.diag),'entrée en arc (défaut) : parcours inchangé');",
     // --- 5. outil, sanitise, simulation, obstacles, dispatch, fiche
     "const T3={id:'T9',num:9,name:'3 tailles D20',kind:'slot',d:20,flutes:8,vc:120,fz:0.03};",
     "const g3=faoToolDims(T3);",
@@ -108,6 +156,10 @@ const vm=require('vm');
     "faoSanitiseOps({ops:[sA,sB,sC]});",
     "att(sA.slotH===4&&sA.slotDz===-2&&sA.slotDr===1.5,'sanitise : hauteur et décalages gardés');",
     "att(!('slotH' in sB)&&!('slotDz' in sB)&&!('slotH' in sC)&&!('slotDr' in sC),'sanitise : valeurs invalides / hors contour purgées');",
+    "const sD={id:'d',type:'contour',strat:'profil',slotLead:'droite',slotLin:30,slotLout:-2},sE={id:'e',type:'contour',strat:'profil',slotLead:'x',slotLin:30},sF={id:'f',type:'pocket',slotLead:'droite'};",
+    "faoSanitiseOps({ops:[sD,sE,sF]});",
+    "att(sD.slotLead==='droite'&&sD.slotLin===30&&!('slotLout' in sD),'sanitise : entrée droite et zone d’entrée gardées, zone invalide purgée');",
+    "att(!('slotLead' in sE)&&!('slotLin' in sE)&&!('slotLead' in sF),'sanitise : entrée inconnue = arc (zones purgées), hors contour purgée');",
     // dispatch : posage avec brut autour du bossage, outil 3 tailles
     "const job=faoDefaultJob();job.stock={x0:0,y0:0,z0:0,x1:100,y1:60,z1:20};job.tools=[Object.assign({},T3,{id:'TS',lc:3,dDeg:8})];",
     "const op=faoOpDefaults('contour');op.id='s1';op.toolId='TS';op.limit={mode:'chain',loop:loopB,closed:true,nEdges:4,tangent:true,side:'center',extra:0};op.ztop=20;op.zbot=5;op.slotDz=6;op.slotDr=2;op.nR=1;op.fin=0;",
@@ -125,6 +177,14 @@ const vm=require('vm');
     "att(/Contour 3 tailles 4 arêtes rainure 11 -> 14/.test(faoOpLabel(op,job)),'libellé : '+faoOpLabel(op,job));",
     "const opP=faoOpDefaults('pocket');opP.id='p1';opP.toolId='TS';",
     "att(faoOpMoves(opP,job).length===0,'3 tailles dans une poche : aucun parcours');",
+    // entrée droite par l'aiguillage : brut plein autour du bossage -> pas de prolongement dégagé, perpendiculaire
+    "op.slotLead='droite';faoActiveMesh=function(){return {mesh:BOSS,box:{x0:0,y0:0,x1:100,y1:60}};};",
+    "let mvDS=[];try{mvDS=faoOpMoves(op,job);}catch(e){att(false,'dispatch droite : exception '+e.message);}",
+    "faoActiveMesh=keepAM;const gDS=op.geoDiag||{};",
+    "p('dispatch, entrée droite : '+mvDS.length+' moves, diag '+JSON.stringify(gDS));",
+    "att(gDS.perpN===1&&gDS.lineN===0&&isArcFree(mvDS)&&verts(mvDS).every(m=>m.x<-10||m.x>110||m.y<-10||m.y>70),'dispatch, entrée droite : brut plein → perpendiculaire, sans arc, descente hors du brut');",
+    "op.slotLin=200;const kL=JSON.stringify(faoOpSig(op));delete op.slotLin;",
+    "att(/slotLead/.test(kL)&&/slotLin/.test(kL),'clé : l’entrée droite et ses zones changent le parcours');",
     // (sans corps construit, faoOpMovesKey rend null : la signature de l'opération en est le cœur)
     "const kA=JSON.stringify(faoOpSig(op));op.slotDr=3;const kB=JSON.stringify(faoOpSig(op));op.slotDr=2;",
     "att(kA!==kB&&/slotDr/.test(kA),'clé : le décalage dans la paroi change le parcours');",
@@ -140,6 +200,10 @@ const vm=require('vm');
     "const txt=card?all(card).map(n=>String(n.textContent||'')).join('|'):'';",
     "att(card&&/Rainure \\(fraise 3 tailles\\)/.test(txt)&&/décalage dans la paroi/.test(txt)&&/décalage en hauteur/.test(txt),'fiche : section Rainure avec les décalages');",
     "att(card&&!/Attaches/.test(txt)&&!/Rapide dans le vide/.test(txt),'fiche : ni attaches ni rapide dans le vide');",
+    "att(card&&/zone d’entrée/.test(txt)&&/zone de sortie/.test(txt)&&!/\\|rayon\\|/.test(txt)&&/perpendiculaire/.test(txt),'fiche, entrée droite : zones d’entrée / sortie, pas de rayon, passe perpendiculaire annoncée');",
+    "delete op.slotLead;faoSetup=function(){return job;};let card2=null;try{card2=faoOpCardElement(job,op,0);}catch(e){}faoSetup=keepS;",
+    "const txt2=card2?all(card2).map(n=>String(n.textContent||'')).join('|'):'';",
+    "att(card2&&/\\|rayon\\|/.test(txt2)&&!/zone d’entrée/.test(txt2)&&/\\|entrée\\|/.test(txt2),'fiche, entrée en arc : rayon, pas de zones, choix de l’entrée');",
     "if(ATT.length){p('');p('ECHECS ('+ATT.length+') :');ATT.forEach(function(m){p('  x '+m);});}",
     "else p('TOUT EST CONFORME');",
     "return {txt:P.join(String.fromCharCode(10)),ko:ATT.length};"

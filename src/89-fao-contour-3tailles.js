@@ -20,6 +20,13 @@
      dehors. Le départ est pris là où la sortie à l'air est la plus courte ;
    - alertes : aucune entrée par le côté, col qui frotte au-dessus de la rainure
      (profondeur > (Ø − Ø col) / 2), disque plus épais que la rainure.
+   V0.99.89 — entrée « Droite » (op.slotLead = 'droite', demande de Fred : « Entrée et sortie
+   droite, pas de cercle d'entrée ») : aucun arc. Passe fermée : départ à un coin saillant, le
+   disque arrive dans le prolongement du segment suivant (zone d'entrée op.slotLin, défaut
+   rayon + 10), fait le tour complet et repart dans le prolongement du segment d'arrivée (zone
+   de sortie op.slotLout) ; sans place dans le prolongement : entrée et sortie perpendiculaires
+   (la plus courte vers l'air), avec recouvrement. Le coin saillant reste taillé : les deux
+   prolongements couvrent tout ce que l'arc de raccord aurait coupé.
    ================================================================ */
 function faoContourSlotOp(op,job){
   return faoContourProfil(op)&&faoToolIsSlot(faoToolById(job,op&&op.toolId));
@@ -184,7 +191,15 @@ function faoGenContourSlot(mesh,loop0,o){
     for(let k=0;k<pts.length;k++)if(faoDistToPoly(pts[k][0],pts[k][1],loop)<Math.min(d,r)-0.01)return false;
     return true;
   };
+  // V0.99.89 : entrée « droite » (o.lead === 'droite', demande de Fred : « Entrée et sortie droite,
+  // pas de cercle d'entrée ») — aucun arc ; dans le prolongement de la passe sur les zones d'entrée
+  // et de sortie (o.lin / o.lout, défaut rayon + 10) si la place le permet, sinon perpendiculaire
+  const straight=o.lead==='droite';
+  const zd=Math.round((r+10)*10)/10;
+  const linL=isFinite(+o.lin)&&+o.lin>=0?+o.lin:zd, loutL=isFinite(+o.lout)&&+o.lout>=0?+o.lout:zd;
+  if(straight){diag.lineN=0;diag.perpN=0;}
   const leadArc=function(P,t,nf,d,isIn){
+    if(straight)return null;
     for(let R=leadR;R>=0.5;R*=0.6){const a=arcPts(P,t,nf,R,isIn);if(arcOK(a,d))return a;}
     return null;
   };
@@ -200,6 +215,41 @@ function faoGenContourSlot(mesh,loop0,o){
     return null;
   };
   const tan=function(a,b){const l=Math.hypot(b[0]-a[0],b[1]-a[1]);return l>1e-12?[(b[0]-a[0])/l,(b[1]-a[1])/l]:null;};
+  // V0.99.89 : ligne droite de P (sur la passe) à Q (dehors) : n'entame pas le profil plus que la
+  // passe ; une fois le disque dégagé (sorti de la matière au-dessus de la passe), plus rien ne
+  // le gêne jusqu'à Q, où il peut monter / descendre
+  const lineSafe=function(P,Q,d,z){
+    if(!clear(Q[0],Q[1],z))return false;
+    const L=Math.hypot(Q[0]-P[0],Q[1]-P[1]),ns=Math.max(1,Math.ceil(L/stA));
+    let out=false;
+    for(let s=1;s<=ns;s++){const u=s/ns,x=P[0]+(Q[0]-P[0])*u,y=P[1]+(Q[1]-P[1])*u;
+      if(faoDistToPoly(x,y,loop)<Math.min(d,r)-0.01)return false;
+      if(clear(x,y,z))out=true;else if(out)return false;}
+    return true;
+  };
+  // V0.99.89 : passe fermée, entrée droite — départ à un sommet où l'entrée (prolongement du
+  // segment suivant, en arrière) et la sortie (prolongement du segment d'arrivée) sont dégagées :
+  // en pratique un coin saillant ; le tour revient exactement au départ (pas de recouvrement).
+  // Plusieurs sommets voisins possibles (coin arrondi) : celui du milieu, l'entrée en diagonale.
+  const bestLineSplit=function(P,d,z){
+    const n=P.length-1;if(n<2)return null;
+    const ok=[];
+    for(let i=0;i<n;i++){
+      const V=P[i],tI=tan(V,P[i+1]),tO=tan(P[(i-1+n)%n],V);
+      if(!tI||!tO||tI[0]*tO[0]+tI[1]*tO[1]>1-1e-9){ok.push(null);continue;} // alignés : départ au coin
+      const A=[V[0]-tI[0]*linL,V[1]-tI[1]*linL],B=[V[0]+tO[0]*loutL,V[1]+tO[1]*loutL];
+      if(!clear(A[0],A[1],z)||!clear(B[0],B[1],z)){ok.push(null);continue;} // tri rapide avant les lignes
+      ok.push(lineSafe(V,A,d,z)&&lineSafe(V,B,d,z)?{i:i,V:V,A:A,B:B}:null);
+    }
+    const groups=[];let g=null;
+    for(let i=0;i<n;i++){if(ok[i]){if(!g){g=[];groups.push(g);}g.push(ok[i]);}else g=null;}
+    if(groups.length>1&&ok[0]&&ok[n-1]){const f=groups.shift();groups[groups.length-1]=groups[groups.length-1].concat(f);}
+    let best=null,bs=1/0;
+    groups.forEach(function(G){const c=G[Math.floor((G.length-1)/2)];
+      const sc=cur?Math.hypot(c.A[0]-cur.x,c.A[1]-cur.y):0;
+      if(sc<bs-1e-9){bs=sc;best=c;}});
+    return best;
+  };
   // entrée d'une passe : arc (Q → S) puis approche (A → Q)
   const entryAt=function(S,t,d,z){
     const nf=freeN(t),lin=leadArc(S,t,nf,d,true),Q=lin?lin[0]:S;
@@ -237,6 +287,19 @@ function faoGenContourSlot(mesh,loop0,o){
   // une passe à la cote z, distance d : entrée par le côté, tour, sortie par le côté
   const emitRun=function(run,z,d){
     let pts=run.pts,e=null;
+    if(straight&&run.closed){
+      const sp=bestLineSplit(pts,d,z);
+      if(sp){ // entrée droite dans le prolongement, tour complet, sortie droite dans le prolongement
+        const body=pts.slice(sp.i,pts.length-1).concat(pts.slice(0,sp.i+1));
+        goDown(sp.A,z);
+        cut(body[0],z,1);
+        for(let k=1;k<body.length;k++)cut(body[k],z,0);
+        cut(sp.B,z,1);
+        diag.passes++;diag.lineN++;
+        return;
+      }
+    }
+    let inLine=false;
     if(run.closed){
       e=bestStart(pts,d,z);
       if(!e){diag.noEntry++;return;}
@@ -253,14 +316,23 @@ function faoGenContourSlot(mesh,loop0,o){
       }
     }else{
       const t=tan(pts[0],pts[1]);
-      e=t?entryAt(pts[0],t,d,z):null;
+      if(straight&&t){ // V0.99.89 : passe ouverte — entrée droite dans le prolongement si dégagée
+        const A=[pts[0][0]-t[0]*linL,pts[0][1]-t[1]*linL];
+        if(lineSafe(pts[0],A,d,z)){e={S:pts[0],t:t,lin:null,Q:pts[0],A:A};inLine=true;}
+      }
+      if(!e)e=t?entryAt(pts[0],t,d,z):null;
       if(!e){diag.noEntry++;return;}
     }
     // sortie
     let k1=pts.length-1;while(k1>0&&Math.hypot(pts[k1][0]-pts[k1-1][0],pts[k1][1]-pts[k1-1][1])<1e-9)k1--;
     const t1=k1>0?tan(pts[k1-1],pts[k1]):null,E=pts[pts.length-1];
-    let lout=null,Aout=null;
-    if(t1){const nf1=freeN(t1);lout=leadArc(E,t1,nf1,d,false);Aout=toAir(lout?lout[lout.length-1]:E,nf1,d,z);}
+    let lout=null,Aout=null,outLine=false;
+    if(t1&&straight){ // V0.99.89 : sortie droite dans le prolongement si dégagée
+      const B=[E[0]+t1[0]*loutL,E[1]+t1[1]*loutL];
+      if(lineSafe(E,B,d,z)){Aout=B;outLine=true;}
+    }
+    if(t1&&!Aout){const nf1=freeN(t1);lout=leadArc(E,t1,nf1,d,false);Aout=toAir(lout?lout[lout.length-1]:E,nf1,d,z);}
+    if(straight){if(inLine&&outLine)diag.lineN++;else diag.perpN++;}
     goDown(e.A,z);
     cut(e.Q,z,1);
     if(e.lin)for(let k=1;k<e.lin.length;k++)cut(e.lin[k],z,1);
