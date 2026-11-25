@@ -24,7 +24,7 @@ function faoSurvolDecoupe(moves,clip,out){
   // Segments par catégorie (même lecture que faoSegSplit : chaque segment prend la
   // commande de SA destination ; la zone ne borne que ce qui n'est pas un rapide).
   //  - rapide / remontée (G0 vertical qui monte) : comme l'aperçu ;
-  //  - liaison au contact (m.tr) ;
+  //  - liaison au contact (m.tr), passage au niveau suivant en restant en bas (m.stay) ;
   //  - entrée / sortie : suite de mouvements étiquetés ent (rampe, hélice, arc,
   //    descente) et de plongées verticales en avance. SORTIE si elle vient après la
   //    coupe et quitte la matière (suivie d'un rapide, d'une liaison ou de la fin ;
@@ -38,9 +38,9 @@ function faoSurvolDecoupe(moves,clip,out){
   for(let i=1;i<n;i++){
     const m=moves[i],p=moves[i-1];
     const vert=Math.abs(m.x-p.x)<1e-9&&Math.abs(m.y-p.y)<1e-9;
-    monte[i]=!m.r&&!m.ent&&!m.tr&&!m.arc&&vert&&m.z>p.z+1e-9;
+    monte[i]=!m.r&&!m.ent&&!m.tr&&!m.stay&&!m.arc&&vert&&m.z>p.z+1e-9;
     if(m.r)cat[i]=(vert&&m.z>p.z+1e-9)?'ret':'rap';
-    else if(m.tr)cat[i]='lia';
+    else if(m.tr||m.stay)cat[i]='lia'; // V0.99.97 : passage d'un niveau au suivant en restant en bas (contour)
     else if(m.ent||(vert&&m.z<p.z-1e-9&&!m.arc))cat[i]='es';
     else cat[i]='cut';
   }

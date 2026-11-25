@@ -52,7 +52,8 @@ const vm=require('vm');
     "const arcs=mv.filter(m=>m.arc),g1=mv.filter(m=>!m.r&&!m.arc);",
     "p('contour : '+mv.length+' mouvements, '+arcs.length+' arcs, '+g1.length+' G1');",
     // 2 niveaux (−9,5 et −10) : entrée G3, 4 congés G2, 4 côtés G1, sortie G3 ; G1 restants = plongées
-    "const lv=mv.filter(m=>!m.r&&!m.arc&&!m.ent).length,pl=g1.filter(m=>m.ent).length;",
+    // (V0.99.97 : entre les niveaux, la fraise reste en bas — retour à plat + plongée sur place)
+    "const lv=mv.filter(m=>!m.r&&!m.arc&&!m.ent).length,pl=g1.filter(m=>m.ent&&!m.stay).length+(g1.some(m=>m.stay)?1:0);",
     "att(arcs.length>=12&&arcs.length<=14&&lv===8&&pl===2,'contour : par niveau entrée G3 + 4 congés G2 + sortie G3 (+ recouvrement), seuls les 4 côtés en G1 (vu '+arcs.length+' arcs, '+lv+' G1 de côté, '+pl+' plongées)');",
     "const rad={};let pv=null,badR=0;mv.forEach(m=>{if(m.arc&&pv){const r=Math.hypot(m.arc.i,m.arc.j),re=Math.hypot(pv.x+m.arc.i-m.x,pv.y+m.arc.j-m.y);rad[r.toFixed(3)]=1;if(Math.abs(r-re)>0.001)badR++;}pv=m;});",
     "att(rad['10.000']&&badR===0,'congés : G2 de rayon 10 (R5 + rayon de fraise), même rayon au départ et à l’arrivée (rayons '+Object.keys(rad).join(' ')+')');",

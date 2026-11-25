@@ -84,6 +84,7 @@ const SUITES = [
   'test_fao_surfacage_finition',
   'test_fao_hsc_fagor',
   'test_fao_arcs_correction',
+  'test_fao_contour_niveaux',
   'test_simulation_rendu',
   'test_simulation_cartes',
   'test_fao_chanfrein',

@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.96';
+const APP_VER='V0.99.97';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -54519,6 +54519,10 @@ function faoZoneStrip(moves,ctx,secu,job){
         return x>=sb.x0-1e-9&&x<=sb.x1+1e-9&&y>=sb.y0-1e-9&&y<=sb.y1+1e-9;
       };
       const br=[]; let prev=null, dropped=false;
+      const eng=new Set(); // V0.99.97 : descentes gardées au-dessus d'une plongée
+      // V0.99.97 : éléments qui suivent une série retirée — la re-jonction ne se fait QUE là
+      // (avant : remontée insérée entre TOUTES les coupes dès qu'une série était retirée)
+      const apres=new Set(); let jn=false;
       // 2026-10-10-002 : la PREMIÈRE série de rapides (engagement / retour
       // d'outil en tête d'op) est préservée — même règle que faoZoneStrip pour
       // la zone. Un outil doit pouvoir approcher depuis l'extérieur du brut.
@@ -54537,8 +54541,18 @@ function faoZoneStrip(moves,ctx,secu,job){
           //  - la jonction prev->next ne traverserait PAS la frontière du brut.
           const pr=(i>0)?moves[i-1]:null, nx=(j<moves.length)?moves[j]:null;
           if(!pr||!nx){ i=j; prev=nx||prev; continue; } // tête ou queue : préservée
-          if(!faoBoxCross(pr,nx,sb)){ dropped=true; i=j; prev=nx; continue; }
+          if(!faoBoxCross(pr,nx,sb)){
+            dropped=true;
+            // V0.99.97 : le dernier rapide de la série, juste au-dessus de la coupe suivante
+            // (descente avant une plongée), est gardé : sans lui la plongée partait du plan de
+            // sécurité, en avance (long trait vert de Renfort, 30 mm en avance dans le vide)
+            const lr=moves[j-1];
+            if(nx.r===0&&Math.hypot(lr.x-nx.x,lr.y-nx.y)<=1e-9&&+lr.z>+nx.z+1e-9){ eng.add(lr); apres.add(lr); br.push(lr); }
+            else jn=true;
+            i=j; prev=nx; continue;
+          }
         }
+        if(jn){ apres.add(m); jn=false; }
         br.push(m); prev=m; i++;
       }
       if(dropped&&br.length){
@@ -54551,7 +54565,12 @@ function faoZoneStrip(moves,ctx,secu,job){
           const m=br[i];
           // Transition coupe→coupe (rapide retiré entre les deux) : on remonte
           // d'abord en Z au point courant, puis on descend au point suivant.
-          if(prev&&prev.r===0&&m.r===0){
+          if(apres.has(m)&&prev&&prev.r===0&&m.r===0){
+            const zc=Math.max(prev.z,m.z,secu);
+            out2.push({r:1,x:prev.x,y:prev.y,z:zc});
+            out2.push({r:1,x:m.x,y:m.y,z:zc});
+          }else if(apres.has(m)&&prev&&prev.r===0&&eng.has(m)&&Math.hypot(m.x-prev.x,m.y-prev.y)>1e-9){
+            // descente gardée ailleurs : même retrait qu'avant, puis rapide jusqu'à elle
             const zc=Math.max(prev.z,m.z,secu);
             out2.push({r:1,x:prev.x,y:prev.y,z:zc});
             out2.push({r:1,x:m.x,y:m.y,z:zc});
@@ -54590,9 +54609,18 @@ function faoZoneStrip(moves,ctx,secu,job){
       const prev=a>0?moves[a-1]:null, next=b+1<moves.length?moves[b+1]:null;
       u++;
       if(!drop[u-1]){ for(let t=a;t<=b;t++)out.push(moves[t]); i=b; continue; }
+      // V0.99.97 : dernier rapide juste au-dessus de la plongée suivante : gardé (sinon plongée
+      // en avance depuis le plan de sécurité) ; descente sur place après une coupe au même XY
+      // (passage au niveau suivant en restant en bas) : gardée seule, sans remonter
+      const lr=moves[b];
+      const eng=!!(next&&next.r===0&&Math.hypot(lr.x-next.x,lr.y-next.y)<=1e-9&&+lr.z>+next.z+1e-9&&+lr.z<secu-1e-9);
+      if(eng&&prev&&prev.r===0&&Math.hypot(prev.x-lr.x,prev.y-lr.y)<=1e-9&&+prev.z>=+lr.z-1e-9){ out.push(lr); i=b; continue; }
       // jonction : jamais de G0 à z de coupe (retrait puis liaison en sécurité)
       if(prev&&prev.r===0)out.push({r:1,x:prev.x,y:prev.y,z:secu});
-      if(next&&next.r===0)out.push({r:1,x:next.x,y:next.y,z:secu});
+      if(next&&next.r===0){
+        out.push({r:1,x:next.x,y:next.y,z:secu});
+        if(eng)out.push(lr);
+      }
       i=b; continue;
     }
     out.push(moves[i]);
@@ -54956,6 +54984,9 @@ function faoOpMovesKey(op,job){
     // V0.99.96 : profils (contour, chanfrein, contour 3 tailles) — congés en G2 / G3 : seules ces
     // opérations sont à refaire (CACHE_VER inchangé)
     if(op&&(faoContourProfil(op)||op.type==='chamfer'))dep=['arcs-g2g3',dep];
+    // V0.99.97 : contour sur profil — même entrée à chaque niveau, la fraise reste en bas entre
+    // les niveaux, approche droit sur la vraie entrée (seuls ces contours sont à refaire)
+    if(op&&faoContourProfil(op))dep=['entree-niveaux',dep];
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -58707,7 +58738,7 @@ function faoSurvolDecoupe(moves,clip,out){
   // Segments par catégorie (même lecture que faoSegSplit : chaque segment prend la
   // commande de SA destination ; la zone ne borne que ce qui n'est pas un rapide).
   //  - rapide / remontée (G0 vertical qui monte) : comme l'aperçu ;
-  //  - liaison au contact (m.tr) ;
+  //  - liaison au contact (m.tr), passage au niveau suivant en restant en bas (m.stay) ;
   //  - entrée / sortie : suite de mouvements étiquetés ent (rampe, hélice, arc,
   //    descente) et de plongées verticales en avance. SORTIE si elle vient après la
   //    coupe et quitte la matière (suivie d'un rapide, d'une liaison ou de la fin ;
@@ -58721,9 +58752,9 @@ function faoSurvolDecoupe(moves,clip,out){
   for(let i=1;i<n;i++){
     const m=moves[i],p=moves[i-1];
     const vert=Math.abs(m.x-p.x)<1e-9&&Math.abs(m.y-p.y)<1e-9;
-    monte[i]=!m.r&&!m.ent&&!m.tr&&!m.arc&&vert&&m.z>p.z+1e-9;
+    monte[i]=!m.r&&!m.ent&&!m.tr&&!m.stay&&!m.arc&&vert&&m.z>p.z+1e-9;
     if(m.r)cat[i]=(vert&&m.z>p.z+1e-9)?'ret':'rap';
-    else if(m.tr)cat[i]='lia';
+    else if(m.tr||m.stay)cat[i]='lia'; // V0.99.97 : passage d'un niveau au suivant en restant en bas (contour)
     else if(m.ent||(vert&&m.z<p.z-1e-9&&!m.arc))cat[i]='es';
     else cat[i]='cut';
   }
@@ -74259,7 +74290,7 @@ function faoGenContourProfil(mesh,loop0,o){
   const overlap=isFinite(+o.overlap)&&+o.overlap>=0?+o.overlap:1;
   const zClear=Math.min(secu,Math.max(ztop,zbot)+2);
   const rnd=function(v){return Math.round(v*10000)/10000;};
-  let cur=null;
+  let cur=null,runEnd=null;
   const push=function(m){m.x=rnd(m.x);m.y=rnd(m.y);m.z=rnd(m.z);moves.push(m);cur=m;};
   // côté libre d'un point de passe (normale vers l'extérieur de la matière)
   // t = tangente unitaire de l'avance ; avalant : matière à droite, libre à gauche
@@ -74283,12 +74314,19 @@ function faoGenContourProfil(mesh,loop0,o){
   const emitRun=function(run,z,d,ramp){
     let pts=run.pts;
     // départ : point le plus proche de la position courante (boucle fermée)
-    if(run.closed&&cur){
-      let bi=0,bd=1/0;
-      for(let i=0;i+1<pts.length;i++){const q=(pts[i][0]-cur.x)*(pts[i][0]-cur.x)+(pts[i][1]-cur.y)*(pts[i][1]-cur.y);if(q<bd){bd=q;bi=i;}}
+    // V0.99.97 (Renfort : « Pourquoi l'entrée descend puis remonte pour aller chercher une autre
+    // entrée? ») : choisi au premier niveau, puis le MÊME à chaque niveau (comme Fusion) — avant,
+    // le départ glissait le long du congé d'un niveau à l'autre
+    if(run.closed&&(cur||run._bi!==undefined)){
+      let bi=run._bi;
+      if(bi===undefined){
+        let bd=1/0;bi=0;
+        for(let i=0;i+1<pts.length;i++){const q=(pts[i][0]-cur.x)*(pts[i][0]-cur.x)+(pts[i][1]-cur.y)*(pts[i][1]-cur.y);if(q<bd){bd=q;bi=i;}}
+      }
+      run._bi=bi;
       const body=pts.slice(bi,pts.length-1).concat(pts.slice(0,bi));
       pts=body.concat([[body[0][0],body[0][1]]]);
-    }
+    }else if(run.closed)run._bi=0;
     // Pente : hélice le long de la boucle de z0 à z (longueur (z0−z)/k), puis
     // un tour complet à plat + recouvrement ; pts portent leur z ([x,y,z])
     if(ramp&&run.closed&&ramp.z0>z+1e-9){
@@ -74333,15 +74371,33 @@ function faoGenContourProfil(mesh,loop0,o){
     if(lin)arcCAdd(lin.c);
     if(lout)arcCAdd(lout.c);
     const S=lin?lin[0]:pts[0];
-    // approche : dégagement, rapide au-dessus du départ, plongée en avance
-    if(!cur){push({r:1,x:S[0],y:S[1],z:secu});if(zClear<secu-1e-9)push({r:1,x:S[0],y:S[1],z:zClear});}
-    else{
-      if(cur.z<zClear-1e-9)push({r:1,x:cur.x,y:cur.y,z:zClear});
-      push({r:1,x:S[0],y:S[1],z:zClear});
-    }
     const zS=ramp?ramp.z0:z;
     const zIn=(lin&&inTab(S[0],S[1])&&zS<tabZ)?tabZ:zS;
-    push({r:0,ent:1,x:S[0],y:S[1],z:zIn});
+    // V0.99.97 : niveau suivant juste après la sortie du niveau précédent — la fraise RESTE EN
+    // BAS (comme Fusion) : de la fin de la sortie au début de l'entrée à la même cote, dans le
+    // libre (contrôlé comme les arcs d'entrée), puis plongée sur place. Avant : remontée au
+    // dégagement, entrée ailleurs, redescente. Drapeau stay : jamais sauté par « Rapide dans le vide ».
+    let stay=false;
+    if(cur&&!cur.r&&cur===runEnd&&!ramp&&cur.z>=zIn-1e-9){
+      const L=Math.hypot(S[0]-cur.x,S[1]-cur.y);
+      if(L<=2*leadR+overlap+r+1e-6){
+        const n=Math.max(1,Math.ceil(L/0.5)),seg=[];
+        for(let k=0;k<=n;k++)seg.push([cur.x+(S[0]-cur.x)*k/n,cur.y+(S[1]-cur.y)*k/n]);
+        stay=arcOK(seg,d);
+      }
+    }
+    if(stay){
+      if(Math.hypot(S[0]-cur.x,S[1]-cur.y)>1e-6)push({r:0,ent:1,stay:1,x:S[0],y:S[1],z:cur.z});
+      if(cur.z>zIn+1e-9)push({r:0,ent:1,stay:1,x:S[0],y:S[1],z:zIn});
+    }else{
+      // approche : dégagement, rapide au-dessus du départ, plongée en avance
+      if(!cur){push({r:1,x:S[0],y:S[1],z:secu});if(zClear<secu-1e-9)push({r:1,x:S[0],y:S[1],z:zClear});}
+      else{
+        if(cur.z<zClear-1e-9)push({r:1,x:cur.x,y:cur.y,z:zClear});
+        push({r:1,x:S[0],y:S[1],z:zClear});
+      }
+      push({r:0,ent:1,x:S[0],y:S[1],z:zIn});
+    }
     // Pente : z varie à chaque point — bascule d'attache suivie par drapeau
     let clipOn=zIn>zS+1e-9,rawZ=zS;
     const cutRamp=function(x,y,ent,zp){
@@ -74372,6 +74428,8 @@ function faoGenContourProfil(mesh,loop0,o){
     if(lin)for(let k=1;k<lin.length;k++)cutPt(lin[k][0],lin[k][1],1,zS);
     for(let k=1;k<pts.length;k++)cutPt(pts[k][0],pts[k][1],0,ramp?pts[k][2]:z);
     if(lout)for(let k=1;k<lout.length;k++)cutPt(lout[k][0],lout[k][1],1,z);
+    runEnd=cur; // V0.99.97 : bout de la sortie — le niveau suivant peut partir d'ici sans remonter
+    if(stay)diag.resteEnBas=(diag.resteEnBas||0)+1;
     diag.passes++;
   };
   const levels=faoLevels(ztop,zbot+RA.axial,isFinite(+o.ap)&&+o.ap>0?+o.ap:5);
@@ -74442,7 +74500,7 @@ function faoContourTrimAir(mv,mat,D){
   // passe entièrement dans le vide : supprimée.
   if(!Array.isArray(mv)||mv.length<3||typeof mat!=='function')return mv;
   const st=0.5,mg=1,Lmid=Math.max(10,2*D),Lend=1;
-  const out=[];let nSaut=0,nVide=0;
+  const out=[];let nSaut=0,nVide=0,nPl=0;
   let i=0;
   while(i<mv.length){
     if(mv[i].r||i===0){out.push(mv[i]);i++;continue;}
@@ -74456,7 +74514,19 @@ function faoContourTrimAir(mv,mat,D){
         S.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t,d:cum+L*t,k:k,end:q===ns});}
       cum+=L;
     }
-    const air=S.map(function(q){return !mat(q.x,q.y,q.z);});
+    const airRaw=S.map(function(q){return !mat(q.x,q.y,q.z);});
+    // V0.99.97 : passage au niveau suivant en restant en bas (m.stay) : jamais sauté (un saut
+    // ferait remonter la liaison du posage)
+    const air=airRaw.map(function(a,ix){const m=mv[S[ix].k];return a&&!(m&&m.stay);});
+    const airEnd={};S.forEach(function(q,ix){if(q.end)airEnd[q.k]=airRaw[ix];});
+    const put=function(m,k){
+      // plongée sur place (stay) dans le vide : rapide jusqu'à 1 mm au-dessus, puis avance
+      const pv=out.length?out[out.length-1]:null;
+      if(m.stay&&!m.r&&pv&&airEnd[k]&&Math.hypot(m.x-pv.x,m.y-pv.y)<=1e-9&&pv.z-m.z>1.5){
+        out.push({r:1,x:m.x,y:m.y,z:m.z+1});nPl++;
+      }
+      out.push(m);
+    };
     // intervalles sautés [s1, s2] en indices d'échantillons : coupe jusqu'à s1, rapide à s2
     const skips=[];const last=S.length-1;
     for(let a=0;a<=last;){
@@ -74475,7 +74545,7 @@ function faoContourTrimAir(mv,mat,D){
       }
       a=b+1;
     }
-    if(!skips.length){for(let k=i;k<j;k++)out.push(mv[k]);i=j;continue;}
+    if(!skips.length){for(let k=i;k<j;k++)put(mv[k],k);i=j;continue;}
     if(skips[0][2]==='tout'){nVide++;i=j;continue;}
     let si=0;
     for(let s=1;s<=last;s++){
@@ -74484,6 +74554,13 @@ function faoContourTrimAir(mv,mat,D){
         if(s===sk[1]){
           // fin du vide : rapide au-dessus, descente en avance (sauf fin de passe)
           if(sk[2]!=='fin'){const q=S[s];
+            // V0.99.97 : vide au début — l'approche (dégagement, rapides au-dessus du départ
+            // prévu) va DIRECTEMENT au-dessus de la vraie entrée. Avant : descente au départ
+            // prévu, remontée, puis rapide vers l'entrée en matière.
+            if(sk[2]==='debut'){
+              for(let t=out.length-1;t>=0&&out[t].r;t--)
+                if(Math.hypot(out[t].x-S[0].x,out[t].y-S[0].y)<=1e-6)out[t]=Object.assign({},out[t],{x:q.x,y:q.y});
+            }
             out.push({r:1,x:q.x,y:q.y,z:q.z+1});
             out.push({r:0,ent:1,x:q.x,y:q.y,z:q.z});}
           nSaut++;si++;
@@ -74491,13 +74568,14 @@ function faoContourTrimAir(mv,mat,D){
         continue;
       }
       const q=S[s],m=mv[q.k];
-      if(q.end)out.push(m);
+      if(q.end)put(m,q.k);
       else if(sk&&s===sk[0]){const o2={r:0,x:q.x,y:q.y,z:q.z};if(m.ent)o2.ent=m.ent;out.push(o2);}
     }
     i=j;
   }
   for(const k in mv)if(!/^\d+$/.test(k))out[k]=mv[k];
   out.vide={sauts:nSaut,passes:nVide};
+  if(nPl)out.vide.plongees=nPl;
   return out;
 }
 

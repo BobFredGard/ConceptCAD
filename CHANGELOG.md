@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**783 versions**, de `2026-09-28b` à `V0.99.96` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**784 versions**, de `2026-09-28b` à `V0.99.97` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8699,3 +8699,23 @@ Sert aussi à la révolution et au balayage (même constructeur de contour).
 - **Correction Ø** (`89-fao-outils.js`) : `t.dCor` dans la fiche de l'outil (onglet Géométrie) et `op.dCor` dans l'onglet Outil de l'opération, additionnées (`faoOpDCor`, `faoOpToolD`), fraises cylindriques et toriques seulement, ±2 mm au plus ; Ø de calcul en orange dans la fiche, libellé G-code `[T# D# corr ±x]` (88-fao-60), clé de l'outil et de l'opération, nettoyage à l'ouverture (88-fao-10).
 
 **Test** : `tests/test_fao_arcs_correction.cjs` (nouveau, 36 contrôles : 4 congés retrouvés, polygones laissés en segments, cercle complet, boucle re-découpée à moins de 2 µm, passes R10 en arcs à 5 ± 0,003 du profil, G2 / G3 avec I J, rampe hélicoïdale, chanfrein R6,25 → R6 à pointe vive, clé, alerte, champs à 0, hélice 2,5 → 2,4 avec Parois 0,1 → 2,39 avec correction, correction −0,035 → passe à 4,9825, + opération = −0,02, libellé, clé, outils non concernés, nettoyage, champs des fiches) ; inscrit dans tests/run.cjs et run-fast.cjs ; `tests/test_fao_chanfrein.cjs` : le chanfrein d'un trou R5 sort en arcs (rayon des blocs contrôlé). npm run ci vert. Banc des parcours : 24/31 identiques, 7 écarts attendus et acceptés (6 contours : mouvements −92 à −96 %, longueurs de coupe inchangées ; chanfrein en 3+2 de `Perçages` : arcs, départ au plus près sur la boucle re-découpée). Calcul refait hors de l'application sur une copie de `Renfort.conceptcad`. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.97 - FAO Contour : même entrée à chaque niveau, la fraise reste en bas entre les niveaux, approche droit sur la vraie entrée
+
+**Demande de Fred** (sur `Renfort.conceptcad`, deux captures) : « Pourquoi l'entrée descend puis remonte pour aller chercher une autre entrée? » (opération 3, Boule D10, 2 niveaux), puis « Idem pour le contour N°2.... » (Fraise D25, descente en pente).
+
+**Cause** (parcours recalculés hors de l'application sur une copie du fichier, avec les liaisons du posage) :
+- **Approche à l'entrée prévue** : « Rapide dans le vide » (V0.99.18) saute le début de passe qui ne touche pas de matière et fait entrer la fraise plus loin, mais les rapides d'approche visaient encore le début de l'arc d'entrée prévu. Contour n°2 : la pente part 1 mm au-dessus de la pièce (Haut = modèle + 1), le surfaçage a déjà enlevé ce millimètre, la première moitié de tour est dans le vide : la fraise descendait au-dessus de l'entrée prévue (bout gauche), remontait, traversait toute la pièce et entrait au bout droit. Contour n°3 : même détour, sur 3 mm.
+- **Changement de niveau** : à la fin de chaque niveau la fraise remontait au dégagement, repartait au point de la boucle le plus proche (le départ glissait le long du congé : une autre entrée à chaque niveau), puis redescendait. La purge des rapides hors brut (`faoZoneStrip`) retirait en plus la descente rapide jusqu'à 1 mm au-dessus de la plongée : la fraise plongeait **en avance depuis le plan de sécurité** (30 mm dans le vide, le long trait vert de la capture).
+- Défaut voisin trouvé par le test : quand la purge hors brut (sans zone) retirait une série de rapides, elle insérait une remontée entre **toutes** les coupes de l'opération, pas seulement à l'endroit retiré.
+
+**Correctif** :
+- **Même entrée** (`src/89-fao-contour.js`, `faoGenContourProfil`) : le départ d'une boucle fermée est choisi au premier niveau puis gardé (`run._bi`), comme Fusion.
+- **La fraise reste en bas** : niveau suivant juste après la sortie, sortie et entrée proches (≤ 2 × rayon d'entrée + recouvrement + rayon d'outil) et trajet dans le libre (même contrôle que les arcs d'entrée) : de la fin de la sortie au début de l'entrée à la même cote, puis plongée sur place (`stay`) ; sinon dégagement comme avant. Descente en pente inchangée.
+- **Rapide dans le vide** (`faoContourTrimAir`) : les passages `stay` ne sont jamais sautés ; une plongée sur place dans le vide devient un rapide jusqu'à 1 mm au-dessus puis 1 mm en avance ; vide au début : les rapides d'approche sont déplacés au-dessus de la vraie entrée.
+- **Purge des rapides** (`src/88-fao-40-zone-plans.js`, `faoZoneStrip`) : hors brut et hors zone, le dernier rapide juste au-dessus d'une plongée est gardé (descente rapide, plus de plongée en avance depuis le plan de sécurité) ; descente sur place après une coupe au même XY gardée seule, sans remontée ; hors brut, la re-jonction ne se fait plus qu'à l'endroit retiré.
+- Clé des parcours des contours sur profil marquée `entree-niveaux` (88-fao-50) : ils se recalculent seuls, CACHE_VER inchangé. Fiche : `resteEnBas`, `vide.plongees` dans le diagnostic.
+- Survol d'une opération (`src/88-fao-61-survol.js`) : le passage d'un niveau au suivant est dessiné en liaison ; la sortie qui le précède reste une sortie.
+- Renfort, opération 3 : approche droit au-dessus de l'entrée, niveau −9,5, sortie, retour à plat au début de l'entrée, rapide sur place jusqu'à −18,5, 1 mm en avance, même entrée à −19,5 ; plus aucune remontée entre les niveaux (rapides 89,4 → 59,1 mm). Opération 2 : approche droit au-dessus de l'entrée en matière (bout droit), plus de traversée (rapides 284 → 40,5 mm).
+
+**Test** : `tests/test_fao_contour_niveaux.cjs` (nouveau, 19 contrôles : deux niveaux, même entrée, aucun rapide entre les niveaux, passage à plat puis plongée sur place, dans le libre, rapides, pente inchangée, sortie loin = remontée, vide : passages gardés, rapide sur place jusqu'à 1 mm au-dessus, approche au-dessus de la vraie entrée, purge hors brut : descente gardée, retrait comme avant, remontée seulement à l'endroit retiré, descente sur place sans remonter, zone : idem, clé) ; inscrit dans tests/run.cjs et run-fast.cjs ; `test_fao_arcs_correction` : le passage entre niveaux compte comme une plongée. npm run ci vert. Banc des parcours : 26/31 identiques, les 5 contours sur profil changent comme attendu et sont acceptés (rapides −23 à −80 %, remontées −30 à −89 %, temps −0,3 à −2,9 %). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
