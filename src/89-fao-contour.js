@@ -12,6 +12,8 @@
      défaut) ou « Pente » (V0.23.18, op.descente 'pente') — l'outil attaque
      le contour en haut et descend en hélice le long de la boucle selon
      l'angle op.pente (°) jusqu'au plan final, puis un tour à plat ;
+     V0.99.84 : pente dès 0,01°, et op.penteTour (mm) limite la descente
+     à chaque tour — la plus douce des deux l'emporte (comme Fusion) ;
    - sens avalant (matière à droite de l'avance, broche M3) ou opposé ;
    - entrée / sortie en quart de cercle tangent côté libre,
      recouvrement en fin de boucle ;
@@ -151,8 +153,14 @@ function faoGenContourProfil(mesh,loop0,o){
     if(ramp&&run.closed&&ramp.z0>z+1e-9){
       const B=pts;let Lb=0;for(let i=1;i<B.length;i++)Lb+=Math.hypot(B[i][0]-B[i-1][0],B[i][1]-B[i-1][1]);
       if(Lb>1e-6){
-        const Lr=(ramp.z0-z)/ramp.k,total=Lr+Lb+overlap;
-        const zAt=function(t){return Math.max(z,ramp.z0-ramp.k*t);};
+        // V0.99.84 : pente ET descente maxi par tour (Fusion : « Ramp Angle » + « Maximum
+        // Ramp Stepdown ») — la plus douce des deux sur CETTE boucle (périmètre Lb)
+        const k=ramp.tour>0?Math.min(ramp.k,ramp.tour/Lb):ramp.k;
+        const Lr=(ramp.z0-z)/k,total=Lr+Lb+overlap;
+        const zAt=function(t){return Math.max(z,ramp.z0-k*t);};
+        // réel de la passe (la dernière émise = la plus proche de la paroi) pour la fiche
+        diag.rampe={ang:+(Math.atan(k)*180/Math.PI).toFixed(3),tour:+(k*Lb).toFixed(3),
+          tours:+(Lr/Lb).toFixed(1),parTour:k<ramp.k-1e-12};
         const P3=[[B[0][0],B[0][1],ramp.z0]];let t=0;
         while(t<total-1e-9){
           for(let i=1;i<B.length&&t<total-1e-9;i++){
@@ -230,9 +238,12 @@ function faoGenContourProfil(mesh,loop0,o){
   if(o.descente==='pente'){
     // Pente : chaque passe latérale descend d'un trait jusqu'au plan final ;
     // un morceau OUVERT (profil coupé) ne peut pas tourner : repli en paliers
-    const ang=Math.max(0.5,Math.min(45,isFinite(+o.pente)&&+o.pente>0?+o.pente:5));
-    const ramp={z0:ztop,k:Math.tan(ang*Math.PI/180)},zf=zbot+RA.axial;
+    // V0.99.84 : pente dès 0,01° (avant 0,5°) ; o.penteTour = descente maxi par tour (mm, 0 = sans)
+    const ang=Math.max(0.01,Math.min(45,isFinite(+o.pente)&&+o.pente>0?+o.pente:5));
+    const tour=isFinite(+o.penteTour)&&+o.penteTour>0?Math.max(0.01,+o.penteTour):0;
+    const ramp={z0:ztop,k:Math.tan(ang*Math.PI/180),tour:tour},zf=zbot+RA.axial;
     diag.pente=ang;
+    if(tour)diag.penteTour=tour;
     passes.forEach(function(runs,k){runs.forEach(function(run){
       if(run.closed)emitRun(run,zf,offs[k],ramp);
       else levels.forEach(function(z){emitRun(run,z,offs[k]);});
@@ -387,13 +398,32 @@ function faoContourRows(d,setup,op){
   rD.appendChild(faoSel([
     ['paliers','Paliers','Niveaux successifs espacés de ap : un tour à plat par niveau.'],
     ['pente','Pente','Attaque en haut du contour puis descente en hélice le long du profil, selon l’angle de pente, jusqu’au plan final (Bas) parcouru à plat.']],
-    pente?'pente':'paliers',function(v){ if(v==='pente'){op.descente='pente';if(!isFinite(+op.pente))op.pente=5;} else{delete op.descente;delete op.pente;} },
+    pente?'pente':'paliers',function(v){ if(v==='pente'){op.descente='pente';if(!isFinite(+op.pente))op.pente=5;} else{delete op.descente;delete op.pente;delete op.penteTour;} },
     'Descente en Z : par paliers ou en pente continue.'));
   if(pente){
-    rD.appendChild(faoLab('pente °')); rD.appendChild(faoNumFx(op,'pente',isFinite(+op.pente)?+op.pente:5,function(v){op.pente=Math.max(0.5,Math.min(45,v));},44,0.5,
-      'Angle de la descente par rapport au plan horizontal (0,5 à 45°) : la profondeur gagnée par tour vaut périmètre × tan(angle).'));
+    rD.appendChild(faoLab('pente maxi °')); rD.appendChild(faoNumFx(op,'pente',isFinite(+op.pente)?+op.pente:5,function(v){op.pente=Math.max(0.01,Math.min(45,v));},44,0.1,
+      'Angle maxi de la descente par rapport au plan horizontal (0,01 à 45°) : la profondeur gagnée par tour vaut périmètre × tan(angle), sauf si « maxi mm/tour » la limite.'));
   }
   d.appendChild(rD);
+  // V0.99.84 : mélange pente + mm/tour (Fusion : « Maximum Ramp Stepdown ») et réel de la passe
+  if(pente){
+    const rT2=faoRow();
+    rT2.appendChild(faoLab('maxi mm/tour'));
+    rT2.appendChild(faoNumFx(op,'penteTour',isFinite(+op.penteTour)&&+op.penteTour>0?+op.penteTour:0,
+      function(v){ if(isFinite(v)&&v>0)op.penteTour=Math.max(0.01,Math.min(100,v)); else delete op.penteTour; },44,0.1,
+      'Descente maxi à chaque tour du contour (mm). La descente suit la pente maxi, mais ne gagne jamais plus que ce nombre de mm par tour : '+
+      'sur un grand contour, c\'est lui qui adoucit la pente. 0 = sans limite (la pente seule compte). Pour une descente fixe par tour, mettez la pente à 45°.'));
+    d.appendChild(rT2);
+    const gr=(op.geoDiag||{}).rampe;
+    if(gr&&isFinite(+gr.tour)&&!op.stale){ // à régénérer : chiffres de l'ancien calcul, cachés
+      const f=function(x,n){return String(+(+x).toFixed(n)).replace('.',',');};
+      const f3=function(x){return f(x,Math.abs(+x)<1?3:2);};
+      const ir=faoHelp('Réel : '+f3(gr.ang)+'° · '+f3(gr.tour)+' mm/tour · '+f(gr.tours,1)+' tour'+(+gr.tours>1?'s':'')+
+        (gr.parTour?' (limité par mm/tour)':' (limité par la pente)'));
+      ir.title='Passe la plus proche de la paroi, au dernier calcul.';
+      d.appendChild(ir);
+    }
+  }
   const rP=faoRow();
   if(!pente){rP.appendChild(faoLab('ap')); rP.appendChild(faoNumFx(op,'ap',op.ap,function(v){op.ap=Math.max(0.2,v);},48,0.5,'Descente par passe en Z.'));}
   rP.appendChild(faoLab('passes')); rP.appendChild(faoNumFx(op,'nR',isFinite(+op.nR)?+op.nR:1,function(v){op.nR=Math.max(1,Math.min(20,Math.round(v)));},36,1,

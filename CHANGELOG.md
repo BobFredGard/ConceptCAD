@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**770 versions**, de `2026-09-28b` à `V0.99.83` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**771 versions**, de `2026-09-28b` à `V0.99.84` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8545,3 +8545,13 @@ Manuel Fonctions 3D.
 **Correctif** : `src/90-50-document-sauvegarde.js` — `bundleNomFichier` : le nom du fichier va à la RACINE (son document dans le bloc asm quand une pièce était active, le document de premier niveau sinon, comme avant) ; `docNomFichier`, même règle sur le document chargé, sert à l'ouverture d'un ancien .json et à « Enregistrer sous » / « Enregistrer ici » (`src/97-fichiers-projets.js`). `src/46-assemblage-modele.js` — `asmLinkNomsRepare`, appelé par `asmFromSerial` : un composant lié qui porte le nom de l'assemblage reprend celui de son fichier source (composant, document, occurrences) ; une pièce liée renommée exprès et les composants non liés ne sont jamais touchés, et la réparation ne demande pas de réécrire la source. CACHE_VER et FORMES_VER inchangés.
 
 **Test** : `tests/test_assemblage_nom_fichier.cjs` (20 contrôles : enregistré pendant la modification de la 001 puis rouvert → la 001 garde son nom et son occurrence « MERLIN-39-001:1 », la racine porte le nom du fichier, on rouvre dans la 001 ; fichier renommé ; racine active comme avant ; « Enregistrer sous » et ancien .json ; fichier déjà abîmé réparé à l'ouverture, pièce renommée exprès et composant non lié gardés, rien à réécrire, plus rien à réparer après enregistrement). Copie du vrai MERLIN-39-000 (enregistré la 003 en cours de modification) rouverte dans l'aperçu : MERLIN-39-001:1, 002, 003, 004 dans l'arbre, la 003 toujours en cours de modification ; enregistré puis rouvert pendant la modification de la 001 : noms gardés, aucune erreur. Manuel Assemblage.
+
+## V0.99.84 - FAO Contour : pente sous 0,5° et descente maxi par tour
+
+**Demande de Fred** : « FAO : Contour -> Rampe : permettre de rentrer une valeur plus petite que 0.5mm à la pente et faire un mix entre pente et mm/tour ».
+
+**Cause** : la descente « Pente » du Contour sur profil n'acceptait que 0,5 à 45° (fiche, sanitise, générateur). La profondeur gagnée par tour valait périmètre × tan(angle) : sur un grand contour, même 0,5° descendait trop vite à chaque tour, sans moyen de la régler en mm.
+
+**Correctif** : comme Fusion (« Ramp Angle » + « Maximum Ramp Stepdown »), deux maxima. `src/89-fao-contour.js` : `faoGenContourProfil` accepte une pente dès 0,01° et `o.penteTour` (mm, 0 = sans limite) ; pour chaque boucle, la pente prise est la plus douce de tan(angle) et penteTour / périmètre ; `diag.rampe` donne l'angle, les mm par tour et le nombre de tours de la passe la plus proche de la paroi. Fiche : « pente maxi ° » (pas 0,1), nouveau champ « maxi mm/tour », ligne « Réel : … (limité par la pente / par mm/tour) » sous les champs, cachée tant que l'opération est à régénérer. `src/88-fao-10-etat.js` : pente bornée à 0,01–45°, penteTour 0,01–100 mm gardé seulement en descente Pente, purgé ailleurs ; `src/88-fao-50-caches-dispatch.js` transmet penteTour (dans la clé du parcours). Parcours existants identiques (pente ≥ 0,5°, pas de penteTour) : CACHE_VER et FORMES_VER inchangés.
+
+**Test** : `tests/test_fao_contour.cjs` (+17 contrôles : 0,2° gardé et respecté, 0,485 mm/tour, 30,9 tours, z jamais remontant ; 5° + 1 mm/tour → 1 mm par tour, 15 tours, pente ≤ 1 / périmètre ; 5° + 50 mm/tour → parcours identique à 5° seul ; 45° + 2 mm/tour → 2 mm fixes ; sanitise ; clé du parcours ; fiche avec « maxi mm/tour » et « Réel », pas en paliers, réel caché à régénérer). Vérifié dans l'aperçu (bossage 40 × 20 × 15, fraise Ø10) : 0,2° gardé après rechargement, 0,529 mm/tour, 28,4 tours ; 1° et « 0,3 » tapés au clavier puis « Tout régénérer » → « Réel : 0,114° · 0,3 mm/tour · 50 tours (limité par mm/tour) », aucune erreur. Manuel FAO.
