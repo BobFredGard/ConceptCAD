@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.78';
+const APP_VER='V0.99.79';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -56121,6 +56121,40 @@ function faoWkNbCoeurs(){
   try{ const h=+navigator.hardwareConcurrency; if(h>0)n=h; }catch(e){}
   return Math.max(1,Math.min(FAO_WK_MAX,n-1));
 }
+/* ----- V0.99.79 : budget mémoire des workers -----
+   STEP.conceptcad de Fred : « Tout régénérer » relançait la page sur 24 cœurs. Sous Chrome, Edge
+   et l'appli, TOUS les workers d'une page partagent le même tas JavaScript (≈ 4 Go,
+   performance.memory.jsHeapSizeLimit) ; chaque calcul y garde ses données et des déchets que le
+   ramasse-miettes laisse grossir. 2 ébauches 3D × 8 couches = 16 workers dépassaient ce plafond.
+   Chaque calcul lancé compte un poids (Mo de pointe estimés) et la répartition attend qu'un worker
+   finisse plutôt que de dépasser le budget ; le premier part toujours. Les parcours ne changent pas,
+   seul le nombre de calculs simultanés baisse quand la mémoire manque.
+   Poids mesurés sur STEP.conceptcad (pointe du tas, Node) : couche d'ébauche 3D 410 à 590 Mo,
+   ébauche entière 1,1 à 1,4 Go, finition 65 à 140 Mo. */
+const FAO_WK_POIDS={rough3d:900,couche:600,geofinish:200,geodesic:200,defaut:300};
+function faoWkPoids(op,job,corps,niv){
+  let p=niv?FAO_WK_POIDS.couche:(FAO_WK_POIDS[op&&op.type]||FAO_WK_POIDS.defaut);
+  // maillages envoyés à CE worker (faoWkCorpsPour) : copiés, puis remis en points et
+  // triangles là-bas (≈ 4 fois la taille des tableaux plats)
+  try{
+    const B=faoWkBesoin(op,job);
+    let o=0;
+    const n=function(m){ return m&&m.v&&m.t?m.v.byteLength+m.t.byteLength:0; };
+    (corps||[]).forEach(function(c){ o+=n(c.bas); if(B.mid)o+=n(c.mid); if(B.fin)o+=n(c.fin); });
+    p+=4*o/1048576;
+  }catch(e){}
+  return Math.round(p);
+}
+function faoWkBudget(){
+  // Mo laissés aux workers : 75 % du tas commun (4 Go au plus), moins la page elle-même et ses
+  // déchets à venir (1,5 fois ce qu'elle occupe) ; sans mesure (Firefox, Safari) : page à 400 Mo
+  let lim=4096,pris=400;
+  try{
+    const m=performance.memory;
+    if(m&&m.jsHeapSizeLimit>0){ lim=m.jsHeapSizeLimit/1048576; pris=m.usedJSHeapSize/1048576; }
+  }catch(e){}
+  return Math.max(0,Math.min(lim,4096)*0.75-1.5*pris);
+}
 
 // ----- répartition -----
 async function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
@@ -56200,6 +56234,9 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
     const pret=function(o){ return (attend.get(o)||[]).every(function(q){ return faites.has(q); }); };
     const perdue=function(o){ return (attend.get(o)||[]).some(function(q){ return ratees.has(q); }); };
     const nb=Math.min(faoWkNbCoeurs(),total);
+    // V0.99.79 : budget mémoire des workers (Mo) — voir faoWkBudget
+    const budget=faoWkBudget();
+    let charge=0,pic=0;
     // Un autre rafraîchissement a pris la main : on n'attend pas la fin d'une opération longue
     const veille=setInterval(function(){ if(estCaduc())suite(); },250);
     let miens=[]; // SES workers : le calcul suivant a peut-être déjà démarré les siens
@@ -56219,17 +56256,28 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
       // précédente ratée : calcul normal, après elle (boucle habituelle)
       for(let i=file.length-1;i>=0;i--)if(perdue(file[i])){ ratees.add(file[i]); file.splice(i,1); finies++; }
       while(enCours<nb){
-        if(sous.length){ lancer(sous.shift()); continue; }
-        const i=file.findIndex(pret);
-        if(i<0)break;
-        const o=file.splice(i,1)[0];
-        const n=couches.get(o);
-        if(n){
-          const agg={n:n,fin:0,memo:[]};
-          for(let k=0;k<n;k++)sous.push({op:o,niv:{n:n,i:k},agg:agg});
-          continue;
+        let t=null,fi=-1;
+        if(sous.length)t=sous[0];
+        else{
+          fi=file.findIndex(pret);
+          if(fi<0)break;
+          const o=file[fi];
+          const n=couches.get(o);
+          if(n){
+            file.splice(fi,1);
+            const agg={n:n,fin:0,memo:[]};
+            for(let k=0;k<n;k++)sous.push({op:o,niv:{n:n,i:k},agg:agg});
+            continue;
+          }
+          t={op:o};
         }
-        lancer({op:o});
+        // V0.99.79 : mémoire partagée par tous les workers de la page — on attend qu'un
+        // worker finisse plutôt que de dépasser le budget (le premier part toujours)
+        const p=faoWkPoids(t.op,job,corps,t.niv);
+        if(enCours>0&&charge+p>budget)break;
+        if(fi<0)sous.shift(); else file.splice(fi,1);
+        t.poids=p;
+        lancer(t);
       }
       if(!enCours){
         while(sous.length){ const t=sous.shift(); finies++; if(!t.niv)ratees.add(t.op); else if(++t.agg.fin===t.agg.n)ratees.add(t.op); }
@@ -56247,12 +56295,15 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         return;
       }
       enCours++;
+      charge+=t.poids||0;
+      if(enCours>pic)pic=enCours;
       faoWkActifs.push(w);
       miens.push(w);
       let clos=false,reussi=false;
       const clore=function(){
         if(clos)return;
         clos=true;
+        charge-=t.poids||0;
         if(t.niv){
           // dernier worker de couches : le calcul final passe en tête (avec ou sans mémoire)
           const A=t.agg;
@@ -56263,7 +56314,7 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         faoWkActifs=faoWkActifs.filter(function(x){return x!==w;});
         miens=miens.filter(function(x){return x!==w;});
         enCours--;finies++;
-        try{ if(surAvance)surAvance(finies,total,nb); }catch(e){}
+        try{ if(surAvance)surAvance(finies,total,Math.max(1,pic)); }catch(e){}
         suite();
       };
       w.onerror=function(ev){
@@ -68013,7 +68064,10 @@ function faoShadowShape(mesh,planes,B,r,gstep){
       const k=ch.cle;
       if(!S.keys[k]){S.keys[k]=1;ch.pi=S.pl.length;S.chains.push(ch);}
     });
-    S.pl.push({chains:chains,bb:bb});
+    // V0.99.79 : m = mémoire du plan (mem) — ses index de parité (yb) et d'arêtes (eh) ne
+    // dépendent que de ses contours : calculés une fois par opération au lieu d'une fois
+    // par niveau (des centaines de Mo jetés à chaque niveau : 16 cœurs saturaient la page)
+    S.pl.push({chains:chains,bb:bb,m:CC?mem:null});
     const hs=[];
     segs.forEach(function(s,si){
       const k=mem.sk[si];
@@ -68071,6 +68125,7 @@ function faoChainParity(ch,x,y){
    par chaîne — exact, la condition d'arête est re-testée mot pour mot. */
 function faoPlaneYB(P){
   if(P.yb)return P.yb;
+  if(P.m&&P.m.yb){P.yb=P.m.yb;return P.yb;}
   const step=0.5,chs=P.chains,E=[];
   let y0=1/0,y1=-1/0;
   for(let k=0;k<chs.length;k++){
@@ -68097,6 +68152,7 @@ function faoPlaneYB(P){
     }
   }
   P.yb={y0:y0,step:step,rows:rows,n:n,E:E};
+  if(P.m)P.m.yb=P.yb;
   return P.yb;
 }
 /* Grille exacte de parité (2026-10-09-004) : une cellule jamais traversée
@@ -68213,9 +68269,11 @@ function faoSegSegD2(ax,ay,bx,by,cx,cy,dx,dy){
 function faoPlaneEdgeHash(P){
   // Arêtes de parité du plan, indexées (cellule 1 mm), une fois par plan
   if(P.eh)return P.eh;
+  if(P.m&&P.m.eh){P.eh=P.m.eh;return P.eh;}
   const E=faoPlaneYB(P).E,segs=[];
   for(let i=0;i<E.length;i+=4)segs.push([E[i],E[i+1],E[i+2],E[i+3]]);
   P.eh=faoHashSegs(faoHashBuild(1),segs);
+  if(P.m)P.m.eh=P.eh;
   return P.eh;
 }
 function faoChainNearPlane(ch,P,eps){
@@ -84007,8 +84065,34 @@ function stlExportOpen(){
    Liens des copies : chemin dans le dossier de projets quand le dossier choisi en fait partie ;
    sinon handle mémorisé (cet ordinateur) + chemin relatif au dossier choisi (un autre poste
    qui prend ce dossier comme dossier de projets retrouve les pièces) — asmLinkHandle essaie
-   alors le handle d'abord (47-composants-lies). */
+   alors le handle d'abord (47-composants-lies).
+   V0.99.79 (demande de Fred : « Export Assemblage -> ajouter les pièces dérivées ») : les
+   fichiers SOURCES des Dérivées (52-derivee : doc.derive de l'hôte, de ses composants, de ses
+   pièces liées) sont copiés aussi, tels qu'ils sont sur le disque (ils ne sont que lus), et
+   les liens des copies vont vers eux. De proche en proche : les liens d'une source copiée
+   (ses propres Dérivées, ses pièces liées) sont suivis de la même façon. Un lien qui revient
+   vers un fichier déjà copié (pièce qui dérive des paramètres de l'assemblage) va vers sa copie.
+   Empreinte (sig) d'un lien recopié : celle de la copie si le lien était à jour avec l'original,
+   sinon l'ancienne — la copie rouverte se met alors à jour comme l'aurait fait l'original. */
 function packSrcKey(l){return l?(l.rel?'r:'+l.rel:(l.key?'k:'+l.key:'')):'';}
+function packLinks(obj){
+  // Liens d'un projet sérialisé, à tout niveau : [{kind:'asm'|'der', l}] (l = objet du lien,
+  // modifiable sur place) — composants liés du bloc asm, Dérivées de chaque document
+  const out=[],seen=new Set();
+  const walk=o=>{
+    if(!o||typeof o!=='object'||seen.has(o))return;
+    seen.add(o);
+    if(Array.isArray(o.derive))o.derive.forEach(L=>{if(L&&typeof L==='object'&&(L.rel||L.key))out.push({kind:'der',l:L});});
+    if(o.asm&&Array.isArray(o.asm.comps))o.asm.comps.forEach(c=>{
+      if(!c)return;
+      if(c.link&&typeof c.link==='object'&&(c.link.rel||c.link.key))out.push({kind:'asm',l:c.link});
+      if(c.doc&&typeof c.doc==='object')walk(c.doc);
+    });
+    if(o.doc&&typeof o.doc==='object')walk(o.doc); // enveloppe bundle
+  };
+  walk(obj);
+  return out;
+}
 function packDepth(L){
   // Profondeur d'un composant lié : 0 = lié directement dans l'hôte, 1 = lien d'un lien…
   let d=0,c=L,seen=new Set();
@@ -84024,32 +84108,77 @@ function packUnique(path,used){
   used.add(p.toLowerCase());
   return p;
 }
-async function packPlan(){
-  // → {host:{path}, groups:[{key, Ls, L, path, depth}]} : chemins dans le dossier choisi
+async function packPlan(step){
+  // → {host:{path, obj, mem:true}, groups:[...], failed:[]} : chemins dans le dossier choisi
+  // groupe = un fichier à copier : {key, keys, kind ('asm' : pièce liée, écrite depuis la mémoire ;
+  // 'file' : copiée du disque, ex. source d'une Dérivée), via ('asm'|'der'), l (lien), Ls, L,
+  // depth, h, txt, orig (empreinte du fichier d'origine), obj (projet à réécrire), path, deps}
   const links=asmLinked();
-  const groups=new Map();
+  const groups=new Map(); // clé de lien → groupe (une même source peut avoir plusieurs clés)
   links.forEach(L=>{
     const k=packSrcKey(L.link)||('c:'+L.id);
-    let g=groups.get(k);if(!g){g={key:k,Ls:[],L,depth:0};groups.set(k,g);}
+    let g=groups.get(k);if(!g){g={key:k,keys:[k],kind:'asm',via:'asm',mem:true,l:L.link||{},Ls:[],L,depth:0};groups.set(k,g);}
     g.Ls.push(L);g.depth=Math.max(g.depth,packDepth(L));
   });
   let hostRel=null;
   try{if(mffFolder&&mffHandle){const p=await mffFolder.resolve(mffHandle);if(p&&p.length)hostRel=p.join('/');}}catch(e){}
   const hostName=(mffHandle&&mffHandle.name)||(packSafe((asm&&asmRoot().name)||mffName||doc.name||'assemblage')+'.conceptcad');
-  // dossier commun à l'hôte et aux pièces (dans le dossier de projets)
+  const failed=[];
+  // l'hôte (état en mémoire) et les pièces liées : lus d'abord, leurs liens disent quoi copier d'autre
+  const host={mem:true,keys:hostRel?['r:'+hostRel]:[],obj:JSON.parse(await mffData())};
+  for(const g of new Set(groups.values())){
+    try{
+      let cur=null;
+      try{const r=await asmLinkHandle(g.L,true,'read');if(r.h){g.h=r.h;cur=await mffFileText(await r.h.getFile());}}catch(e){cur=null;}
+      g.orig=cur!=null?asmHash(cur):null;
+      g.obj=JSON.parse(asmLinkText(g.L,cur));
+    }catch(e){g.err=String(e&&e.message||e);}
+  }
+  // V0.99.79 : sources des Dérivées (et liens de ces sources), de proche en proche
+  const queue=[host.obj].concat([...new Set(groups.values())].filter(g=>g.obj).map(g=>g.obj));
+  const hostKeys=new Set(host.keys);
+  const bad=new Set();
+  for(let qi=0;qi<queue.length&&qi<500;qi++){
+    for(const {kind,l} of packLinks(queue[qi])){
+      const k=packSrcKey(l);
+      if(!k||groups.has(k)||hostKeys.has(k)||bad.has(k))continue;
+      const nm=String(l.name||k.slice(2).split('/').pop()||'source');
+      if(step)await step('lecture de « '+nm+' »…');
+      let r;try{r=await asmLinkHandle({link:Object.assign({},l)},true,'read');}catch(e){r={why:String(e&&e.message||e)};}
+      if(!r||!r.h){bad.add(k);failed.push((kind==='der'?'source de dérivée':'pièce liée')+' « '+nm+' » ('+((r&&r.why)||'introuvable')+')');continue;}
+      // même fichier sous un autre chemin ou handle : l'hôte, ou un fichier déjà prévu
+      let same=null;
+      try{if(mffHandle&&await r.h.isSameEntry(mffHandle))same=host;}catch(e){}
+      if(!same)for(const g of new Set(groups.values())){try{if(g.h&&await r.h.isSameEntry(g.h)){same=g;break;}}catch(e){}}
+      if(same===host){hostKeys.add(k);host.keys.push(k);continue;}
+      if(same){groups.set(k,same);same.keys.push(k);continue;}
+      let txt;
+      try{txt=await mffFileText(await r.h.getFile());}catch(e){bad.add(k);failed.push((kind==='der'?'source de dérivée':'pièce liée')+' « '+nm+' » (lecture impossible)');continue;}
+      const g={key:k,keys:[k],kind:'file',via:kind,mem:false,l:Object.assign({},l),Ls:[],L:null,depth:0,h:r.h,txt,orig:asmHash(txt),obj:null};
+      try{g.obj=JSON.parse(txt);}catch(e){g.obj=null;} // illisible : copié tel quel
+      groups.set(k,g);
+      if(g.obj)queue.push(g.obj);
+    }
+  }
+  // dossier commun à l'hôte et aux fichiers copiés (dans le dossier de projets)
+  const list=[...new Set(groups.values())];
   const dirs=[];if(hostRel)dirs.push(hostRel.split('/').slice(0,-1));
-  groups.forEach(g=>{if(g.L.link&&g.L.link.rel)dirs.push(String(g.L.link.rel).split('/').filter(Boolean).slice(0,-1));});
+  list.forEach(g=>{if(g.l&&g.l.rel)dirs.push(String(g.l.rel).split('/').filter(Boolean).slice(0,-1));});
   let base=dirs.length?dirs[0].slice():[];
   dirs.forEach(d=>{let i=0;while(i<base.length&&i<d.length&&base[i]===d[i])i++;base=base.slice(0,i);});
   const strip=rel=>String(rel).split('/').filter(Boolean).slice(base.length).map(packSafe).join('/');
   const used=new Set();
-  const host={path:packUnique(hostRel?strip(hostRel):packSafe(hostName),used)};
-  const list=[...groups.values()];
+  host.path=packUnique(hostRel?strip(hostRel):packSafe(hostName),used);
   list.forEach(g=>{
-    const l=g.L.link||{};
-    g.path=packUnique(l.rel?strip(l.rel):packSafe(l.name||(g.L.name+'.conceptcad')),used);
+    const l=g.l||{};
+    g.path=packUnique(l.rel?strip(l.rel):packSafe(l.name||((g.L?g.L.name:'piece')+'.conceptcad')),used);
   });
-  return {host,groups:list};
+  // fichiers dont chacun dépend (pour écrire d'abord ceux qu'il cite)
+  list.forEach(g=>{
+    g.deps=new Set();
+    if(g.obj)packLinks(g.obj).forEach(({l})=>{const t=groups.get(packSrcKey(l));if(t&&t!==g)g.deps.add(t);});
+  });
+  return {host,groups:list,byKey:groups,failed};
 }
 async function packDir(root,segs,create){
   let d=root;for(const s of segs)d=await d.getDirectoryHandle(s,create?{create:true}:undefined);return d;
@@ -84065,24 +84194,32 @@ async function packWrite(root,path,data){
   const w=await h.createWritable();await w.write(data);await w.close();
   return h;
 }
-function packRelink(obj,refs){
-  // Liens d'un projet sérialisé (bloc asm, à tout niveau) → vers les copies
-  const walk=o=>{
-    if(!o||typeof o!=='object')return;
-    if(o.asm&&Array.isArray(o.asm.comps))o.asm.comps.forEach(c=>{
-      const r=c&&c.link&&refs.get(packSrcKey(c.link));
-      if(r){c.link=Object.assign({},c.link,{rel:r.rel,key:r.key,name:r.name,sig:r.sig});delete c.link.pend;}
-    });
-    if(o.doc&&typeof o.doc==='object')walk(o.doc); // enveloppe bundle
-  };
-  walk(obj);
-  return obj;
+function packRelink(obj,refs,mem){
+  // Liens d'un projet sérialisé (composants liés, Dérivées, à tout niveau) → vers les copies.
+  // refs : clé de lien → {rel, key, name, orig, copy, mem, done, ko} ; mem : ce fichier est écrit
+  // depuis la mémoire (hôte, pièce liée). → nombre de liens changés
+  let n=0;
+  packLinks(obj).forEach(({kind,l})=>{
+    const r=refs.get(packSrcKey(l));
+    if(!r||r.ko)return;
+    let sig=l.sig;
+    if(r.done){
+      // pièce liée écrite depuis la mémoire de l'hôte : copie et lien vont ensemble (V0.99.70)
+      if(kind==='asm'&&mem&&r.mem)sig=r.copy;
+      // sinon : à jour avec l'original → à jour avec la copie ; en retard → reste en retard
+      else if(l.sig&&r.orig&&l.sig===r.orig)sig=r.copy;
+    }
+    Object.assign(l,{rel:r.rel,key:r.key,name:r.name,sig});
+    if(kind==='asm'&&mem&&r.mem)delete l.pend;
+    n++;
+  });
+  return n;
 }
-async function packRef(destPre,path,h){
-  // Comment la copie retrouve ce fichier (voir l'en-tête)
+function packRef(destPre,path){
+  // Comment la copie retrouve ce fichier (voir l'en-tête) ; le handle est mémorisé à l'écriture
+  // (clé prise d'avance : un fichier peut citer une copie pas encore écrite)
   if(destPre)return {rel:destPre.concat(path.split('/')).join('/'),key:null};
-  const key='mfl:'+uid('k');try{await idbSet(key,h);}catch(e){}
-  return {rel:path,key};
+  return {rel:path,key:'mfl:'+uid('k')};
 }
 function packCnList(){
   // Composants qui ont au moins un posage avec une opération active (sans les activer)
@@ -84134,7 +84271,7 @@ async function packRun(dest,opt){
   // opt : {cn (défaut true), ask (fonction async (msg) → bool, défaut mffAsk)} → bilan
   opt=opt||{};
   asmEnsure();
-  const bilan={host:'',parts:[],cn:[],todo:[],failed:[],dest:dest.name||'',outside:false};
+  const bilan={host:'',parts:[],derived:[],cn:[],todo:[],failed:[],dest:dest.name||'',outside:false};
   const say=t=>{try{faceEl.textContent='Assemblage → dossier : '+t;}catch(e){}};
   // V0.99.70 (constat de Fred, SIRAP-14-000 : « rien n'a été copié ») : les programmes CN
   // rejouent chaque pièce usinée (plus d'une minute la première fois) — écran figé sans rien
@@ -84142,7 +84279,7 @@ async function packRun(dest,opt){
   const step=async t=>{say(t);try{if(opt.progress)opt.progress(t);}catch(e){}await new Promise(r=>setTimeout(r,30));}; // laisse l'écran se redessiner
   let wasMod=true;try{wasMod=mffModified();}catch(e){}
   await step('préparation…');
-  const plan=await packPlan();
+  const plan=await packPlan(step);
   let destPre=null;
   try{if(mffFolder){const p=await mffFolder.resolve(dest);if(p)destPre=p;}}catch(e){}
   bilan.outside=!destPre;
@@ -84155,29 +84292,49 @@ async function packRun(dest,opt){
     const ask=opt.ask||(async m=>(await mffAsk(m,[['over','Remplacer',true],['no','Annuler']]))==='over');
     if(!(await ask('Le dossier « '+bilan.dest+' » contient déjà '+there.length+' de ces fichiers :\n• '+there.slice(0,8).join('\n• ')+(there.length>8?'\n…':'')+'\nLes remplacer ?'))){say('annulé.');return null;}
   }
-  // pièces liées : les plus profondes d'abord (leur empreinte va dans le fichier qui les lie)
+  bilan.failed.push(...plan.failed);
+  // références des copies, prises d'avance (un fichier peut citer l'hôte, écrit en dernier)
   const refs=new Map();
-  const groups=plan.groups.slice().sort((a,b)=>b.depth-a.depth);
-  for(const g of groups){
-    await step('copie de « '+g.L.name+' »…');
+  const mkRef=(x,orig)=>{
+    const r=Object.assign(packRef(destPre,x.path),{name:x.path.split('/').pop(),orig:orig||null,mem:!!x.mem,done:false,ko:false,copy:null});
+    x.keys.forEach(k=>refs.set(k,r));
+    return r;
+  };
+  plan.groups.forEach(g=>{g.ref=mkRef(g,g.orig);});
+  plan.host.ref=mkRef(plan.host,null);
+  // ordre d'écriture : chaque fichier après ceux qu'il cite (leur empreinte va dans ses liens) ;
+  // pièces liées les plus profondes d'abord ; un cycle se coupe (le lien garde son empreinte)
+  const todo=plan.groups.slice().sort((a,b)=>b.depth-a.depth),order=[],done=new Set();
+  while(todo.length){
+    let i=todo.findIndex(g=>[...g.deps].every(d=>done.has(d)));
+    if(i<0)i=0;
+    const g=todo.splice(i,1)[0];order.push(g);done.add(g);
+  }
+  const ecrire=async(x,txt)=>{
+    const h=await packWrite(dest,x.path,await mffPack(txt));
+    if(x.ref.key){try{await idbSet(x.ref.key,h);}catch(e){}}
+    x.ref.done=true;x.ref.copy=asmHash(txt);
+  };
+  const texte=obj=>obj&&obj.bundle===1?JSON.stringify(obj):JSON.stringify(obj,null,2);
+  for(const g of order){
+    const nm=g.kind==='asm'?g.L.name:g.path.split('/').pop();
+    await step('copie de « '+nm+' »…');
     try{
-      let cur=null;
-      try{const r=await asmLinkHandle(g.L,true,'read');if(r.h)cur=await mffFileText(await r.h.getFile());}catch(e){cur=null;}
-      const obj=packRelink(JSON.parse(asmLinkText(g.L,cur)),refs);
-      const bundle=obj&&obj.bundle===1;
-      const txt=bundle?JSON.stringify(obj):JSON.stringify(obj,null,2);
-      const h=await packWrite(dest,g.path,await mffPack(txt));
-      const ref=await packRef(destPre,g.path,h);
-      refs.set(g.key,Object.assign(ref,{name:g.path.split('/').pop(),sig:asmHash(txt)}));
-      bilan.parts.push(g.path);
-    }catch(e){bilan.failed.push(g.L.name+' ('+(e&&e.message||e)+')');}
+      if(g.err)throw new Error(g.err);
+      let txt;
+      if(g.kind==='file'){
+        // source copiée du disque : texte d'origine gardé à l'octet près si aucun lien ne change
+        txt=(g.obj&&packRelink(g.obj,refs,false))?texte(g.obj):g.txt;
+      }else{packRelink(g.obj,refs,true);txt=texte(g.obj);}
+      await ecrire(g,txt);
+      (g.via==='der'?bilan.derived:bilan.parts).push(g.path);
+    }catch(e){g.ref.ko=true;bilan.failed.push(nm+' ('+(e&&e.message||e)+')');}
   }
   // l'assemblage
   await step('copie de l’assemblage…');
   try{
-    const obj=packRelink(JSON.parse(await mffData()),refs);
-    const txt=obj&&obj.bundle===1?JSON.stringify(obj):JSON.stringify(obj,null,2);
-    await packWrite(dest,plan.host.path,await mffPack(txt));
+    packRelink(plan.host.obj,refs,true);
+    await ecrire(plan.host,texte(plan.host.obj));
     bilan.host=plan.host.path;
   }catch(e){bilan.failed.push('assemblage ('+(e&&e.message||e)+')');}
   // programmes CN, après les fichiers (l'activation des pièces ne change rien de ce qui est écrit)
@@ -84200,17 +84357,19 @@ async function packRun(dest,opt){
   return bilan;
 }
 function packBilanCourt(b){
+  const der=(b.derived||[]).length;
   return (b.failed.length?'⚠ ':'')+'copié dans « '+b.dest+' » : '+(b.host?'l’assemblage':'pas l’assemblage')+', '
-    +b.parts.length+' pièce(s) liée(s), '+b.cn.length+' programme(s) CN'+(b.failed.length?' — '+b.failed.length+' échec(s)':'')+'.';
+    +b.parts.length+' pièce(s) liée(s), '+(der?der+' pièce(s) source(s) de dérivée, ':'')+b.cn.length+' programme(s) CN'+(b.failed.length?' — '+b.failed.length+' échec(s)':'')+'.';
 }
 function packBilanLong(b){
   const L=['Copié dans « '+b.dest+' » :'];
   if(b.host)L.push('• assemblage : '+b.host);
   b.parts.forEach(p=>L.push('• pièce : '+p));
+  (b.derived||[]).forEach(p=>L.push('• pièce source de dérivée : '+p));
   b.cn.forEach(p=>L.push('• programme : '+p));
   if(b.todo.length)L.push('','Programmes non calculés (ouvrir la pièce, « Tout régénérer », puis recommencer) :','• '+b.todo.join('\n• '));
   if(b.failed.length)L.push('','Non copié :','• '+b.failed.join('\n• '));
-  if(b.outside&&b.parts.length)L.push('','Le dossier choisi est hors du dossier de projets : sur cet ordinateur, la copie de l’assemblage ouvre les copies des pièces. Sur un autre poste, choisir ce dossier comme dossier de projets.');
+  if(b.outside&&(b.parts.length||(b.derived||[]).length))L.push('','Le dossier choisi est hors du dossier de projets : sur cet ordinateur, la copie de l’assemblage ouvre les copies des pièces. Sur un autre poste, choisir ce dossier comme dossier de projets.');
   return L.join('\n');
 }
 async function packExport(){
@@ -84241,7 +84400,7 @@ async function packExport(){
     if(typeof document==='undefined'||!document.getElementById)return;
     const ref=document.getElementById('btnExportFcstd');if(!ref||document.getElementById('btnExportPack'))return;
     const b=document.createElement('button');b.id='btnExportPack';
-    b.title='Copier l’assemblage, toutes ses pièces liées et leurs programmes CN dans un dossier';
+    b.title='Copier l’assemblage, toutes ses pièces liées, les pièces sources de ses dérivées et leurs programmes CN dans un dossier';
     b.textContent='📦 Assemblage → dossier';
     ref.parentNode.insertBefore(b,ref.nextSibling);
     b.onclick=()=>packExport();
@@ -85653,7 +85812,7 @@ function openAide(){
     ['btnExportStl','\u{2B07}','STL — maillage'],
     ['btnExportObj','\u{2B07}','OBJ — maillage'],
     ['btnExportFcstd','\u{2B07}','FreeCAD — fichier natif (aimants avec lignes de champ)'],
-    ['btnExportPack','\u{1F4E6}','Assemblage complet → dossier (pièces liées et programmes CN)']
+    ['btnExportPack','\u{1F4E6}','Assemblage complet → dossier (pièces liées, sources des dérivées et programmes CN)']
   ],'\u{1F4BE}');
   const gProj=groupe('Projet','Nouveau modèle, sauvegarde, ouverture',[
     ['btnNew','\u{1F195}','Nouveau modèle'],

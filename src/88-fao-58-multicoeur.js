@@ -365,6 +365,40 @@ function faoWkNbCoeurs(){
   try{ const h=+navigator.hardwareConcurrency; if(h>0)n=h; }catch(e){}
   return Math.max(1,Math.min(FAO_WK_MAX,n-1));
 }
+/* ----- V0.99.79 : budget mémoire des workers -----
+   STEP.conceptcad de Fred : « Tout régénérer » relançait la page sur 24 cœurs. Sous Chrome, Edge
+   et l'appli, TOUS les workers d'une page partagent le même tas JavaScript (≈ 4 Go,
+   performance.memory.jsHeapSizeLimit) ; chaque calcul y garde ses données et des déchets que le
+   ramasse-miettes laisse grossir. 2 ébauches 3D × 8 couches = 16 workers dépassaient ce plafond.
+   Chaque calcul lancé compte un poids (Mo de pointe estimés) et la répartition attend qu'un worker
+   finisse plutôt que de dépasser le budget ; le premier part toujours. Les parcours ne changent pas,
+   seul le nombre de calculs simultanés baisse quand la mémoire manque.
+   Poids mesurés sur STEP.conceptcad (pointe du tas, Node) : couche d'ébauche 3D 410 à 590 Mo,
+   ébauche entière 1,1 à 1,4 Go, finition 65 à 140 Mo. */
+const FAO_WK_POIDS={rough3d:900,couche:600,geofinish:200,geodesic:200,defaut:300};
+function faoWkPoids(op,job,corps,niv){
+  let p=niv?FAO_WK_POIDS.couche:(FAO_WK_POIDS[op&&op.type]||FAO_WK_POIDS.defaut);
+  // maillages envoyés à CE worker (faoWkCorpsPour) : copiés, puis remis en points et
+  // triangles là-bas (≈ 4 fois la taille des tableaux plats)
+  try{
+    const B=faoWkBesoin(op,job);
+    let o=0;
+    const n=function(m){ return m&&m.v&&m.t?m.v.byteLength+m.t.byteLength:0; };
+    (corps||[]).forEach(function(c){ o+=n(c.bas); if(B.mid)o+=n(c.mid); if(B.fin)o+=n(c.fin); });
+    p+=4*o/1048576;
+  }catch(e){}
+  return Math.round(p);
+}
+function faoWkBudget(){
+  // Mo laissés aux workers : 75 % du tas commun (4 Go au plus), moins la page elle-même et ses
+  // déchets à venir (1,5 fois ce qu'elle occupe) ; sans mesure (Firefox, Safari) : page à 400 Mo
+  let lim=4096,pris=400;
+  try{
+    const m=performance.memory;
+    if(m&&m.jsHeapSizeLimit>0){ lim=m.jsHeapSizeLimit/1048576; pris=m.usedJSHeapSize/1048576; }
+  }catch(e){}
+  return Math.max(0,Math.min(lim,4096)*0.75-1.5*pris);
+}
 
 // ----- répartition -----
 async function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
@@ -444,6 +478,9 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
     const pret=function(o){ return (attend.get(o)||[]).every(function(q){ return faites.has(q); }); };
     const perdue=function(o){ return (attend.get(o)||[]).some(function(q){ return ratees.has(q); }); };
     const nb=Math.min(faoWkNbCoeurs(),total);
+    // V0.99.79 : budget mémoire des workers (Mo) — voir faoWkBudget
+    const budget=faoWkBudget();
+    let charge=0,pic=0;
     // Un autre rafraîchissement a pris la main : on n'attend pas la fin d'une opération longue
     const veille=setInterval(function(){ if(estCaduc())suite(); },250);
     let miens=[]; // SES workers : le calcul suivant a peut-être déjà démarré les siens
@@ -463,17 +500,28 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
       // précédente ratée : calcul normal, après elle (boucle habituelle)
       for(let i=file.length-1;i>=0;i--)if(perdue(file[i])){ ratees.add(file[i]); file.splice(i,1); finies++; }
       while(enCours<nb){
-        if(sous.length){ lancer(sous.shift()); continue; }
-        const i=file.findIndex(pret);
-        if(i<0)break;
-        const o=file.splice(i,1)[0];
-        const n=couches.get(o);
-        if(n){
-          const agg={n:n,fin:0,memo:[]};
-          for(let k=0;k<n;k++)sous.push({op:o,niv:{n:n,i:k},agg:agg});
-          continue;
+        let t=null,fi=-1;
+        if(sous.length)t=sous[0];
+        else{
+          fi=file.findIndex(pret);
+          if(fi<0)break;
+          const o=file[fi];
+          const n=couches.get(o);
+          if(n){
+            file.splice(fi,1);
+            const agg={n:n,fin:0,memo:[]};
+            for(let k=0;k<n;k++)sous.push({op:o,niv:{n:n,i:k},agg:agg});
+            continue;
+          }
+          t={op:o};
         }
-        lancer({op:o});
+        // V0.99.79 : mémoire partagée par tous les workers de la page — on attend qu'un
+        // worker finisse plutôt que de dépasser le budget (le premier part toujours)
+        const p=faoWkPoids(t.op,job,corps,t.niv);
+        if(enCours>0&&charge+p>budget)break;
+        if(fi<0)sous.shift(); else file.splice(fi,1);
+        t.poids=p;
+        lancer(t);
       }
       if(!enCours){
         while(sous.length){ const t=sous.shift(); finies++; if(!t.niv)ratees.add(t.op); else if(++t.agg.fin===t.agg.n)ratees.add(t.op); }
@@ -491,12 +539,15 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         return;
       }
       enCours++;
+      charge+=t.poids||0;
+      if(enCours>pic)pic=enCours;
       faoWkActifs.push(w);
       miens.push(w);
       let clos=false,reussi=false;
       const clore=function(){
         if(clos)return;
         clos=true;
+        charge-=t.poids||0;
         if(t.niv){
           // dernier worker de couches : le calcul final passe en tête (avec ou sans mémoire)
           const A=t.agg;
@@ -507,7 +558,7 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         faoWkActifs=faoWkActifs.filter(function(x){return x!==w;});
         miens=miens.filter(function(x){return x!==w;});
         enCours--;finies++;
-        try{ if(surAvance)surAvance(finies,total,nb); }catch(e){}
+        try{ if(surAvance)surAvance(finies,total,Math.max(1,pic)); }catch(e){}
         suite();
       };
       w.onerror=function(ev){

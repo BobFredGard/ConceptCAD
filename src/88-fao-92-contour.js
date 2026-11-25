@@ -266,7 +266,10 @@ function faoShadowShape(mesh,planes,B,r,gstep){
       const k=ch.cle;
       if(!S.keys[k]){S.keys[k]=1;ch.pi=S.pl.length;S.chains.push(ch);}
     });
-    S.pl.push({chains:chains,bb:bb});
+    // V0.99.79 : m = mémoire du plan (mem) — ses index de parité (yb) et d'arêtes (eh) ne
+    // dépendent que de ses contours : calculés une fois par opération au lieu d'une fois
+    // par niveau (des centaines de Mo jetés à chaque niveau : 16 cœurs saturaient la page)
+    S.pl.push({chains:chains,bb:bb,m:CC?mem:null});
     const hs=[];
     segs.forEach(function(s,si){
       const k=mem.sk[si];
@@ -324,6 +327,7 @@ function faoChainParity(ch,x,y){
    par chaîne — exact, la condition d'arête est re-testée mot pour mot. */
 function faoPlaneYB(P){
   if(P.yb)return P.yb;
+  if(P.m&&P.m.yb){P.yb=P.m.yb;return P.yb;}
   const step=0.5,chs=P.chains,E=[];
   let y0=1/0,y1=-1/0;
   for(let k=0;k<chs.length;k++){
@@ -350,6 +354,7 @@ function faoPlaneYB(P){
     }
   }
   P.yb={y0:y0,step:step,rows:rows,n:n,E:E};
+  if(P.m)P.m.yb=P.yb;
   return P.yb;
 }
 /* Grille exacte de parité (2026-10-09-004) : une cellule jamais traversée
@@ -466,9 +471,11 @@ function faoSegSegD2(ax,ay,bx,by,cx,cy,dx,dy){
 function faoPlaneEdgeHash(P){
   // Arêtes de parité du plan, indexées (cellule 1 mm), une fois par plan
   if(P.eh)return P.eh;
+  if(P.m&&P.m.eh){P.eh=P.m.eh;return P.eh;}
   const E=faoPlaneYB(P).E,segs=[];
   for(let i=0;i<E.length;i+=4)segs.push([E[i],E[i+1],E[i+2],E[i+3]]);
   P.eh=faoHashSegs(faoHashBuild(1),segs);
+  if(P.m)P.m.eh=P.eh;
   return P.eh;
 }
 function faoChainNearPlane(ch,P,eps){
