@@ -1464,7 +1464,7 @@ function faoOpCardElement(setup,op,i){
     rp.appendChild(faoNumFx(op,'ae',isFinite(+aeShow)?Math.round(+aeShow*1000)/1000:aeShow,function(v){
       op.ae=Math.max(0.5,v);
       op.np=null; // ancien doc « Passes » → bascule en pilotage par écart
-    },48,0.5,'Recouvrement du fraiseur : distance entre deux passes — SEUL paramètre de recouvrement XY (le nombre de lignes résultant est affiché en lecture seule à droite). Sur un ancien document piloté par « Passes », saisir l\'écart bascule définitivement en pilotage par écart.'));
+    },48,0.5,'Recouvrement du fraiseur : distance entre deux passes — SEUL paramètre de recouvrement XY (le nombre de lignes résultant est affiché en lecture seule à droite). Quand la fraise est au moins aussi large que le brut, une seule ligne au milieu suffit. Sur un ancien document piloté par « Passes », saisir l\'écart bascule définitivement en pilotage par écart.'));
     rp.appendChild(faoLab(nbShow+' ligne'+(nbShow>1?'s':'')));
     // Passes en Z (par brut) : ébauche du dessus du brut (Z1) à la cote Z en N
     // passes égales — l'ap est CALCULÉ (Z1−Z)/N et affiché en lecture seule.

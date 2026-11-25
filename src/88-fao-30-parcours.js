@@ -6,7 +6,23 @@ function faoFacingAe(stock,D,np){
   if(!(np>=2)||!(H>0))return null;
   return Math.round((H/(np-1))*1000)/1000;
 }
-function faoFacingYs(stock,r,ae){
+// V0.99.90 (Fred : « des fois, une passe suffit ! Mais quand c'est le cas, le mini est à 2 ») :
+// la fraise couvre toute la largeur du brut (vue dans le sens d'usinage) → une seule ligne, au milieu.
+function faoFacingUne(stock,D){
+  const d=(isFinite(+D)&&+D>0)?+D:10;
+  const W=+stock.y1-+stock.y0;
+  return isFinite(W)&&W<=d+1e-9;
+}
+// Même question pour une opération (clé du cache) : pas en pilotage « Passes » d'un ancien document.
+function faoFacingUneOp(op,job){
+  if(!op||op.type!=='facing'||(isFinite(+op.np)&&Math.floor(+op.np)>=2))return false;
+  const t=faoToolById(job,op.toolId);
+  const D=(t&&isFinite(+t.d)&&+t.d>0)?+t.d:10;
+  return faoFacingUne(faoFacingStockDir((job&&job.stock)||faoStockDefault(),faoFacingDir(op)),D);
+}
+function faoFacingYs(stock,r,ae,une){
+  // une : une seule ligne au milieu du brut (faoFacingUne).
+  if(une){ const yc=(+stock.y0+(+stock.y1))/2; return {yA:yc,yB:yc}; }
   // Extrêmes du zigzag : la 1ʳᵉ (et la dernière) ligne MORDE dans la matière de la
   // valeur d'écart (plafonnée au rayon) — plus tangente à l'arête du brut.
   const a=(isFinite(+ae)&&+ae>0)?+ae:1;
@@ -20,7 +36,7 @@ function faoFacingCount(stock,D,ae){
   const d=(isFinite(+D)&&+D>0)?+D:10;
   const r=d/2;
   const a=(isFinite(+ae)&&+ae>0)?+ae:d*0.6;
-  const Y=faoFacingYs(stock,r,a);
+  const Y=faoFacingYs(stock,r,a,faoFacingUne(stock,d));
   let y=Y.yA,n=1,guard=0;
   while(y<Y.yB-1e-9&&guard++<100000){ y=Math.min(y+a,Y.yB); n++; }
   return n;
@@ -142,8 +158,9 @@ function faoGenFacing0(stock,o){
   // garantie, dernier aligné sur la lisière. np absent/null → pilotage par ae.
   const np=isFinite(+o.np)?Math.floor(+o.np):0;
   if(np>=2&&yB0>yA0)ae=Math.max(0.01,(yB0-yA0)/(np-1));
-  // Extrêmes avec mordant (l'écart morde dans la matière, plafonné au rayon).
-  const Y=faoFacingYs(stock,r,ae), yA=Y.yA, yB=Y.yB;
+  // Extrêmes avec mordant (l'écart morde dans la matière, plafonné au rayon) ;
+  // V0.99.90 : une seule ligne au milieu quand la fraise couvre toute la largeur.
+  const Y=faoFacingYs(stock,r,ae,np<2&&faoFacingUne(stock,D)), yA=Y.yA, yB=Y.yB;
   // Passes en Z (op.npz ≥ 2) : l'ébauche descend du dessus du brut (z1) jusqu'à
   // la cote z en npz passes égales → ap = (z1−z)/npz, dernière passe = cote.
   // npz absent/1, ou z ≥ z1 (rien à enlever) → une seule passe (historique).

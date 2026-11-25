@@ -175,6 +175,9 @@ function faoOpMovesKey(op,job){
     // V0.99.72 : « Finir une région avant la suivante » dans une zone — une coupe hors zone ne relie
     // plus les poches (faoRegionOrder) : seules ces ébauches sont à refaire (CACHE_VER inchangé)
     if(op&&op.type==='rough3d'&&op.parRegion&&(op.limit||op.limit2))dep=['region-zone',dep];
+    // V0.99.90 : surfaçage — une seule ligne quand la fraise couvre toute la largeur du brut :
+    // seuls ces surfaçages sont à refaire (CACHE_VER inchangé)
+    if(faoFacingUneOp(op,job))dep=['ligne-unique',dep];
     // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
     if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
     // V0.99.85 : contour à la fraise 3 tailles — descente à côté de la matière restante (brut, opérations précédentes)
