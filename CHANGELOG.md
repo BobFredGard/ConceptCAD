@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**766 versions**, de `2026-09-28b` à `V0.99.79` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**767 versions**, de `2026-09-28b` à `V0.99.80` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8501,3 +8501,17 @@ Manuel Fonctions 3D.
 **Plantage de « Tout régénérer »** : cause — sous Chrome, Edge et l'appli, tous les workers d'une page partagent le même tas JavaScript (≈ 4 Go). STEP.conceptcad : 2 ébauches 3D × 8 couches = 16 workers à la fois, 400 à 770 Mo de pointe chacun (déchets que le ramasse-miettes laisse grossir) → page relancée à 4,9 Go. Correctif : `src/88-fao-58-multicoeur.js` — `faoWkPoids` (couche d'ébauche 3D 600 Mo, ébauche entière 900, finition 200, autre 300, + 4 × maillages envoyés) et `faoWkBudget` (75 % du tas commun moins 1,5 × la page) : `faoWkRemplir0` attend qu'un worker finisse plutôt que de dépasser le budget, le premier part toujours ; l'avancement annonce les cœurs vraiment utilisés. Et `src/88-fao-92-contour.js` : index de parité et d'arêtes d'un plan d'ombre (`faoPlaneYB`, `faoPlaneEdgeHash`) gardés dans sa mémoire d'opération au lieu d'être refaits à chaque niveau — couche d'ébauche 3D −15 à −25 % de mémoire, −5 à −9 % de temps, parcours identiques au mouvement près (empreinte md5 des 5 opérations de STEP.conceptcad, complètes et par couches). Vérifié dans l'aperçu, 24 cœurs : tout en 20 s, 6 calculs au plus, pointe 3 Go (8 à la fois : 14 s mais 3,7 Go ; 16 : plantage).
 
 **Tests** : `tests/test_export_dossier.cjs` 16 à 31 (Base ← Barquette ← Moule, lien vers l'assemblage lui-même, empreinte en retard gardée, source absente signalée, originaux intacts, copie rouverte sans mise à jour, hors du dossier de projets) ; `tests/test_fao_budget_workers.cjs` (workers simulés : 16 à la fois avec un grand budget, budget jamais dépassé, tout est lancé, un à la fois avec un budget minuscule, cœurs annoncés, calcul du budget). Manuels Fichiers et FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.80 - Nomenclature : calée sur le trait du cartouche, colonne de référence, matière vide sans « — »
+
+**Demande** (plan transmis avec le pont NumPLans) : la nomenclature posée au-dessus du cartouche Schneider A3H cachait le texte vertical « Les informations techniques… » écrit entre le cadre (11 mm) et le trait du cartouche (15,5 mm) ; ajouter la référence JUSTET de chaque pièce ; laisser la case vide quand la matière est inconnue.
+
+**Alignement** : `src/98-mep-30-planches-cartouche.js` — `mepDrawBom` : posée au-dessus d'un cartouche dessiné (pas de place à côté), le bord gauche du tableau suit le trait le plus à gauche du cartouche (`mepTbTraitMinX` : traits, cercles et logo, textes exclus ; l'encombrement `mepTbW`, lui, compte le texte vertical et aurait donné 12,9 mm, encore sur le texte), sans sortir du cadre à gauche ni à droite (cartouche étroit : tableau calé à droite). À côté du cartouche et avec le cartouche classique : inchangé.
+
+**Colonne de référence** : dès qu'une ligne a `ref`, une colonne de 30 mm après QTÉ, titrée par `refLabel` (« RÉF. JUSTET » du pont NumPLans), sinon « RÉFÉRENCE » ; DÉSIGNATION 62 → 50 mm, MATIÈRE 40 → 24 mm et DIMENSIONS 42 → 40 mm (« 50,0 × 50,9 × 50,0 » y tient), largeur totale inchangée (164 mm). Le titre seul, sans référence, n'ajoute pas de colonne.
+
+**Textes trop longs** : vu à l'image, « 215-01-001-O-Support Guide » débordait sur MATIÈRE dans une désignation de 46 mm (l'ancienne coupe à « largeur ÷ 1,7 » caractères suppose 1,7 mm par caractère, les chiffres en font 2). Chaque case (titres compris) est encore coupée ainsi, puis resserrée à sa largeur si le texte dépasse (`textLength`, comme les champs « fit » du cartouche ; mesure réelle seulement pour un texte qui peut dépasser).
+
+**Matière vide** : case vide au lieu de « — » (l'espace envoyée par le pont donne aussi une case vide).
+
+**Test** : `tests/test_nomenclature_plan.cjs` (16 contrôles : modèle à la Schneider A3H, tableau à 15,47 mm sur le trait, texte vertical dégagé, en-tête REP. | QTÉ | RÉF. JUSTET | DÉSIGNATION | MATIÈRE | DIMENSIONS, largeurs 10 / 10 / 30 / 50 / 24 / 40, désignation trop longue resserrée, « RÉFÉRENCE » par défaut, colonnes d'avant sans référence, cartouche étroit sur A4, place à côté, cartouche classique) ; vérifié dans l'aperçu sur MERLIN-23-001 avec le modèle Schneider A3H et 4 lignes comme celles du pont (texte vertical de 10,9 à 13,9 mm, tableau à 15,47 mm, toutes les cases tiennent). Manuel PLAN. CACHE_VER et FORMES_VER inchangés.

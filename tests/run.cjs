@@ -326,6 +326,7 @@ const SUITES = [
   "test_scripts_pieces",
   "test_cartouche_modele",
   "test_cartouche_exterieur",
+  "test_nomenclature_plan",
   "test_simulation_moteurs",
   "test_sdf_brut_corps",
   "test_post_cycle800",

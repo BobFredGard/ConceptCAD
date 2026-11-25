@@ -157,6 +157,7 @@ const SUITES = [
   'test_mcp_serveur',
   'test_cartouche_modele',
   'test_cartouche_exterieur',
+  'test_nomenclature_plan',
   'test_composants_liaisons',
   'test_composants_relations',
   'test_relations_aretes',

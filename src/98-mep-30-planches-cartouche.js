@@ -185,6 +185,19 @@
     if(mepTbIsSk(sh))return Math.max(0,-mepTbBBox(sh.title.tb.sk,mepTbLim(sh)).minx);
     return pd.iw;
   }
+  // bord gauche des TRAITS du cartouche dessiné (mm, ≤ 0 depuis le coin bas-droit) : les textes ne
+  // comptent pas — une mention verticale le long du cadre (confidentialité Schneider entre le cadre
+  // et le trait du cartouche) n'est pas le cartouche, un tableau calé dessus la cacherait (V0.99.80)
+  function mepTbTraitMinX(sh){
+    const sk=sh.title.tb.sk,L=mepTbLim(sh),out=p=>p.x<-L.w||p.y<-L.h||p.x>1||p.y>1;
+    let minx=0;
+    (sk.ents||[]).forEach(e=>{
+      if(e.cst||e.t==='text')return;
+      ['p1','p2','pc','p'].forEach(k=>{const p=e[k]&&sk.pts[e[k]];
+        if(p&&!out(p))minx=Math.min(minx,p.x-(k==='pc'&&e.t==='circle'?(+e.r||0):0));});
+    });
+    return minx;
+  }
   // indice de la k-ième révision (k = 0…) : 'A' → A…Z, AA, AB… ; '0' → 0, 1… ; '1' → 1, 2… ;
   // 'O' → O (édition originale), puis A, B, C… (V0.22.7)
   function mepRevIdx(fmt,k){
@@ -415,22 +428,50 @@
   function mepDrawBom(mk,sh,pd,ty){
     if(!sh.bom||!sh.bom.on)return;
     const rows=mepBomRows(sh);if(!rows.length)return;
-    const RH=5.5,cols=[['REP.',10],['QTÉ',10],['DÉSIGNATION',62],['MATIÈRE',40],['DIMENSIONS (mm)',42]];
-    const W=cols.reduce((s,c)=>s+c[1],0),x0=pd.ix,n=Math.min(rows.length,12);
-    // en bas à gauche du cadre, à côté du cartouche dessiné quand la place le permet ; sinon au-dessus
+    // V0.99.80 : colonne RÉFÉRENCE après QTÉ dès qu'une ligne a une référence (r.ref, titre r.refLabel :
+    // « RÉF. JUSTET » du pont NumPLans) ; DÉSIGNATION et MATIÈRE se resserrent (DIMENSIONS cède 2 mm,
+    // « 50,0 × 50,9 × 50,0 » y tient), même largeur totale
+    const tx=v=>String(v==null?'':v).trim();
+    const hasRef=rows.some(r=>tx(r.ref));
+    const refL=hasRef?tx((rows.find(r=>tx(r.ref)&&tx(r.refLabel))||rows.find(r=>tx(r.refLabel))||{}).refLabel)||'RÉFÉRENCE':'';
+    const RH=5.5,cols=hasRef
+      ?[['REP.',10,'rep'],['QTÉ',10,'qty'],[refL,30,'ref'],['DÉSIGNATION',50,'name'],['MATIÈRE',24,'mat'],['DIMENSIONS (mm)',40,'dims']]
+      :[['REP.',10,'rep'],['QTÉ',10,'qty'],['DÉSIGNATION',62,'name'],['MATIÈRE',40,'mat'],['DIMENSIONS (mm)',42,'dims']];
+    const W=cols.reduce((s,c)=>s+c[1],0),n=Math.min(rows.length,12);
+    // texte d'une case : coupé à ~w/1.7 caractères, puis resserré s'il dépasse encore la case (comme les
+    // champs « fit » du cartouche) — « 215-01-001-O-Support Guide » débordait sur MATIÈRE. Mesure réelle
+    // seulement pour un texte qui peut dépasser (3,6 mm × 0,7 par caractère), sinon estimation 0,55
+    const FS=3.6;
+    const put=(x,y,t,w)=>{
+      t=tx(t).slice(0,Math.floor(w/1.7));
+      const e=mk('text',{x:x+1.5,y,class:'mepRevText'});e.textContent=t;
+      const av=w-2.5;
+      if(t&&t.length*FS*0.7>av&&e&&typeof e.setAttribute==='function'){
+        let L=0;try{L=e.getComputedTextLength();}catch(er){}
+        if(!(L>0))L=t.length*FS*0.55;
+        if(L>av){e.setAttribute('textLength',av.toFixed(2));e.setAttribute('lengthAdjust','spacingAndGlyphs');}
+      }
+    };
+    // en bas à gauche du cadre, à côté du cartouche dessiné quand la place le permet ; sinon au-dessus,
+    // bord gauche sur le trait du cartouche (pas sur le cadre : la bande entre les deux peut porter
+    // un texte), sans sortir du cadre à droite ni à gauche
     const yF=pd.iy+pd.ih+pd.th;
-    if(mepTbIsSk(sh)&&W<=pd.iw-mepTbW(sh,pd)-2)ty=yF;
+    let x0=pd.ix;
+    if(mepTbIsSk(sh)){
+      if(W<=pd.iw-mepTbW(sh,pd)-2)ty=yF;
+      else x0=Math.max(pd.ix,Math.min(pd.ix+pd.iw+mepTbTraitMinX(sh),pd.ix+pd.iw-W));
+    }
     const y0=ty-RH*(n+1);
     mk('rect',{x:x0,y:y0,width:W,height:RH*(n+1),class:'mepTitleBlock'});
     // en-tête en bas (contre le cartouche), repère 1 juste au-dessus — usage des nomenclatures
     mk('line',{x1:x0,y1:ty-RH,x2:x0+W,y2:ty-RH,class:'mepTitleBlock'});
     let x=x0;
     cols.forEach(([l,w],k)=>{if(k)mk('line',{x1:x,y1:y0,x2:x,y2:ty,class:'mepTitleBlock'});
-      mk('text',{x:x+1.5,y:ty-RH+3.9,class:'mepRevText'}).textContent=l;x+=w;});
+      put(x,ty-RH+3.9,l,w);x+=w;});
     rows.slice(0,n).forEach((r,k)=>{
       const y=ty-RH*(k+2);
       if(k)mk('line',{x1:x0,y1:y+RH,x2:x0+W,y2:y+RH,class:'mepTitleBlock'});
-      let xx=x0;[String(r.rep),String(r.qty),r.name,r.mat||'—',r.dims].forEach((t,c)=>{
-        mk('text',{x:xx+1.5,y:y+4,class:'mepRevText'}).textContent=String(t).slice(0,Math.floor(cols[c][1]/1.7));xx+=cols[c][1];});
+      // matière absente : case vide (plus de « — »)
+      let xx=x0;cols.forEach(([,w,f])=>{put(xx,y+4,r[f],w);xx+=w;});
     });
   }

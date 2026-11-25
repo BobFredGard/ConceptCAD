@@ -12,6 +12,7 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
 
 - **Formats** A4 à A0, paysage ou portrait, ou format manuel ; plusieurs planches en onglets.
 - **Cadre** réglable (préréglages Justet, ISO 5457, Classique), **cartouche** dessiné en esquisse contrainte et éditable avec logo, **nomenclature** et tableau des révisions ; le **cartouche d'entreprise** peut venir d'un modèle externe, gardé hors du dépôt.
+  - **Nomenclature au-dessus d'un cartouche dessiné** : son bord gauche suit le trait du cartouche, pas le cadre ; une mention écrite entre les deux (texte de confidentialité vertical) reste lisible. Une colonne **RÉFÉRENCE** s'ajoute après QTÉ dès qu'une pièce a une référence (titre fourni par le serveur de plans, ex. « RÉF. JUSTET ») ; la désignation et la matière se resserrent, le tableau garde sa largeur. Un texte trop long pour sa case est resserré pour y tenir. Une matière inconnue laisse la case vide (V0.99.80).
 - **Écriture ISO 3098** et paramètres du plan enregistrés par projet (`.mfplan`).
 - **Paramètres et formules** dans les champs de la planche (format, cadre, révisions, tolérances, textes) : la formule reste affichée et la valeur suit les paramètres.
 
