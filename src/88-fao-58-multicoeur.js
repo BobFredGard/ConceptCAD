@@ -331,7 +331,7 @@ function faoWkAccepte(op,job){
 function faoWkPrecOps(op,job){
   // Opérations précédentes dont le parcours sert au brut restant de `op` ([] sinon) ;
   // V0.99.48 : aussi à la carte de matière d'un contour « Rapide dans le vide »
-  if(!faoRestOn(op)&&!(typeof faoContourVideOn==='function'&&faoContourVideOn(op)))return [];
+  if(!faoRestOn(op)&&!(typeof faoContourVideOn==='function'&&faoContourVideOn(op))&&!(typeof faoSlotCut==='function'&&faoSlotCut(op)))return [];
   const out=[];
   try{
     faoRestPrev(faoRestBase(job),op).forEach(function(E){ if(E&&E.op&&out.indexOf(E.op)<0)out.push(E.op); });

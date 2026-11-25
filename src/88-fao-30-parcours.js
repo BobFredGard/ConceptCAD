@@ -660,7 +660,9 @@ function faoLoopFromChains(edges,chains,multi){
     const a=pts[i-1];
     return Math.hypot(q[0]-a[0],q[1]-a[1])>1e-4;
   });
-  if(pts.length<3)return {loop:[],closed:false};
+  // V0.99.86 : trajet unique (contour, chanfrein, découpe) — une arête droite seule donne une
+  // boucle aller-retour [a,b,a] ouverte, d'aire nulle : seule la découpe 3 tailles l'accepte
+  if(pts.length<(multi?3:2))return {loop:[],closed:false};
   const closed=Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.5;
   if(!closed)pts.push([pts[0][0],pts[0][1],pts[0][2]]); // chaîne ouverte : refermée d'office
   const r3=function(v){return Math.round(v*1000)/1000;};
@@ -670,6 +672,11 @@ function faoLoopFromChains(edges,chains,multi){
 // V0.99.71 : ponts entre contours d'une même zone (cf. faoLoopFromChains) — segment i
 // (loop[i]→loop[i+1]) parcouru aussi dans l'autre sens. Uint8Array par indice, ou null.
 const faoPontsMemo=(typeof WeakMap!=='undefined')?new WeakMap():null;
+function faoLoopLineOK(op,res){
+  // V0.99.86 : découpe 3 tailles le long d'arêtes — une chaîne OUVERTE d'aire nulle (droite) est permise
+  return !!(op&&op.type==='slotcut'&&res&&!res.closed&&res.loop&&res.loop.length>=3&&
+    Math.hypot(res.loop[1][0]-res.loop[0][0],res.loop[1][1]-res.loop[0][1])>0.1);
+}
 function faoLoopPonts(loop){
   if(!Array.isArray(loop)||loop.length<4)return null;
   if(faoPontsMemo&&faoPontsMemo.has(loop))return faoPontsMemo.get(loop);
@@ -801,8 +808,8 @@ function faoChainRematch(op,edges,field){
     sel=all;
   }
   // 3) reconstruction de la boucle XY (ordre, clip de longueur, validation)
-  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||faoContourProfil(op)));
-  if(!res.loop.length||res.loop.length<3||faoLoopArea(res.loop)<1e-6)return fail(sel.length);
+  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||op.type==='slotcut'||faoContourProfil(op)));
+  if(!res.loop.length||res.loop.length<3||(faoLoopArea(res.loop)<1e-6&&!faoLoopLineOK(op,res)))return fail(sel.length);
   // Intégrité : chaque arête retenue doit avoir ses points SUR la boucle. Une
   // arête mal orientée à l'assemblage est partiellement sautée → son milieu
   // s'éloigne et la boucle gagne une corde parasite : le clip exclurait alors une

@@ -36,7 +36,7 @@ const faoEngToolCache=new Map();
 function faoEngTool(r,cr,tp){
   r=+r||5;
   const CR=(isFinite(+cr)&&+cr>0)?Math.min(+cr,r):0,TP=(tp&&tp.length>1)?tp:null;
-  // V0.99.84 : fraise 3 tailles — disque d'épaisseur e au bout d'un col de rayon rn
+  // V0.99.85 : fraise 3 tailles — disque d'épaisseur e au bout d'un col de rayon rn
   const SL=(tp&&tp.slot&&tp.slot.e>0)?{e:+tp.slot.e,rn:Math.max(0.05,Math.min(r,+tp.slot.rn||0))}:null;
   const key=r.toFixed(4)+'|'+CR.toFixed(4)+'|'+(TP?faoTipSig(TP):'')+(SL?'|s'+SL.e.toFixed(4)+','+SL.rn.toFixed(4):'');
   let T=faoEngToolCache.get(key);if(T)return T;
@@ -116,7 +116,7 @@ function faoEngCarve(E,a,b,r,cr,tp,ax){
   // calcul exact dans le repère permuté de l'outil, par pas « à hauteur constante » le long de l'axe ;
   // outil oblique : positions échantillonnées le long du segment.
   const T=faoEngTool(r,cr,tp),al=faoEngAxis(ax);
-  if(T.slot&&E.kind!=='sdf')return; // V0.99.84 : le tri-dexel ne connaît que les outils pleins vers le haut
+  if(T.slot&&E.kind!=='sdf')return; // V0.99.85 : le tri-dexel ne connaît que les outils pleins vers le haut
   if(al){
     const w=al.w,U=FAO_DEX_UV[w][0],V=FAO_DEX_UV[w][1],ca=[a.x,a.y,a.z],cb=[b.x,b.y,b.z];
     const dw=Math.abs(cb[w]-ca[w]),st=Math.max(0.02,E.p/4),n=dw>st?Math.min(400,Math.ceil(dw/st)):1;
@@ -572,7 +572,7 @@ function faoSdfCreate(s,p){
 function faoSdfToolTable(T,p,TR){
   // distance signée au profil de l'outil dans le plan (ρ, h), tabulée au pas p/4 (négative dedans)
   if(T.sdfT&&T.sdfT.p===p)return T.sdfT;
-  // V0.99.84 : fraise 3 tailles — profil = dessous plat, flanc du disque, dessus du disque, col ;
+  // V0.99.85 : fraise 3 tailles — profil = dessous plat, flanc du disque, dessus du disque, col ;
   // au-dessus de la table, la distance est celle au col (Rn), pas au Ø de coupe
   const SL=T.slot,ht=SL?SL.e:T.htop;
   const q=p/4,R=T.r,nr=Math.ceil((R+TR)/q)+2,h0=-TR,nh=Math.ceil((ht+2*TR)/q)+2,tab=new Float32Array(nr*nh);

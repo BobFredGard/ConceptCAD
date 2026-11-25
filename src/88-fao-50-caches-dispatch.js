@@ -177,8 +177,10 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='rough3d'&&op.parRegion&&(op.limit||op.limit2))dep=['region-zone',dep];
     // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
     if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
-    // V0.99.84 : contour à la fraise 3 tailles — descente à côté de la matière restante (brut, opérations précédentes)
+    // V0.99.85 : contour à la fraise 3 tailles — descente à côté de la matière restante (brut, opérations précédentes)
     if(faoContourProfil(op)&&faoToolIsSlot(faoToolById(job,op.toolId))){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['3tailles',rd]; }
+    // V0.99.86 : découpe 3 tailles — entrée et sortie contrôlées sur la matière restante
+    if(faoSlotCut(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['decoupe3t',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
@@ -674,8 +676,8 @@ function* faoOpMovesIt0(op,job){
   const RA=faoRA(op||{});
   let mv=[];
   if(!op||!op.type)return [];
-  // V0.99.84 : la fraise 3 tailles ne coupe qu'en Contour sur profil (src/89-fao-contour-3tailles.js)
-  if(faoToolIsSlot(tool)&&!faoContourProfil(op))return [];
+  // V0.99.85 : la fraise 3 tailles ne coupe qu'en Contour sur profil (src/89-fao-contour-3tailles.js)
+  if(faoToolIsSlot(tool)&&!faoContourProfil(op)&&!faoSlotCut(op))return []; // V0.99.86 : et en Découpe 3 tailles
   if(op.type==='facing')mv=faoGenFacing(job.stock||faoStockDefault(),
     {toolD:D, ae:isFinite(+op.ae)?+op.ae:D*0.6, np:isFinite(+op.np)?+op.np:0,
      npz:isFinite(+op.npz)?+op.npz:0, sortie:sortie,
@@ -687,6 +689,7 @@ function* faoOpMovesIt0(op,job){
       radial:RA.radial,axial:RA.axial,
       // 2026-10-08-004 : entrée circulaire par défaut (rayon d'entrée op.).
       entry:op.entry||'circ',entryR:op.entryR}));
+  else if(op.type==='slotcut')mv=faoSlotCutMoves(op,job,base); // V0.99.86 : src/89-fao-decoupe-3tailles.js
   else if(op.type==='chamfer'){ // src/89-fao-chanfrein.js
     let am=null;
     try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; }
@@ -697,7 +700,7 @@ function* faoOpMovesIt0(op,job){
     try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; } // 2026-10-22-009 : maillage intermédiaire
     const L=op.limit;
     if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3&&faoToolIsSlot(tool)){
-      // V0.99.84 : fraise 3 tailles — rainure taillée par le côté (src/89-fao-contour-3tailles.js)
+      // V0.99.85 : fraise 3 tailles — rainure taillée par le côté (src/89-fao-contour-3tailles.js)
       const g=faoToolDims(tool),ms=am&&am.mesh;
       let ob=null;try{ ob=faoSlotObstacles(op,job,ms,D/2,g.dDeg.v/2); }catch(e){ ob=null; }
       mv=faoGenContourSlot(ms,L.loop,Object.assign({},base,{

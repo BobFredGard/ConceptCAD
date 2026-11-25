@@ -1,6 +1,6 @@
 # Parcours de référence
 
-Résumé chiffré de chaque opération active des exemples, recalculée par `npm run parcours` (noyau OCCT réel, maillage FAO du solide exact). Généré par `npm run parcours -- --ecrire` le 2026-11-24 ; source : `tests/parcours/reference.json`.
+Résumé chiffré de chaque opération active des exemples, recalculée par `npm run parcours` (noyau OCCT réel, maillage FAO du solide exact). Généré par `npm run parcours -- --ecrire` le 2026-11-25 ; source : `tests/parcours/reference.json`.
 
 | Opération | Mouvements | Coupe (m) | Rapides (m) | Remontées | Z mini | Z maxi | Temps (min) | Niveaux |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -11,6 +11,8 @@ Résumé chiffré de chaque opération active des exemples, recalculée par `npm
 | Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye) | 177 | 11,95 | 0,03 | 1 | 50 | 56,667 | 3,99 | 3 |
 | Cavité Usinage.conceptcad › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho) | 41 165 | 35,59 | 5,67 | 196 | 20 | 53 | 10,83 | 37 |
 | Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j) | 94 880 | 74,87 | 0,98 | 24 | 20 | 54,8 | 37,73 | 4 |
+| Découpe 3 tailles.conceptcad › POSAGE1 › 1. Contour (c1) | 4 057 | 2,98 | 1,65 | 30 | 5 | 15 | 2,89 | 3 |
+| Découpe 3 tailles.conceptcad › POSAGE1 › 2. Découpe 3 tailles (c2) | 14 | 0,17 | 0,09 | 2 | 12 | 12 | 0,17 | 1 |
 | Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l) | 26 113 | 31,31 | 43,85 | 631 | -22,5 | 64,424 | 37,67 | 112 |
 | Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg) | 38 330 | 32,39 | 2,32 | 38 | -28,419 | 64,701 | 27,61 | 0 |
 | Perçages.conceptcad › POSAGE1 › 1. Surfaçage (op_5_mvjcidjk) | 47 | 1,83 | 0,02 | 1 | 20 | 22,5 | 1,53 | 2 |
@@ -31,3 +33,5 @@ Résumé chiffré de chaque opération active des exemples, recalculée par `npm
 | Poche et Contour.conceptcad › POSAGE1 › 2. Contour (op_3_mv81m3qf) | 565 | 1,5 | 0,06 | 3 | 26 | 26 | 1,27 | 1 |
 | Poche et Contour.conceptcad › POSAGE1 › 3. Poche (op_4_mv81nm4j) | 3 465 | 5,47 | 2,16 | 42 | 24 | 32 | 5,1 | 3 |
 | Poche et Contour.conceptcad › POSAGE1 › 4. Surfaçage (op_3_mvbd93sk) | 43 | 2,98 | 0,02 | 1 | 5,429 | 107,071 | 2,5 | 2 |
+| Rainure 3 tailles.conceptcad › POSAGE1 › 1. Contour (c1) | 3 547 | 2,69 | 0,7 | 18 | 5 | 15 | 2,42 | 3 |
+| Rainure 3 tailles.conceptcad › POSAGE1 › 2. Contour (c2) | 341 | 0,2 | 0,03 | 1 | 11 | 11 | 0,18 | 1 |

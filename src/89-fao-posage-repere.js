@@ -920,7 +920,7 @@ function faoTiltColIv(px,py,S,A,r,H,out){
   if(hi>lo)out.push([lo,hi]);
 }
 function faoMatterCarveTilt(g,a,b,r,ax,outCols,tp){
-  if(tp&&tp.slot)return []; // V0.99.84 : fraise 3 tailles — rien sous la matière dans une carte
+  if(tp&&tp.slot)return []; // V0.99.85 : fraise 3 tailles — rien sous la matière dans une carte
   // tp (faoToolTipProfile) : pointe de foret / foret à centrer — sans lui, le corps entier
   // taillait à plat : un pointage sur la tranche creusait un cratère au Ø du corps.
   const out=[];

@@ -1,4 +1,4 @@
-// FAO — CONTOUR À LA FRAISE 3 TAILLES (V0.99.84, src/89-fao-contour-3tailles.js).
+// FAO — CONTOUR À LA FRAISE 3 TAILLES (V0.99.85, src/89-fao-contour-3tailles.js).
 // 1. bossage 40×20 (z 5..20) sur dalle, rainure extérieure (Bas 5, décalée de +6 en hauteur,
 //    +2 dans la paroi) : une passe à z 11, centre à r − 2 de la paroi, côté extérieur, avalant ;
 //    le disque ne monte ni ne descend jamais au-dessus du bossage (dehors de r + garde) ;

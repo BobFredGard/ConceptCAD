@@ -23,7 +23,7 @@ function faoZoneCtx(op,job){
   // faoZoneCuts (clip extérieur exact, puis clip îlot).
   const lim=op&&op.limit, lim2=op&&op.limit2;
   if(!lim&&!lim2)return null;
-  if(op&&op.type==='chamfer')return null; // V0.7.9 : ses arêtes sont son profil, pas une zone
+  if(op&&(op.type==='chamfer'||op.type==='slotcut'))return null; // V0.7.9 : ses arêtes sont son profil, pas une zone
   const tool=faoToolById(job,op&&op.toolId);
   const D=(tool&&+tool.d>0)?+tool.d:10;
   // 2026-10-13-006 : rayon de garantie zone. Géofinish boule/torique : les
@@ -256,7 +256,7 @@ function faoPlaneEff(job,op){
 // référence est résolue dans le repère de l'opération et RÉÉCRIT op.ztop/op.zbot :
 // les générateurs ne lisent que ces deux nombres (clé de cache comprise).
 function faoHtsOps(op){
-  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish');
+  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish'||op.type==='slotcut');
 }
 function faoHtsClean(op){
   if(!op||op.hts===undefined)return;
@@ -511,7 +511,7 @@ function faoZoneDone(op){
   // Zone déjà tenue par le générateur (bord exact, arcs d'entrée/sortie
   // tangents au bord) : ni re-clip à la génération, ni clip à l'affichage.
   return !!op&&((op.type==='geofinish'&&op.traj==='scallop')||op.type==='geodesic'||
-    (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer');
+    (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer'||op.type==='slotcut');
 }
 function faoSegClipper0(op,job){
   // -> fn(ax,ay,az,bx,by,bz,push) qui ne pousse que la partie DANS la zone,

@@ -58,7 +58,7 @@ function faoToolSF(t,setup){
   return {s:s, f:f, plunge:Math.max(1,Math.round(f*faoPlungePct(setup)/100))};
 }
 function faoKindLabel(k){ return k==='slot'?'Fraise 3 tailles':k==='ball'?'Boule':(k==='bull'?'Torique':(k==='drill'?'Foret':(k==='spot'?'Foret à pointer':(k==='center'?'Foret à centrer':(k==='tap'?'Taraud':(k==='ream'?'Alésoir':(k==='chamfer'?'Fraise à chanfreiner':'Cylindrique'))))))); }
-/* V0.99.84 : FRAISE 3 TAILLES (demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et
+/* V0.99.85 : FRAISE 3 TAILLES (demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et
    l'usinage qui va avec, pourquoi pas dans Contour ») — un disque de Ø d et d'épaisseur Lc (t.lc)
    au bout d'un col plus fin (Ø dégagement t.dDeg). Il coupe par sa périphérie et ses deux faces :
    il creuse une rainure SOUS la matière (src/89-fao-contour-3tailles.js). */

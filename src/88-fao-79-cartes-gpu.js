@@ -107,7 +107,7 @@ function faoCarteGProfil(r,cr,tp){
   return {hs};
 }
 function faoCarteGQueue(vw,a,b,r,cr,tp,ax){
-  if(tp&&tp.slot)return; // V0.99.84 : fraise 3 tailles — une carte de hauteurs ne creuse pas sous la matière
+  if(tp&&tp.slot)return; // V0.99.85 : fraise 3 tailles — une carte de hauteurs ne creuse pas sous la matière
   // segment → pas à cote constante dans la carte de son orientation (même découpe que faoMatterCarveSeg)
   const C=vw.cg;let M=C.maps[0],A=a,B=b;
   if(ax&&!faoEngIsVertAx(ax)){const key=faoMapKey(ax);M=C.maps.find(x=>x.key===key);if(!M)return;

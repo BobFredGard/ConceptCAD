@@ -531,7 +531,7 @@ function faoMatterNrmSet(g,c,dx,dy,d2,rc,CR,TP){
 }
 const FAO_CARVE_DZ=0.05; // mm — pas de hauteur d'un segment en pente
 function faoMatterCarveSeg(g,ax,ay,az,bx,by,bz,r,outCols,cr,tp){
-  // V0.99.84 : fraise 3 tailles — une carte de hauteurs ne sait pas creuser SOUS la matière
+  // V0.99.85 : fraise 3 tailles — une carte de hauteurs ne sait pas creuser SOUS la matière
   // (la lèvre au-dessus de la rainure resterait taillée) : rien n'est enlevé ici
   if(tp&&tp.slot)return [];
   // V0.7.8 : segment EN PENTE — la taille se fait à la cote la plus BASSE du segment ; un segment

@@ -148,6 +148,10 @@ const MF_ICF={
     '<path d="M9 12.5l6 2.2M9 15.4l6 2.2M9 18.3l4.6 1.7" stroke="#fff7ed" stroke-width="1" stroke-linecap="round"/><path d="M8.5 10.5h7" stroke="#4b5563" stroke-width="1.1"/>',
   facing:fzBox(-5,-5,-5,5,5,0,'w')+fzPath([['M',-4,-3.8,0],['L',4,-3.8,0],['L',4,-1.3,0],['L',-4,-1.3,0],['L',-4,1.2,0],['L',4,1.2,0],['L',4,3.7,0],['L',-4,3.7,0]],'fill="none" stroke="#1e88e5" stroke-width="1.3" stroke-linejoin="round"'),
   pocket:fzPocket(3.2,1,3,'w','#e9c58f')+fzPath([['M',-2.2,-2.2,-2],['L',2.2,-2.2,-2],['L',2.2,2.2,-2],['L',-2.2,2.2,-2],['Z'],['M',-1,-1,-2],['L',1,-1,-2],['L',1,1,-2],['L',-1,1,-2],['Z']],'fill="none" stroke="#1e88e5" stroke-width="1.1"')+fzRim(5,3.2,1,'w')+fzSides(-5,-5,-5,5,5,1,'w'),
+  // V0.99.86 : Découpe 3 tailles — bloc, rainure bleue dans le flanc, disque gris sur son col
+  slotcut:fzBox(-5,-5,-6,5,5,2,'w')+fzPath([['M',-5,5,-2],['L',5,5,-2]],'fill="none" stroke="#1e88e5" stroke-width="1.6"')+
+    '<rect x="18.1" y="2" width="1.8" height="12.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".6"/>'+
+    '<ellipse cx="19" cy="15" rx="4.6" ry="1.6" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/>',
   contour:fzPath([['M',-5,5,-3],['L',-5,-5,-3],['L',5,-5,-3]],'fill="none" stroke="#1e88e5" stroke-width="1.2" stroke-dasharray="1.6 1.1"')+fzBox(-3,-3,-5,3,3,2,'w')+
     fzPath([['M',-5,5,-3],['L',5,5,-3],['L',5,-5,-3]],'fill="none" stroke="#1e88e5" stroke-width="1.6" stroke-linejoin="round"'),
   drill:fzBox(-5,-5,-6,5,5,-1,'w')+'<ellipse cx="12" cy="13" rx="2.6" ry="1.5" fill="#5b3d1c"/>'+

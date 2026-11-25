@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.85';
+const APP_VER='V0.99.86';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -52004,15 +52004,25 @@ function faoSanitiseOps(s){
         const tt=+op.penteTour;if(isFinite(tt)&&tt>0)op.penteTour=Math.max(0.01,Math.min(100,tt));else delete op.penteTour;}
       else{delete op.descente;delete op.pente;delete op.penteTour;}
       if(op.sautVide!==false)delete op.sautVide; // V0.99.18 : rapide dans le vide (absent = oui)
-      // V0.99.84 : fraise 3 tailles — hauteur et décalages de la rainure (absents = défauts)
+      // V0.99.85 : fraise 3 tailles — hauteur et décalages de la rainure (absents = défauts)
       if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
       ['slotDz','slotDr'].forEach(function(k){if(k in op&&!isFinite(+op[k]))delete op[k];});
+      ['cutDir','cutSide','slotLin','slotLout'].forEach(function(k){delete op[k];});
+    }else if(op.type==='slotcut'){ // V0.99.86 : découpe 3 tailles (src/89-fao-decoupe-3tailles.js)
+      if(op.cutDir!=='Y'&&op.cutDir!=='edge')delete op.cutDir;
+      if(op.cutSide!=='+'&&op.cutSide!=='both')delete op.cutSide;
+      ['nR','fin'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
+      if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
+      if('slotDr' in op&&!isFinite(+op.slotDr))delete op.slotDr;
+      ['slotLin','slotLout'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
+      if(op.cutDir!=='edge')delete op.limit;
+      ['cside','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotDz'].forEach(function(k){delete op[k];});
     }else if(op.type==='chamfer'){ // V0.7.9 : chanfrein — côté, entrées, recouvrement, largeur, décalage de pointe
       if(op.cside!=='ext'&&op.cside!=='int'&&op.cside!=='auto')delete op.cside;
       ['leadR','overlap','w','tipOff','z'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&(k==='z'||+op[k]>=0)))delete op[k];});
-      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour','slotH','slotDz','slotDr'].forEach(function(k){delete op[k];});
+      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout'].forEach(function(k){delete op[k];});
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
-    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotH','slotDz','slotDr'].forEach(function(k){delete op[k];});
+    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotH','slotDz','slotDr','cutDir','cutSide','slotLin','slotLout'].forEach(function(k){delete op[k];});
     if(!(op.type==='contour'&&op.strat==='profil'))delete op.sautVide;
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
@@ -52054,7 +52064,7 @@ function faoSanitiseOps(s){
     // 2026-10-08-003 : sens de passe — seuls 'avalant' et 'bidir' survivent,
     // et seulement sur l'Ebauche 3D et la finition géodésique (2026-10-13-007 :
     // rétro-ingénierie cav.txt — sens opposé alterné sur Crêtes constantes).
-    if(faoContourProfil(op)||op.type==='chamfer'){ if(op.sens!=='avalant'&&op.sens!=='opp')delete op.sens; }
+    if(faoContourProfil(op)||op.type==='chamfer'||op.type==='slotcut'){ if(op.sens!=='avalant'&&op.sens!=='opp')delete op.sens; }
     else if((op.type!=='rough3d'&&op.type!=='geofinish'&&op.type!=='geodesic'&&!faoPocketAdapt(op))||(op.sens!=='avalant'&&op.sens!=='bidir'))delete op.sens;
     // 2026-10-13-007 : direction des passes parallèles — 'auto'/'x'/'y'/'ang'
     // sur Crêtes constantes (+ angle fini si 'ang'), absent = auto (axe long).
@@ -52207,7 +52217,7 @@ function faoToolSF(t,setup){
   return {s:s, f:f, plunge:Math.max(1,Math.round(f*faoPlungePct(setup)/100))};
 }
 function faoKindLabel(k){ return k==='slot'?'Fraise 3 tailles':k==='ball'?'Boule':(k==='bull'?'Torique':(k==='drill'?'Foret':(k==='spot'?'Foret à pointer':(k==='center'?'Foret à centrer':(k==='tap'?'Taraud':(k==='ream'?'Alésoir':(k==='chamfer'?'Fraise à chanfreiner':'Cylindrique'))))))); }
-/* V0.99.84 : FRAISE 3 TAILLES (demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et
+/* V0.99.85 : FRAISE 3 TAILLES (demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et
    l'usinage qui va avec, pourquoi pas dans Contour ») — un disque de Ø d et d'épaisseur Lc (t.lc)
    au bout d'un col plus fin (Ø dégagement t.dDeg). Il coupe par sa périphérie et ses deux faces :
    il creuse une rainure SOUS la matière (src/89-fao-contour-3tailles.js). */
@@ -53133,7 +53143,9 @@ function faoLoopFromChains(edges,chains,multi){
     const a=pts[i-1];
     return Math.hypot(q[0]-a[0],q[1]-a[1])>1e-4;
   });
-  if(pts.length<3)return {loop:[],closed:false};
+  // V0.99.86 : trajet unique (contour, chanfrein, découpe) — une arête droite seule donne une
+  // boucle aller-retour [a,b,a] ouverte, d'aire nulle : seule la découpe 3 tailles l'accepte
+  if(pts.length<(multi?3:2))return {loop:[],closed:false};
   const closed=Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.5;
   if(!closed)pts.push([pts[0][0],pts[0][1],pts[0][2]]); // chaîne ouverte : refermée d'office
   const r3=function(v){return Math.round(v*1000)/1000;};
@@ -53143,6 +53155,11 @@ function faoLoopFromChains(edges,chains,multi){
 // V0.99.71 : ponts entre contours d'une même zone (cf. faoLoopFromChains) — segment i
 // (loop[i]→loop[i+1]) parcouru aussi dans l'autre sens. Uint8Array par indice, ou null.
 const faoPontsMemo=(typeof WeakMap!=='undefined')?new WeakMap():null;
+function faoLoopLineOK(op,res){
+  // V0.99.86 : découpe 3 tailles le long d'arêtes — une chaîne OUVERTE d'aire nulle (droite) est permise
+  return !!(op&&op.type==='slotcut'&&res&&!res.closed&&res.loop&&res.loop.length>=3&&
+    Math.hypot(res.loop[1][0]-res.loop[0][0],res.loop[1][1]-res.loop[0][1])>0.1);
+}
 function faoLoopPonts(loop){
   if(!Array.isArray(loop)||loop.length<4)return null;
   if(faoPontsMemo&&faoPontsMemo.has(loop))return faoPontsMemo.get(loop);
@@ -53274,8 +53291,8 @@ function faoChainRematch(op,edges,field){
     sel=all;
   }
   // 3) reconstruction de la boucle XY (ordre, clip de longueur, validation)
-  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||faoContourProfil(op)));
-  if(!res.loop.length||res.loop.length<3||faoLoopArea(res.loop)<1e-6)return fail(sel.length);
+  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||op.type==='slotcut'||faoContourProfil(op)));
+  if(!res.loop.length||res.loop.length<3||(faoLoopArea(res.loop)<1e-6&&!faoLoopLineOK(op,res)))return fail(sel.length);
   // Intégrité : chaque arête retenue doit avoir ses points SUR la boucle. Une
   // arête mal orientée à l'assemblage est partiellement sautée → son milieu
   // s'éloigne et la boucle gagne une corde parasite : le clip exclurait alors une
@@ -53713,7 +53730,7 @@ function faoZoneCtx(op,job){
   // faoZoneCuts (clip extérieur exact, puis clip îlot).
   const lim=op&&op.limit, lim2=op&&op.limit2;
   if(!lim&&!lim2)return null;
-  if(op&&op.type==='chamfer')return null; // V0.7.9 : ses arêtes sont son profil, pas une zone
+  if(op&&(op.type==='chamfer'||op.type==='slotcut'))return null; // V0.7.9 : ses arêtes sont son profil, pas une zone
   const tool=faoToolById(job,op&&op.toolId);
   const D=(tool&&+tool.d>0)?+tool.d:10;
   // 2026-10-13-006 : rayon de garantie zone. Géofinish boule/torique : les
@@ -53946,7 +53963,7 @@ function faoPlaneEff(job,op){
 // référence est résolue dans le repère de l'opération et RÉÉCRIT op.ztop/op.zbot :
 // les générateurs ne lisent que ces deux nombres (clé de cache comprise).
 function faoHtsOps(op){
-  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish');
+  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish'||op.type==='slotcut');
 }
 function faoHtsClean(op){
   if(!op||op.hts===undefined)return;
@@ -54201,7 +54218,7 @@ function faoZoneDone(op){
   // Zone déjà tenue par le générateur (bord exact, arcs d'entrée/sortie
   // tangents au bord) : ni re-clip à la génération, ni clip à l'affichage.
   return !!op&&((op.type==='geofinish'&&op.traj==='scallop')||op.type==='geodesic'||
-    (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer');
+    (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer'||op.type==='slotcut');
 }
 function faoSegClipper0(op,job){
   // -> fn(ax,ay,az,bx,by,bz,push) qui ne pousse que la partie DANS la zone,
@@ -54441,8 +54458,10 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='rough3d'&&op.parRegion&&(op.limit||op.limit2))dep=['region-zone',dep];
     // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
     if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
-    // V0.99.84 : contour à la fraise 3 tailles — descente à côté de la matière restante (brut, opérations précédentes)
+    // V0.99.85 : contour à la fraise 3 tailles — descente à côté de la matière restante (brut, opérations précédentes)
     if(faoContourProfil(op)&&faoToolIsSlot(faoToolById(job,op.toolId))){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['3tailles',rd]; }
+    // V0.99.86 : découpe 3 tailles — entrée et sortie contrôlées sur la matière restante
+    if(faoSlotCut(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['decoupe3t',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
@@ -54938,8 +54957,8 @@ function* faoOpMovesIt0(op,job){
   const RA=faoRA(op||{});
   let mv=[];
   if(!op||!op.type)return [];
-  // V0.99.84 : la fraise 3 tailles ne coupe qu'en Contour sur profil (src/89-fao-contour-3tailles.js)
-  if(faoToolIsSlot(tool)&&!faoContourProfil(op))return [];
+  // V0.99.85 : la fraise 3 tailles ne coupe qu'en Contour sur profil (src/89-fao-contour-3tailles.js)
+  if(faoToolIsSlot(tool)&&!faoContourProfil(op)&&!faoSlotCut(op))return []; // V0.99.86 : et en Découpe 3 tailles
   if(op.type==='facing')mv=faoGenFacing(job.stock||faoStockDefault(),
     {toolD:D, ae:isFinite(+op.ae)?+op.ae:D*0.6, np:isFinite(+op.np)?+op.np:0,
      npz:isFinite(+op.npz)?+op.npz:0, sortie:sortie,
@@ -54951,6 +54970,7 @@ function* faoOpMovesIt0(op,job){
       radial:RA.radial,axial:RA.axial,
       // 2026-10-08-004 : entrée circulaire par défaut (rayon d'entrée op.).
       entry:op.entry||'circ',entryR:op.entryR}));
+  else if(op.type==='slotcut')mv=faoSlotCutMoves(op,job,base); // V0.99.86 : src/89-fao-decoupe-3tailles.js
   else if(op.type==='chamfer'){ // src/89-fao-chanfrein.js
     let am=null;
     try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; }
@@ -54961,7 +54981,7 @@ function* faoOpMovesIt0(op,job){
     try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; } // 2026-10-22-009 : maillage intermédiaire
     const L=op.limit;
     if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3&&faoToolIsSlot(tool)){
-      // V0.99.84 : fraise 3 tailles — rainure taillée par le côté (src/89-fao-contour-3tailles.js)
+      // V0.99.85 : fraise 3 tailles — rainure taillée par le côté (src/89-fao-contour-3tailles.js)
       const g=faoToolDims(tool),ms=am&&am.mesh;
       let ob=null;try{ ob=faoSlotObstacles(op,job,ms,D/2,g.dDeg.v/2); }catch(e){ ob=null; }
       mv=faoGenContourSlot(ms,L.loop,Object.assign({},base,{
@@ -56054,7 +56074,7 @@ function faoRestMap(op,job,D,radial){
   L.forEach(function(E){
     const q=E.op;
     const t=faoToolById(P,q.toolId);if(!t)return;
-    if(faoToolIsSlot(t))return; // V0.99.84 : rainure de 3 tailles sous la matière — le dessus ne change pas
+    if(faoToolIsSlot(t))return; // V0.99.85 : rainure de 3 tailles sous la matière — le dessus ne change pas
     const r=faoToolBodyD(t)/2;if(!(r>0))return;
     const cr=faoToolEffCr(t),tp=faoToolTipProfile(t);
     let mv=null;
@@ -56708,7 +56728,7 @@ function faoWkAccepte(op,job){
 function faoWkPrecOps(op,job){
   // Opérations précédentes dont le parcours sert au brut restant de `op` ([] sinon) ;
   // V0.99.48 : aussi à la carte de matière d'un contour « Rapide dans le vide »
-  if(!faoRestOn(op)&&!(typeof faoContourVideOn==='function'&&faoContourVideOn(op)))return [];
+  if(!faoRestOn(op)&&!(typeof faoContourVideOn==='function'&&faoContourVideOn(op))&&!(typeof faoSlotCut==='function'&&faoSlotCut(op)))return [];
   const out=[];
   try{
     faoRestPrev(faoRestBase(job),op).forEach(function(E){ if(E&&E.op&&out.indexOf(E.op)<0)out.push(E.op); });
@@ -57549,6 +57569,7 @@ function faoOpLabel(op,job){
   if(t==='facing')return 'Surfaçage Z='+op.z+tag+off+ra+lim;
   if(t==='pocket'&&faoPocketAdapt(op))return 'Poche adaptative '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(bord à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='pocket')return 'Poche ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
+  if(t==='slotcut')return faoSlotCutLabel(op,job)+tag+off; // V0.99.86
   if(t==='chamfer')return 'Chanfrein '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(arêtes à sélectionner) ')+(+op.w||0.5)+' mm'+tag+off;
   if(t==='contour'&&faoContourProfil(op)&&faoToolIsSlot(tool)){ // rainure : du Bas (+ décalage) sur sa hauteur, Haut non utilisé
     const sg=faoSlotGeom(op,tool),fz=function(z){return +(+z).toFixed(3);};
@@ -58647,7 +58668,7 @@ function faoMatterNrmSet(g,c,dx,dy,d2,rc,CR,TP){
 }
 const FAO_CARVE_DZ=0.05; // mm — pas de hauteur d'un segment en pente
 function faoMatterCarveSeg(g,ax,ay,az,bx,by,bz,r,outCols,cr,tp){
-  // V0.99.84 : fraise 3 tailles — une carte de hauteurs ne sait pas creuser SOUS la matière
+  // V0.99.85 : fraise 3 tailles — une carte de hauteurs ne sait pas creuser SOUS la matière
   // (la lèvre au-dessus de la rainure resterait taillée) : rien n'est enlevé ici
   if(tp&&tp.slot)return [];
   // V0.7.8 : segment EN PENTE — la taille se fait à la cote la plus BASSE du segment ; un segment
@@ -60480,7 +60501,7 @@ const faoEngToolCache=new Map();
 function faoEngTool(r,cr,tp){
   r=+r||5;
   const CR=(isFinite(+cr)&&+cr>0)?Math.min(+cr,r):0,TP=(tp&&tp.length>1)?tp:null;
-  // V0.99.84 : fraise 3 tailles — disque d'épaisseur e au bout d'un col de rayon rn
+  // V0.99.85 : fraise 3 tailles — disque d'épaisseur e au bout d'un col de rayon rn
   const SL=(tp&&tp.slot&&tp.slot.e>0)?{e:+tp.slot.e,rn:Math.max(0.05,Math.min(r,+tp.slot.rn||0))}:null;
   const key=r.toFixed(4)+'|'+CR.toFixed(4)+'|'+(TP?faoTipSig(TP):'')+(SL?'|s'+SL.e.toFixed(4)+','+SL.rn.toFixed(4):'');
   let T=faoEngToolCache.get(key);if(T)return T;
@@ -60560,7 +60581,7 @@ function faoEngCarve(E,a,b,r,cr,tp,ax){
   // calcul exact dans le repère permuté de l'outil, par pas « à hauteur constante » le long de l'axe ;
   // outil oblique : positions échantillonnées le long du segment.
   const T=faoEngTool(r,cr,tp),al=faoEngAxis(ax);
-  if(T.slot&&E.kind!=='sdf')return; // V0.99.84 : le tri-dexel ne connaît que les outils pleins vers le haut
+  if(T.slot&&E.kind!=='sdf')return; // V0.99.85 : le tri-dexel ne connaît que les outils pleins vers le haut
   if(al){
     const w=al.w,U=FAO_DEX_UV[w][0],V=FAO_DEX_UV[w][1],ca=[a.x,a.y,a.z],cb=[b.x,b.y,b.z];
     const dw=Math.abs(cb[w]-ca[w]),st=Math.max(0.02,E.p/4),n=dw>st?Math.min(400,Math.ceil(dw/st)):1;
@@ -61016,7 +61037,7 @@ function faoSdfCreate(s,p){
 function faoSdfToolTable(T,p,TR){
   // distance signée au profil de l'outil dans le plan (ρ, h), tabulée au pas p/4 (négative dedans)
   if(T.sdfT&&T.sdfT.p===p)return T.sdfT;
-  // V0.99.84 : fraise 3 tailles — profil = dessous plat, flanc du disque, dessus du disque, col ;
+  // V0.99.85 : fraise 3 tailles — profil = dessous plat, flanc du disque, dessus du disque, col ;
   // au-dessus de la table, la distance est celle au col (Rn), pas au Ø de coupe
   const SL=T.slot,ht=SL?SL.e:T.htop;
   const q=p/4,R=T.r,nr=Math.ceil((R+TR)/q)+2,h0=-TR,nh=Math.ceil((ht+2*TR)/q)+2,tab=new Float32Array(nr*nh);
@@ -61555,7 +61576,7 @@ function faoCarteGProfil(r,cr,tp){
   return {hs};
 }
 function faoCarteGQueue(vw,a,b,r,cr,tp,ax){
-  if(tp&&tp.slot)return; // V0.99.84 : fraise 3 tailles — une carte de hauteurs ne creuse pas sous la matière
+  if(tp&&tp.slot)return; // V0.99.85 : fraise 3 tailles — une carte de hauteurs ne creuse pas sous la matière
   // segment → pas à cote constante dans la carte de son orientation (même découpe que faoMatterCarveSeg)
   const C=vw.cg;let M=C.maps[0],A=a,B=b;
   if(ax&&!faoEngIsVertAx(ax)){const key=faoMapKey(ax);M=C.maps.find(x=>x.key===key);if(!M)return;
@@ -61686,7 +61707,7 @@ function faoPocketFloor(mesh,loop,zMin){
 function faoPocketAdapt(op){ return !!(op&&op.type==='pocket'&&op.strat==='adaptive'); }
 // Opérations calculées sur le MAILLAGE du solide (clé de cache liée au solide).
 function faoMeshOp(op){ return !!(op&&(op.type==='rough3d'||op.type==='geofinish'||op.type==='geodesic'||faoPocketAdapt(op)||
-  (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer')); }
+  (typeof faoContourProfil==='function'&&faoContourProfil(op))||op.type==='chamfer'||op.type==='slotcut')); }
 function faoOpDefaults(type){
   const s=faoStock(); const job=faoDoc();
   const tool=(job.tools&&job.tools[0])||{id:'T1',d:10};
@@ -61750,6 +61771,12 @@ function faoOpDefaults(type){
       limit:{mode:'chain',loop:[],closed:false,nEdges:0,tangent:true,side:'center',extra:0},
       w:0.5,tipOff:0.3,cside:'auto',sens:'avalant',overlap:1});
   }
+  // V0.99.86 : DÉCOUPE 3 TAILLES — selon X / Y ou le long d'une arête (src/89-fao-decoupe-3tailles.js)
+  if(type==='slotcut'){
+    const st=(job.tools||[]).find(function(t){return t&&t.kind==='slot';});
+    return Object.assign({},base,{type:'slotcut',toolId:st?st.id:base.toolId,
+      ztop:s.z1, zbot:Math.round((s.z0+s.z1)/2*10)/10, nR:1, ae:2, fin:0, sens:'avalant'});
+  }
   if(['facing','pocket','contour','drill','rough3d','geofinish','geodesic'].indexOf(type)<0)return null;
   return Object.assign({},base,{type:type});
 }
@@ -61758,7 +61785,7 @@ function faoOpDefaults(type){
 function faoAddOpsSpec(){
   // V0.7.9 : la Poche (redondante avec l'Ébauche 3D) cède sa place au Chanfrein ; les poches des
   // fichiers existants restent lisibles et calculées
-  return [['facing','+ Surfaçage'],['chamfer','+ Chanfrein'],['contour','+ Contour'],
+  return [['facing','+ Surfaçage'],['chamfer','+ Chanfrein'],['contour','+ Contour'],['slotcut','+ Découpe 3 tailles'],
     ['drill','+ Perçage'],['rough3d','+ Ébauche 3D'],['geofinish','+ Finition'],['geodesic','+ Géodésique'],
     ['pattern','+ Répétition']]; // V0.95.3 : src/89-fao-repetition.js
 }
@@ -62584,7 +62611,7 @@ function faoRenderTree(){
 }
 function faoOpShortLabel(op){
   if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }
-  const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',drill:'Perçage',
+  const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',slotcut:'Découpe 3 tailles',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'}[op.type]||op.type;
   if(op.type==='drill'){
     // 2026-10-15-013 : libellé selon le cycle et les trous (« Taraudage M8 (4) »).
@@ -62817,10 +62844,12 @@ function faoPlanesCard(setup,op){
   box.appendChild(faoPlaneRow('clear','Dégagement',eff.clear,setup,op,tgt));
   box.appendChild(faoPlaneRow('retr','Retrait',eff.retr,setup,op,tgt));
   if(faoHtsOps(op)){
-    const slot=faoContourSlotOp(op,setup); // V0.99.84 : fraise 3 tailles — hauteur de rainure dans la fiche Contour
-    if(slot)box.appendChild(faoHelp('Haut : non utilisé par la fraise 3 tailles — la rainure monte de sa hauteur (fiche Contour) au-dessus du Bas.'));
+    const slot=faoContourSlotOp(op,setup); // V0.99.85 : fraise 3 tailles — hauteur de rainure dans la fiche Contour
+    const cut=faoSlotCut(op); // V0.99.86 : découpe 3 tailles — Bas = plan de coupe
+    if(cut)box.appendChild(faoHelp('Plan de coupe = dessous du disque (référence + décalage, ou une face cliquée). Haut : non utilisé — la découpe monte de sa hauteur (onglet Zone).'));
+    else if(slot)box.appendChild(faoHelp('Haut : non utilisé par la fraise 3 tailles — la rainure monte de sa hauteur (fiche Contour) au-dessus du Bas.'));
     else box.appendChild(faoHtRow('top','Haut',setup,op));
-    box.appendChild(faoHtRow('bot','Bas',setup,op));
+    box.appendChild(faoHtRow('bot',cut?'Plan de coupe':'Bas',setup,op));
     if(op.type==='rough3d'||faoPocketAdapt(op)){
       const rz=faoRow();
       if(op.zlim){
@@ -62844,7 +62873,7 @@ function faoPlanesCard(setup,op){
     // garde-fous : l'ordre Dégagement ≥ Retrait ≥ Haut > Bas
     const zc=faoClearAbs(op,setup), zr=faoRetractAbs(op,setup);
     const zt=+op.ztop, zb=+op.zbot, w=[], own=!!faoOpFrame(setup,op);
-    if(isFinite(zt)&&isFinite(zb)&&!(zt>zb))w.push('le Haut doit être au-dessus du Bas');
+    if(!slot&&!cut&&isFinite(zt)&&isFinite(zb)&&!(zt>zb))w.push('le Haut doit être au-dessus du Bas');
     if(!own&&isFinite(zr)&&isFinite(zt)&&zr<zt-1e-6)w.push('le Retrait est sous le Haut de la zone');
     if(isFinite(zc)&&isFinite(zr)&&zc<zr-1e-6)w.push('le Dégagement est sous le Retrait');
     if(w.length){
@@ -62889,6 +62918,12 @@ const FAO_TAB_HELP={
   'Entrées':'Comment l’outil entre dans la matière.',
   'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D, finition et géodésique : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
+// V0.99.86 : aide propre à la découpe 3 tailles (src/89-fao-decoupe-3tailles.js)
+const FAO_TAB_HELP_CUT={
+  'Zone':'Sens de la découpe (X, Y ou une arête), côté de la pièce, profondeur depuis sa face et hauteur de la découpe.',
+  'Hauteurs':'Dégagement, Retrait, puis le plan de coupe (dessous du disque) : depuis le brut, le modèle ou une face cliquée, plus un décalage.',
+  'Entrées':'Le disque descend hors de la pièce, entre tout droit et ressort tout droit : longueur des zones d’entrée et de sortie.'};
+function faoTabHelp(n,op){ return (op&&op.type==='slotcut'&&FAO_TAB_HELP_CUT[n])||FAO_TAB_HELP[n]||''; }
 function faoTabOf(t){
   t=String(t||'').toLowerCase().replace(/\s*\(.*$/,'').trim();
   const M=[['outil','Outil'],['trous','Zone'],['hauteur','Hauteurs'],['vidage','Passes'],['passes','Passes'],['côté et sens','Passes'],
@@ -62925,7 +62960,7 @@ function faoCardTabs(d,op){
     if(op)faoTabSel[op.id]=n;
   };
   names.forEach(function(n){
-    const b=document.createElement('button');b.className='fao-tab';b.textContent=n;b.title=FAO_TAB_HELP[n]||n;
+    const b=document.createElement('button');b.className='fao-tab';b.textContent=n;b.title=faoTabHelp(n,op)||n;
     b.onclick=function(){show(n);};
     bar.appendChild(b);btns[n]=b;
     const p=document.createElement('div');p.className='fao-pane';
@@ -62941,10 +62976,10 @@ function faoCardTabs(d,op){
         row.insertBefore(pr,ch[q]);pr.appendChild(ch[q]);pr.appendChild(nx);q++;
       }
     });
-    const tip=document.createElement('div');tip.className='fao-tip';tip.textContent=FAO_TAB_HELP[n]||'';
+    const tip=document.createElement('div');tip.className='fao-tip';tip.textContent=faoTabHelp(n,op);
     const say=function(e){let t=e&&e.target;for(let q=0;q<4&&t&&t!==p;q++){if(t.title){tip.textContent=t.title;return;}t=t.parentNode;}};
     try{p.addEventListener('mouseover',say);p.addEventListener('focusin',say);
-      p.addEventListener('mouseleave',function(){tip.textContent=FAO_TAB_HELP[n]||'';});}catch(e){}
+      p.addEventListener('mouseleave',function(){tip.textContent=faoTabHelp(n,op);});}catch(e){}
     p.appendChild(tip);
     panes[n]=p;
   });
@@ -62997,7 +63032,7 @@ function faoSetupTabs(p,setup){
 function faoOpCardElement(setup,op,i){
   const d=faoCard();
   if(op.on===false)d.style.opacity='0.55';
-  const typeName={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',drill:'Perçage',
+  const typeName={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',slotcut:'Découpe 3 tailles',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'};
   const r=faoRow();
   const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=op.on!==false;
@@ -63131,6 +63166,8 @@ function faoOpCardElement(setup,op,i){
     })();
   }else if(op.type==='chamfer'){
     faoChamferRows(d,setup,op); // src/89-fao-chanfrein.js
+  }else if(op.type==='slotcut'){
+    faoSlotCutRows(d,setup,op); // src/89-fao-decoupe-3tailles.js
   }else if(faoContourProfil(op)){
     faoContourRows(d,setup,op);
   }else if((op.type==='pocket'&&!faoPocketAdapt(op))||op.type==='contour'){
@@ -63461,7 +63498,7 @@ function faoOpCardElement(setup,op,i){
     rl.appendChild(faoNum(faoDsp(op,L.x1,0),function(v){L.x1=faoInp(op,v,0);},52,null,'Rectangle : coin X maxi (mm)'));
     rl.appendChild(faoNum(faoDsp(op,L.y1,1),function(v){L.y1=faoInp(op,v,1);},52,null,'Rectangle : coin Y maxi (mm)'));
   }
-  const geoOwn=faoPocketAdapt(op)||faoContourProfil(op)||op.type==='chamfer'; // bord / profil / arêtes : section propre
+  const geoOwn=faoPocketAdapt(op)||faoContourProfil(op)||op.type==='chamfer'||op.type==='slotcut'; // bord / profil / arêtes : section propre
   if(!geoOwn&&!(op.type==='drill'&&op.src==='model'))d.appendChild(rl); // trous du modèle : pas de zone
   if(limMode==='chain'&&op.limit&&!geoOwn){
     const rc=faoRow();
@@ -63521,7 +63558,7 @@ function faoOpCardElement(setup,op,i){
       d.appendChild(ws);
     }
   }
-  if((limMode==='rect'||limMode==='chain'||limMode==='sketch')&&op.limit&&!faoContourProfil(op)&&op.type!=='chamfer'){
+  if((limMode==='rect'||limMode==='chain'||limMode==='sketch')&&op.limit&&!faoContourProfil(op)&&op.type!=='chamfer'&&op.type!=='slotcut'){
     const rs=faoRow();
     rs.appendChild(faoLab('Outil'));
     rs.appendChild(faoSel([
@@ -63572,7 +63609,7 @@ function faoOpCardElement(setup,op,i){
     rl2.appendChild(faoNum(faoDsp(op,L2.x1,0),function(v){L2.x1=faoInp(op,v,0);},52,null,'Îlot : coin X maxi (mm)'));
     rl2.appendChild(faoNum(faoDsp(op,L2.y1,1),function(v){L2.y1=faoInp(op,v,1);},52,null,'Îlot : coin Y maxi (mm)'));
   }
-  if(!faoContourProfil(op)&&op.type!=='chamfer'&&!(op.type==='drill'&&op.src==='model'))d.appendChild(rl2); // trous du modèle, chanfrein : ni zone ni îlot
+  if(!faoContourProfil(op)&&op.type!=='chamfer'&&op.type!=='slotcut'&&!(op.type==='drill'&&op.src==='model'))d.appendChild(rl2); // trous du modèle, chanfrein : ni zone ni îlot
   if(lim2Mode==='chain'&&op.limit2){
     const rc2=document.createElement('div');
     rc2.className='fao-row';
@@ -72312,8 +72349,8 @@ function faoChainOk(){
     }
     const chains=faoOrderEdges(faoChainMode.edges,faoChainMode.sel);
     // V0.99.71 : zone = plusieurs contours permis ; contour / chanfrein = un seul trajet
-    let res=faoLoopFromChains(faoChainMode.edges,chains,!(op.type==='chamfer'||faoContourProfil(op)));
-    if(!res.loop.length||faoLoopArea(res.loop)<1e-6){
+    let res=faoLoopFromChains(faoChainMode.edges,chains,!(op.type==='chamfer'||op.type==='slotcut'||faoContourProfil(op)));
+    if(!res.loop.length||(faoLoopArea(res.loop)<1e-6&&!faoLoopLineOK(op,res))){
       faceEl.textContent=PRE+' : boucle dégénérée — limite inchangée.';return;
     }
     // Cap : les très longues chaînes sont sous-échantillonnées (clip en O(n)).
@@ -72587,7 +72624,7 @@ function faoChamferRows(d,setup,op){
 
 /* ═══════════════ 89-fao-contour-3tailles.js — fao contour 3tailles ═══════════════ */
 /* ================================================================
-   CONTOUR À LA FRAISE 3 TAILLES (V0.99.84)
+   CONTOUR À LA FRAISE 3 TAILLES (V0.99.85)
    ----------------------------------------------------------------
    Demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et l'usinage qui va
    avec, pourquoi pas dans Contour », puis « il faut un contour et pouvoir décaler la
@@ -73290,7 +73327,7 @@ function faoContourTrimAir(mv,mat,D){
 // sens, Entrée/sortie, Attaches, Matière à laisser.
 function faoContourRows(d,setup,op){
   const toolD=(function(){const t=faoToolById(setup,op.toolId);return t&&+t.d>0?+t.d:10;})();
-  const slot=faoToolIsSlot(faoToolById(setup,op.toolId)); // V0.99.84 : fraise 3 tailles → rainure
+  const slot=faoToolIsSlot(faoToolById(setup,op.toolId)); // V0.99.85 : fraise 3 tailles → rainure
   d.appendChild(faoH('Profil'));
   const L=(op.limit&&op.limit.mode==='chain')?op.limit:null;
   const has=!!(L&&(L.loop||[]).length>=3);
@@ -75156,6 +75193,356 @@ function faoGenScallop(mesh,o){
   const it=faoGenScallopIt(mesh,o);
   let r;while(!(r=it.next()).done){}
   return r.value;
+}
+
+/* ═══════════════ 89-fao-decoupe-3tailles.js — fao decoupe 3tailles ═══════════════ */
+/* ================================================================
+   DÉCOUPE À LA FRAISE 3 TAILLES (V0.99.86)
+   ----------------------------------------------------------------
+   Demandes de Fred : « pouvoir définir une droite comme contour et définir les zones
+   d'entrée et de sortie au choix, au moins le rayon de fraise + 10 par défaut. L'idée
+   est d'entrer à un endroit, tirer tout droit et sortir tout droit. Entrée et sortie
+   droite, pas de cercle d'entrée », « ou un sens X par exemple et prendre en compte la
+   pièce à couper. On définit le plan de coupe + une valeur de décalage et l'outil y
+   vient tout seul », « peut-être une opération découpe 3 tailles ».
+   Opération 'slotcut' (fraise 3 tailles seulement) :
+   - trajet SELON X ou SELON Y : la pièce est coupée à la hauteur de la rainure (Bas =
+     plan de coupe, référence + décalage dans l'onglet Hauteurs) ; la face la plus
+     avancée du côté choisi (Y− / Y+ / les deux, ou X− / X+) est trouvée toute seule,
+     le disque y entre de la « profondeur » (décalage) et parcourt toute la longueur de
+     la pièce ;
+   - trajet LE LONG D'UNE ARÊTE : une arête droite (ou une suite d'arêtes ouverte)
+     cliquée sur le modèle ; côté de la matière trouvé par une coupe de la pièce ;
+   - entrée et sortie DROITES dans le prolongement de la passe : le centre du disque
+     part à « entrée » mm avant le bout (défaut : rayon + 10, soit 10 mm de jour) et
+     finit à « sortie » mm après ; descente et remontée dehors seulement ;
+   - passes en hauteur (au plus l'épaisseur du disque), passes latérales, finition,
+     sens avalant / opposition, matière à laisser : comme le contour 3 tailles ;
+   - alertes : pas de pièce à cette hauteur, disque pas dégagé à l'entrée ou à la sortie
+     (zone trop courte, brut pas encore enlevé), col qui frotte, disque plus épais que
+     la rainure.
+   ================================================================ */
+function faoSlotCut(op){ return !!(op&&op.type==='slotcut'); }
+function faoSlotCutDir(op){ return op&&(op.cutDir==='Y'||op.cutDir==='edge')?op.cutDir:'X'; }
+function faoSlotCutSide(op){ return op&&(op.cutSide==='+'||op.cutSide==='both')?op.cutSide:'-'; }
+function faoSlotCutGeom(op,tool){
+  // Réglages vus par la fiche et le calcul (mêmes défauts des deux côtés).
+  const g=faoToolDims(tool),ep=g.lc.v,R=g.D/2,dir=faoSlotCutDir(op);
+  const pmax=Math.max(0,(g.D-g.dDeg.v)/2);
+  const h=(isFinite(+op.slotH)&&+op.slotH>0)?+op.slotH:ep;
+  // profondeur depuis la face : défaut 5 mm (au plus ce que le col permet) ; le long
+  // d'une arête : 0 = le disque vient jusqu'à l'arête (comme le contour)
+  const dr=isFinite(+op.slotDr)?+op.slotDr:(dir==='edge'?0:faoR1(Math.min(5,pmax)));
+  const zd=faoR1(R+10);
+  const lin=isFinite(+op.slotLin)&&+op.slotLin>=0?+op.slotLin:zd;
+  const lout=isFinite(+op.slotLout)&&+op.slotLout>=0?+op.slotLout:zd;
+  const z0=+op.zbot;
+  return {D:g.D,R:R,ep:ep,col:g.dDeg.v,h:h,dr:dr,z0:z0,z1:z0+h,pmax:pmax,lin:lin,lout:lout,zDef:zd,
+    dir:dir,side:faoSlotCutSide(op)};
+}
+function faoSlotCutWalls(mesh,o){
+  // Faces de la pièce que le disque vient tailler. Selon X / Y : section de la pièce dans
+  // la tranche de la rainure (plusieurs hauteurs) → étendue et face la plus avancée du
+  // côté choisi ; sans maillage, la boîte du brut. Paroi = {W:[A,B], s} : s = +1 si le
+  // côté libre est à GAUCHE de A→B.
+  const z0=+o.z0,z1=+o.z1,out={walls:[],box:null};
+  if(!isFinite(z0)||!isFinite(z1))return out;
+  let x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+  const add=function(x,y){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; };
+  if(mesh&&mesh.t&&mesh.t.length){
+    const H=z1-z0,n=H>0.1?Math.max(2,Math.min(12,Math.ceil(H)+1)):1;
+    for(let i=0;i<n;i++){
+      const z=n===1?(z0+z1)/2:z0+0.02+(H-0.04)*i/(n-1);
+      const segs=faoSliceZCached(mesh,Math.round(z*1000)/1000)||[];
+      for(let k=0;k<segs.length;k++){ add(segs[k][0],segs[k][1]); add(segs[k][2],segs[k][3]); }
+    }
+  }
+  const s=o.stock;
+  if(!(x1>=x0)&&!mesh&&s&&faoStockValid(s)&&z1>+s.z0&&z0<+s.z1){ x0=+s.x0; x1=+s.x1; y0=+s.y0; y1=+s.y1; }
+  if(!(x1>=x0&&y1>=y0))return out;
+  const r3=function(v){return Math.round(v*1000)/1000;};
+  out.box={x0:r3(x0),x1:r3(x1),y0:r3(y0),y1:r3(y1)};
+  (o.side==='both'?['-','+']:[o.side==='+'?'+':'-']).forEach(function(sd){
+    if(o.dir==='Y'){
+      const xw=sd==='-'?x0:x1;
+      // A→B selon +Y : gauche = −X
+      out.walls.push({W:[[xw,y0],[xw,y1]],s:sd==='-'?1:-1,side:sd==='-'?'X−':'X+',at:r3(xw),from:r3(y0),to:r3(y1)});
+    }else{
+      const yw=sd==='-'?y0:y1;
+      // A→B selon +X : gauche = +Y
+      out.walls.push({W:[[x0,yw],[x1,yw]],s:sd==='-'?-1:1,side:sd==='-'?'Y−':'Y+',at:r3(yw),from:r3(x0),to:r3(x1)});
+    }
+  });
+  return out;
+}
+function faoSlotCutEdgeWall(mesh,L,z0,z1){
+  // Le long d'arêtes cliquées : polyligne OUVERTE (la chaîne refermée d'office perd son
+  // dernier point) ; côté libre = celui où la coupe de la pièce trouve le moins de matière.
+  if(!L||!Array.isArray(L.loop)||L.loop.length<2)return null;
+  let W=L.loop.map(function(p){return [+p[0],+p[1]];});
+  if(!L.closed&&W.length>=3){const a=W[0],b=W[W.length-1];if(Math.hypot(a[0]-b[0],a[1]-b[1])<1e-6)W.pop();}
+  W=W.filter(function(p,i){return !i||Math.hypot(p[0]-W[i-1][0],p[1]-W[i-1][1])>1e-6;});
+  if(W.length<2)return null;
+  let s=1;
+  if(mesh&&mesh.t&&mesh.t.length){
+    const zm=(z0+z1)/2,segs=faoSliceZCached(mesh,Math.round(zm*1000)/1000)||[];
+    let left=0,right=0;
+    for(let i=0;i+1<W.length;i++){
+      const A=W[i],B=W[i+1],dx=B[0]-A[0],dy=B[1]-A[1],l=Math.hypot(dx,dy);
+      if(!(l>1e-6))continue;
+      const nx=-dy/l,ny=dx/l;
+      for(let k=1;k<=3;k++){const u=k/4,mx=A[0]+dx*u,my=A[1]+dy*u,e=0.3;
+        if(faoSliceHit(segs,mx+nx*e,my+ny*e,0))left++;
+        if(faoSliceHit(segs,mx-nx*e,my-ny*e,0))right++;}
+    }
+    s=left>right?-1:1; // matière à gauche → libre à droite
+  }
+  const r3=function(v){return Math.round(v*1000)/1000;};
+  return {W:W,s:s,side:'arête',at:null,from:null,to:null,len:r3(W.reduce(function(a,p,i){return i?a+Math.hypot(p[0]-W[i-1][0],p[1]-W[i-1][1]):0;},0))};
+}
+function faoSlotCutOffset(W,d,s){
+  // Polyligne ouverte décalée de d du côté s (+1 = gauche), angles en onglet bornés.
+  const n=W.length,N=[];
+  for(let i=0;i+1<n;i++){const dx=W[i+1][0]-W[i][0],dy=W[i+1][1]-W[i][1],l=Math.hypot(dx,dy)||1;N.push([-dy/l*s,dx/l*s]);}
+  const out=[];
+  for(let i=0;i<n;i++){
+    let m;
+    if(i===0)m=N[0]; else if(i===n-1)m=N[n-2];
+    else{const a=N[i-1],b=N[i],sx=a[0]+b[0],sy=a[1]+b[1],sl=Math.hypot(sx,sy);
+      if(sl<1e-9)m=a; else{const ux=sx/sl,uy=sy/sl,c=Math.max(0.25,ux*a[0]+uy*a[1]);m=[ux/c,uy/c];}}
+    out.push([W[i][0]+m[0]*d,W[i][1]+m[1]*d]);
+  }
+  return out;
+}
+function faoSlotNeckCheck(moves,neckTop,ep,diag){
+  // Col : rien ne doit dépasser au-dessus du disque sous le col pendant la coupe.
+  let worst=0,n=0;
+  for(let i=1;i<moves.length;i++){
+    const a=moves[i-1],b=moves[i];if(b.r||Math.abs(a.z-b.z)>1e-9)continue;
+    const L=Math.hypot(b.x-a.x,b.y-a.y),ns=Math.max(1,Math.ceil(L/1));
+    for(let k=1;k<=ns;k++){const t=k/ns,x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
+      const over=neckTop(x,y)-(b.z+ep);
+      if(over>0.05){n++;if(over>worst)worst=over;}}
+  }
+  diag.neck=Math.round(worst*1000)/1000;diag.neckN=n;
+}
+function faoGenSlotCut(mesh,o){
+  // o : toolD, ep, rn, secu, zbot, slotH, dr (profondeur), lin, lout, dir ('X'|'Y'|'edge'),
+  //     side ('-'|'+'|'both'), limit (arête), ap, nR, ae, fin, radial, axial, sens, stock,
+  //     clear(x,y,z), neckTop(x,y)
+  o=o||{};
+  const moves=[];
+  const diag={slot:1,cut:1,dir:o.dir||'X',walls:[],levels:0,passes:0,noEntry:0,neck:0,neckN:0,thick:0,over:0,noPart:0,zb:null,zt:null};
+  try{moves.diag=diag;}catch(e){}
+  const D=isFinite(+o.toolD)&&+o.toolD>0?+o.toolD:10,r=D/2;
+  const ep=isFinite(+o.ep)&&+o.ep>0?+o.ep:Math.max(1,D*0.12);
+  const rn=isFinite(+o.rn)&&+o.rn>0?Math.min(+o.rn,r):0;
+  const RA=faoRA(o);
+  const secu=isFinite(+o.secu)?+o.secu:5;
+  const zbot=+o.zbot;
+  if(!isFinite(zbot))return moves;
+  const r3=function(v){return Math.round(v*1000)/1000;};
+  const hS=isFinite(+o.slotH)&&+o.slotH>0?+o.slotH:ep;
+  const zb=zbot+RA.axial,zt=zbot+hS-RA.axial;
+  diag.zb=r3(zbot);diag.zt=r3(zbot+hS);
+  if(zt-zb<ep-1e-6)diag.thick=r3(ep-Math.max(0,zt-zb));
+  // --- parois à tailler
+  let walls=[];
+  if(o.dir==='edge'){const w=faoSlotCutEdgeWall(mesh,o.limit,zbot,zbot+hS);if(w)walls=[w];}
+  else walls=faoSlotCutWalls(mesh,{z0:zbot,z1:zbot+hS,dir:o.dir==='Y'?'Y':'X',side:o.side,stock:o.stock}).walls;
+  diag.walls=walls.map(function(w){return {side:w.side,at:w.at,from:w.from,to:w.to};});
+  if(!walls.length){diag.noPart=1;return moves;}
+  // --- passes : distance du centre du disque à la face (rayon + surépaisseur − profondeur)
+  const dr=isFinite(+o.dr)?+o.dr:0;
+  let dFin=r+RA.radial-dr;
+  if(dFin<0.05){diag.over=1;dFin=0.05;}
+  const fin=isFinite(+o.fin)&&+o.fin>0?+o.fin:0;
+  const nR=Math.max(1,Math.min(20,Math.round(isFinite(+o.nR)?+o.nR:1)));
+  const aeR=isFinite(+o.ae)&&+o.ae>0?+o.ae:Math.max(0.2,D*0.1);
+  const offs=[];for(let k=nR-1;k>=0;k--)offs.push(dFin+fin+k*aeR);
+  if(fin>0)offs.push(dFin);
+  const climb=o.sens!=='opp';
+  const zd=r+10;
+  const lin=isFinite(+o.lin)&&+o.lin>=0?+o.lin:zd,lout=isFinite(+o.lout)&&+o.lout>=0?+o.lout:zd;
+  // --- niveaux du disque (dessous), de haut en bas, au plus l'épaisseur
+  const step=Math.max(0.05,Math.min(ep,isFinite(+o.ap)&&+o.ap>0?+o.ap:ep));
+  const levels=[];
+  {const zTop=zt-ep;
+    if(zTop<=zb+1e-6)levels.push(zb);
+    else{let z=zTop;while(z>zb+1e-6){levels.push(Math.round(z*10000)/10000);z-=step;}
+      if(levels.length&&levels[levels.length-1]-zb<0.01)levels.pop();
+      levels.push(zb);}}
+  diag.levels=levels.length;
+  const clear=typeof o.clear==='function'?o.clear:null;
+  const rnd=function(v){return Math.round(v*10000)/10000;};
+  let cur=null;
+  const push=function(m){m.x=rnd(m.x);m.y=rnd(m.y);m.z=rnd(m.z);
+    if(cur&&cur.r===m.r&&!!cur.ent===!!m.ent&&cur.x===m.x&&cur.y===m.y&&cur.z===m.z)return;
+    moves.push(m);cur=m;};
+  const unit=function(a,b){const l=Math.hypot(b[0]-a[0],b[1]-a[1]);return l>1e-12?[(b[0]-a[0])/l,(b[1]-a[1])/l]:[1,0];};
+  walls.forEach(function(w){
+    // sens de marche : avalant = matière à droite de l'avance, donc côté libre à gauche
+    const fwd=(w.s>0)===climb;
+    // niveau par niveau (de haut en bas), de la passe la moins profonde à la plus profonde
+    levels.forEach(function(z){
+      offs.forEach(function(d){
+        let P=faoSlotCutOffset(w.W,d,w.s);
+        if(!fwd)P=P.slice().reverse();
+        const t0=unit(P[0],P[1]),tn=unit(P[P.length-2],P[P.length-1]);
+        const A=[P[0][0]-t0[0]*lin,P[0][1]-t0[1]*lin],B=[P[P.length-1][0]+tn[0]*lout,P[P.length-1][1]+tn[1]*lout];
+        if(clear&&(!clear(A[0],A[1],z)||!clear(B[0],B[1],z)))diag.noEntry++;
+        // descente dehors : au-dessus de A, puis en avance le dernier millimètre
+        if(!cur)push({r:1,x:A[0],y:A[1],z:secu});
+        else if(Math.hypot(cur.x-A[0],cur.y-A[1])>1e-6){
+          if(cur.z<secu-1e-9)push({r:1,x:cur.x,y:cur.y,z:secu});
+          push({r:1,x:A[0],y:A[1],z:secu});
+        }
+        if(cur.z>z+1+1e-9)push({r:1,x:A[0],y:A[1],z:z+1});
+        push({r:0,ent:1,x:A[0],y:A[1],z:z});
+        // entrée droite, passe, sortie droite
+        push({r:0,ent:1,x:P[0][0],y:P[0][1],z:z});
+        for(let k=1;k<P.length;k++)push({r:0,ent:0,x:P[k][0],y:P[k][1],z:z});
+        push({r:0,ent:1,x:B[0],y:B[1],z:z});
+        diag.passes++;
+      });
+    });
+  });
+  if(cur)push({r:1,x:cur.x,y:cur.y,z:secu});
+  if(typeof o.neckTop==='function'&&rn>0)faoSlotNeckCheck(moves,o.neckTop,ep,diag);
+  return moves;
+}
+function faoSlotCutMoves(op,job,base){
+  // Aiguillage (src/88-fao-50-caches-dispatch.js) : maillage, obstacles, réglages.
+  const tool=faoToolById(job,op.toolId);
+  if(!faoToolIsSlot(tool)){ op.geoDiag={slot:1,cut:1,notSlot:1}; return []; }
+  let am=null;try{ am=faoActiveMesh(job,'mid'); }catch(e){ am=null; }
+  const ms=am&&am.mesh,G=faoSlotCutGeom(op,tool);
+  let ob=null;try{ ob=faoSlotObstacles(op,job,ms,G.R,G.col/2); }catch(e){ ob=null; }
+  const RA=faoRA(op);
+  const mv=faoGenSlotCut(ms,Object.assign({},base,{
+    toolD:G.D,ep:G.ep,rn:G.col/2,zbot:+op.zbot,slotH:op.slotH,dr:G.dr,lin:G.lin,lout:G.lout,
+    dir:G.dir,side:G.side,limit:op.limit,ap:op.ap,nR:op.nR,ae:op.ae,fin:op.fin,
+    radial:RA.radial,axial:RA.axial,sens:op.sens==='opp'?'opp':'climb',stock:job&&job.stock,
+    clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null}));
+  try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
+  return mv;
+}
+function faoSlotCutLabel(op,job){
+  const t=faoToolById(job,op.toolId),G=faoSlotCutGeom(op,t),f=function(z){return +(+z).toFixed(3);};
+  const tr=G.dir==='edge'?((op.limit&&op.limit.nEdges)?'le long de '+op.limit.nEdges+' arête(s)':'(arête à sélectionner)')
+    :'selon '+G.dir+' '+(G.side==='both'?'des deux côtés':'côté '+(G.dir==='Y'?'X':'Y')+(G.side==='+'?'+':'−'));
+  return 'Découpe 3 tailles '+tr+' Z '+f(G.z0)+' -> '+f(G.z1)+' prof. '+f(G.dr);
+}
+// Fiche de l'opération (src/88-fao-80-interface.js)
+function faoSlotCutRows(d,setup,op){
+  const t=faoToolById(setup,op.toolId),isSlot=faoToolIsSlot(t);
+  d.appendChild(faoH('Zone de découpe'));
+  if(!isSlot){
+    const a=document.createElement('div');a.className='fao-alert';
+    a.textContent='⚠ Choisissez une fraise 3 tailles dans l’onglet Outil (Outils → type « Fraise 3 tailles ») : cette opération ne sert qu’avec elle.';
+    d.appendChild(a);
+  }
+  const G=isSlot?faoSlotCutGeom(op,t):null;
+  const dir=faoSlotCutDir(op);
+  const r1=faoRow();
+  r1.appendChild(faoLab('Trajet'));
+  r1.appendChild(faoSel([
+    ['X','Selon X','Le disque avance selon X et vient tout seul sur la face de la pièce du côté choisi.'],
+    ['Y','Selon Y','Le disque avance selon Y et vient tout seul sur la face de la pièce du côté choisi.'],
+    ['edge','Le long d’une arête','Une arête droite (ou une suite d’arêtes) cliquée sur le modèle : le disque la suit, la matière est du côté où la pièce se trouve.']],
+    dir,function(v){ if(v==='Y'||v==='edge')op.cutDir=v; else delete op.cutDir;
+      if(v!=='edge'){ delete op.limit; } else if(!op.limit||op.limit.mode!=='chain')op.limit={mode:'chain',loop:[],closed:false,nEdges:0,tangent:false,side:'center',extra:0}; },
+    'Direction de la découpe.'));
+  if(dir!=='edge'){
+    const o=dir==='Y'?'X':'Y';
+    r1.appendChild(faoLab('Côté'));
+    r1.appendChild(faoSel([
+      ['-',o+'−','Face de la pièce du côté '+o+' négatif.'],
+      ['+',o+'+','Face de la pièce du côté '+o+' positif.'],
+      ['both','Les deux','Une découpe de chaque côté : la première finie, puis la seconde.']],
+      faoSlotCutSide(op),function(v){ if(v==='+'||v==='both')op.cutSide=v; else delete op.cutSide; },
+      'Face de la pièce attaquée par le disque.'));
+  }
+  d.appendChild(r1);
+  if(dir==='edge'){
+    const L=op.limit&&op.limit.mode==='chain'?op.limit:null;
+    const rc=faoRow();
+    const info=document.createElement('span');info.className='fao-meta';
+    const has=L&&(L.loop||[]).length>=2;
+    info.textContent=has?(L.nEdges||'?')+' arête(s)':'aucune arête — cliquez l’arête à suivre';
+    rc.appendChild(info);
+    const bs=document.createElement('button');bs.textContent=has?'Re-sélectionner':'Sélectionner';bs.style.fontSize='.72rem';
+    bs.onclick=function(){
+      if(!op.limit||op.limit.mode!=='chain')op.limit={mode:'chain',loop:[],closed:false,nEdges:0,tangent:false,side:'center',extra:0};
+      faoChainStart(setup.id,op.id);
+    };
+    rc.appendChild(bs);
+    d.appendChild(rc);
+    if(L&&L.stale){const ws=document.createElement('div');ws.className='fao-alert';
+      ws.textContent='⚠ Modèle modifié : arête non retrouvée — trajet inchangé (obsolète), re-sélectionnez l’arête.';d.appendChild(ws);}
+  }
+  if(G){
+    const r2=faoRow();
+    r2.appendChild(faoLab(dir==='edge'?'décalage dans la paroi':'profondeur'));
+    r2.appendChild(faoNumFx(op,'slotDr',G.dr,function(v){op.slotDr=v;},48,0.5,
+      dir==='edge'?'Décale la fraise par rapport à l’arête : + = elle entre plus loin dans la matière, − = elle reste en retrait (0 = jusqu’à l’arête).'
+        :'Profondeur de la découpe depuis la face la plus avancée de la pièce (mm) : le disque vient tout seul sur la face, puis entre de cette valeur. Au plus '+(+G.pmax.toFixed(2))+' mm avant que le col frotte.'));
+    r2.appendChild(faoLab('hauteur'));
+    r2.appendChild(faoNumFx(op,'slotH',G.h,function(v){op.slotH=Math.max(0.05,v);},48,0.1,
+      'Hauteur de la découpe au-dessus du plan de coupe (défaut : l’épaisseur du disque, '+G.ep+' mm = une seule passe).'));
+    d.appendChild(r2);
+    const inf=document.createElement('div');inf.className='fao-meta';
+    const gd=op.geoDiag||{};
+    const nZ=G.h>G.ep+1e-6?Math.ceil((G.h-G.ep)/Math.max(0.05,Math.min(G.ep,+op.ap>0?+op.ap:G.ep))-1e-6)+1:1;
+    let s=(isFinite(G.z0)?'Découpe de Z '+(+G.z0.toFixed(3))+' à Z '+(+G.z1.toFixed(3))+' (plan de coupe : Bas, onglet Hauteurs) · ':'')+
+      nZ+' passe(s) en hauteur · disque Ø'+G.D+' × '+G.ep+' · col Ø'+G.col+' : '+(+G.pmax.toFixed(2))+' mm de profondeur au plus';
+    if(gd.cut&&(gd.walls||[]).length&&!op.stale)s+=' · '+gd.walls.map(function(w){
+      return w.at!==null&&w.at!==undefined?('face '+w.side+' à '+(dir==='Y'?'X ':'Y ')+w.at+', de '+(dir==='Y'?'Y ':'X ')+w.from+' à '+w.to):'arête';}).join(' ; ');
+    inf.textContent=s;
+    d.appendChild(inf);
+    const warn=function(x){const a=document.createElement('div');a.className='fao-alert';a.textContent='⚠ '+x;d.appendChild(a);};
+    if(gd.cut&&!op.stale){
+      if(gd.noPart)warn(dir==='edge'?'Aucune arête : cliquez l’arête à suivre.':'Aucune pièce à la hauteur de la découpe : vérifiez le plan de coupe (Bas) dans l’onglet Hauteurs.');
+      if(gd.noEntry)warn(gd.noEntry+' passe(s) où le disque descend ou remonte dans la matière : allongez la zone d’entrée ou de sortie (onglet Entrées), ou enlevez d’abord le brut autour de la pièce.');
+      if(gd.neck>0)warn('Le col (Ø'+G.col+') frotte la matière au-dessus de la découpe (jusqu’à '+gd.neck+' mm) : profondeur trop grande pour cette fraise (maxi '+(+G.pmax.toFixed(2))+' mm), ou brut pas encore enlevé.');
+      if(gd.thick>0)warn('Disque plus épais que la découpe : il taille '+gd.thick+' mm plus haut que demandé.');
+      if(gd.over)warn('Profondeur plus grande que le rayon du disque : la fraise est ramenée sur la face.');
+    }
+    if(!(G.dr>0)&&dir!=='edge')warn('Profondeur 0 : le disque touche la pièce sans la tailler.');
+  }
+  d.appendChild(faoH('Passes (mm)'));
+  const rP=faoRow();
+  const ep=G?G.ep:3;
+  rP.appendChild(faoLab('pas Z')); rP.appendChild(faoNumFx(op,'ap',Math.min(+op.ap>0?+op.ap:ep,ep),function(v){op.ap=Math.max(0.05,v);},48,0.1,
+    'Pas entre deux passes en hauteur, au plus l’épaisseur du disque ('+ep+' mm) : les passes vont du haut de la découpe vers le plan de coupe.'));
+  rP.appendChild(faoLab('passes')); rP.appendChild(faoNumFx(op,'nR',isFinite(+op.nR)?+op.nR:1,function(v){op.nR=Math.max(1,Math.min(20,Math.round(v)));},36,1,
+    'Passes latérales : de la moins profonde à la plus profonde, écartées de ae.'));
+  rP.appendChild(faoLab('ae')); rP.appendChild(faoNumFx(op,'ae',isFinite(+op.ae)?+op.ae:+(Math.max(0.2,(G?G.D:10)*0.1)).toFixed(2),function(v){op.ae=Math.max(0.05,v);},48,0.1,'Écart entre deux passes latérales.'));
+  rP.appendChild(faoLab('finition')); rP.appendChild(faoNumFx(op,'fin',isFinite(+op.fin)?+op.fin:0,function(v){op.fin=Math.max(0,v);},44,0.05,
+    'Épaisseur laissée par les passes puis enlevée par une passe de finition à la profondeur finale (0 = pas de passe séparée).'));
+  d.appendChild(rP);
+  d.appendChild(faoH('Côté et sens'));
+  const rS=faoRow();
+  rS.appendChild(faoLab('Sens'));
+  rS.appendChild(faoSel([
+    ['avalant','Avalant','Matière à droite de l’avance (broche M3) : meilleur état de surface.'],
+    ['opp','Opposition','Matière à gauche de l’avance.']],
+    op.sens==='opp'?'opp':'avalant',function(v){op.sens=(v==='opp')?'opp':'avalant';},'Sens de coupe : il fixe le bout par lequel le disque entre.'));
+  d.appendChild(rS);
+  d.appendChild(faoH('Entrée / sortie'));
+  const rE=faoRow();
+  const zd=G?G.zDef:15;
+  rE.appendChild(faoLab('zone d’entrée')); rE.appendChild(faoNumFx(op,'slotLin',G?G.lin:zd,function(v){op.slotLin=Math.max(0,v);},48,1,
+    'Distance entre le bout de la passe et le centre du disque à son départ (mm) : il descend là, puis entre tout droit. Défaut : rayon + 10 = '+zd+' mm (10 mm de jour).'));
+  rE.appendChild(faoLab('zone de sortie')); rE.appendChild(faoNumFx(op,'slotLout',G?G.lout:zd,function(v){op.slotLout=Math.max(0,v);},48,1,
+    'Distance entre le bout de la passe et le centre du disque à l’arrivée (mm) : il sort tout droit jusque-là, puis remonte. Défaut : rayon + 10 = '+zd+' mm.'));
+  d.appendChild(rE);
+  d.appendChild(faoHelp('Entrée et sortie droites, dans le prolongement de la passe : pas d’arc. Le disque descend et remonte seulement dehors.'));
+  d.appendChild(faoH('Matière à laisser (mm)'));
+  const rR=faoRow();
+  rR.appendChild(faoLab('Parois')); rR.appendChild(faoNumFx(op,'radial',faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1,'Surépaisseur laissée au fond de la découpe (0 = à la cote).'));
+  rR.appendChild(faoLab('Fond')); rR.appendChild(faoNumFx(op,'axial',faoRA(op).axial,function(v){op.axial=Math.max(0,v);},44,0.1,'Surépaisseur laissée sur le dessus et le dessous de la découpe.'));
+  d.appendChild(rR);
 }
 
 /* ═══════════════ 89-fao-faces.js — fao faces ═══════════════ */
@@ -77352,7 +77739,7 @@ function faoToolKeyObj(t){
   // ajouter des champs aux fiches ne périme aucune trajectoire existante.
   const o={};if(!t)return o;
   FAO_TOOL_LEGACY.forEach(function(k){ if(t[k]!==undefined)o[k]=t[k]; });
-  // V0.99.84 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
+  // V0.99.85 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
   // (fiches des autres outils : clé inchangée)
   if(t.kind==='slot'){ const g=faoToolDims(t); o.ep=g.lc.v; o.col=g.dDeg.v; }
   return o;
@@ -77362,7 +77749,7 @@ function faoToolDims(t){
   // Géométrie complète, défauts plausibles (fraise carbure monobloc) si non saisis.
   // Foret à centrer : D = Ø du CORPS d2 (= la queue), coupe courte au-dessus du cône 60°.
   const D=faoToolBodyD(t), ctr=!!(t&&t.kind==='center');
-  // V0.99.84 : fraise 3 tailles — Lc = épaisseur du disque, Ø dégagement = Ø du col
+  // V0.99.85 : fraise 3 tailles — Lc = épaisseur du disque, Ø dégagement = Ø du col
   const sl=!!(t&&t.kind==='slot');
   const num=function(k,def){ const v=t&&+t[k]; return (isFinite(v)&&v>0)?{v:v,def:false}:{v:def,def:true}; };
   const tp=ctr?faoToolTipProfile(t):null;
@@ -77638,7 +78025,7 @@ function faoToolsElement(setup){
     field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive)',0.1);
   }
   field(s2,'Dents',t.flutes||2,false,function(v){set('flutes',Math.max(1,Math.round(v)),'nombre de dents');},'Nombre de dents (sert au calcul de F = fz × z × S)',1);
-  const sl=faoToolIsSlot(t); // V0.99.84 : fraise 3 tailles — disque (épaisseur) au bout d'un col
+  const sl=faoToolIsSlot(t); // V0.99.85 : fraise 3 tailles — disque (épaisseur) au bout d'un col
   field(s2,sl?'Épaisseur':'Long. de coupe Lc',g.lc.v,g.lc.def,function(v){set('lc',v,'longueur de coupe');},
     sl?'Épaisseur du disque : hauteur de rainure taillée en une passe':'Longueur de la partie coupante (hélices) depuis le bout',sl?0.1:0.5);
   field(s2,sl?'Ø du col':'Ø dégagement',g.dDeg.v,g.dDeg.def,function(v){set('dDeg',Math.min(v,t.d),'Ø de dégagement');},
@@ -77718,9 +78105,9 @@ function faoOpToolSection(setup,op){
   const info=document.createElement('div');info.className='fao-meta';
   info.textContent=faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')+' · '+(t.flutes||2)+' dents · '+(faoToolIsSlot(t)?('épaisseur '+g.lc.v+' · col Ø'+g.dDeg.v):('Lc '+g.lc.v))+' · sous mandrin '+g.lsm.v+' mm · Vc '+C.vc+' m/min';
   box.appendChild(info);
-  if(faoToolIsSlot(t)&&!faoContourProfil(op)){ // V0.99.84
+  if(faoToolIsSlot(t)&&!faoContourProfil(op)&&!faoSlotCut(op)){ // V0.99.85
     const n3=document.createElement('div');n3.className='fao-alert';
-    n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) : cette opération ne produit aucun parcours avec elle.';
+    n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) et en Découpe 3 tailles : cette opération ne produit aucun parcours avec elle.';
     box.appendChild(n3);
   }
   FAO_CUT_FIELDS.forEach(function(F){
@@ -80436,7 +80823,7 @@ function faoTiltColIv(px,py,S,A,r,H,out){
   if(hi>lo)out.push([lo,hi]);
 }
 function faoMatterCarveTilt(g,a,b,r,ax,outCols,tp){
-  if(tp&&tp.slot)return []; // V0.99.84 : fraise 3 tailles — rien sous la matière dans une carte
+  if(tp&&tp.slot)return []; // V0.99.85 : fraise 3 tailles — rien sous la matière dans une carte
   // tp (faoToolTipProfile) : pointe de foret / foret à centrer — sans lui, le corps entier
   // taillait à plat : un pointage sur la tranche creusait un cratère au Ø du corps.
   const out=[];
@@ -87953,6 +88340,9 @@ function mfFiTable(){
   F('Opérations/Surfaçage','Surfaçage','Aplanit le dessus de la pièce : l’outil passe en allers-retours, en retirant une fine couche.',[],RAW(),WD(-15,-15,-9,15,15,3)+ZIG(3)+TOOL(12,12,4,14),null,'Dessus brut','Dessus plan');
   F('Opérations/Chanfrein','Chanfrein d’usinage','Casse les arêtes vives avec un outil en pointe, le long du contour choisi.',['Choisissez les arêtes'],BKW()+EDGE(),ficBox(-15,-15,-9,15,15,7,'w')+ficPoly([[-15,11,7],[15,11,7],[15,15,3],[-15,15,3]],'#f6a623','#8a5200')+ficL3([[-15,13,5],[15,13,5]],BL,1.3));
   F('Opérations/Contour','Contour','L’outil suit le tour de la pièce pour couper ses flancs à la bonne forme.',['Choisissez le contour'],WD(-18,-18,-9,18,18,5),WD(-11,-11,-9,11,11,5)+ficL3([[-15,15,-3],[15,15,-3],[15,-15,-3]],BL,1.5)+TOOL(15,15,-4,16));
+  // V0.99.86 : Découpe 3 tailles (src/89-fao-decoupe-3tailles.js)
+  const DISC=(X,Y,Z)=>ficCyl(X,Y,Z,10,1.6,'mfFcHm','m')+ficCyl(X,Y,Z+1.6,2.4,16,'mfFcHm','m');
+  F('Opérations/Découpe 3 tailles','Découpe 3 tailles','Un disque entre tout droit dans le flanc de la pièce et le taille d’un bout à l’autre : selon X, selon Y ou le long d’une arête.',['Choisissez le sens et le côté','Plan de coupe + profondeur'],WD(-18,-18,-9,18,18,5)+ficL3([[-30,18,-3],[30,18,-3]],BL,1.4,'3 2'),WD(-18,-18,-9,18,18,5)+ficPoly([[-18,18,-2],[18,18,-2],[18,18,-4],[-18,18,-4]],'#5b3d1c','#3b2612')+ficL3([[-30,22,-3],[30,22,-3]],BL,1.4)+DISC(28,22,-4),null,'Le sens choisi','La découpe tirée tout droit');
   F('Opérations/Perçage','Perçage d’usinage','Perce les trous de la pièce : l’outil descend à chaque position. Les trous sont repris de vos fonctions Perçage.',['Sélectionnez les trous'],BKW()+CROSS(-7,-7,7)+CROSS(7,7,7),BKW()+ficHole(-7,-7,7,3.6)+ficHole(7,7,7,3.6)+TOOL(7,7,8,18));
   const STAIRS=()=>WD(-18,-18,-12,18,18,-5)+WD(-13,-13,-5,13,13,1)+WD(-8,-8,1,8,8,7);
   F('Opérations/Ébauche 3D','Ébauche 3D','Enlève vite le gros de la matière, couche après couche, en laissant un peu à finir.',[],WD(-18,-18,-12,18,18,7),STAIRS()+ficL3([[-13,13,1],[13,13,1],[13,-13,1]],BL,1.2)+ficL3([[-18,18,-5],[18,18,-5],[18,-18,-5]],BL,1.2),null,'Le bloc de matière','Couches enlevées');
@@ -88399,6 +88789,10 @@ const MF_ICF={
     '<path d="M9 12.5l6 2.2M9 15.4l6 2.2M9 18.3l4.6 1.7" stroke="#fff7ed" stroke-width="1" stroke-linecap="round"/><path d="M8.5 10.5h7" stroke="#4b5563" stroke-width="1.1"/>',
   facing:fzBox(-5,-5,-5,5,5,0,'w')+fzPath([['M',-4,-3.8,0],['L',4,-3.8,0],['L',4,-1.3,0],['L',-4,-1.3,0],['L',-4,1.2,0],['L',4,1.2,0],['L',4,3.7,0],['L',-4,3.7,0]],'fill="none" stroke="#1e88e5" stroke-width="1.3" stroke-linejoin="round"'),
   pocket:fzPocket(3.2,1,3,'w','#e9c58f')+fzPath([['M',-2.2,-2.2,-2],['L',2.2,-2.2,-2],['L',2.2,2.2,-2],['L',-2.2,2.2,-2],['Z'],['M',-1,-1,-2],['L',1,-1,-2],['L',1,1,-2],['L',-1,1,-2],['Z']],'fill="none" stroke="#1e88e5" stroke-width="1.1"')+fzRim(5,3.2,1,'w')+fzSides(-5,-5,-5,5,5,1,'w'),
+  // V0.99.86 : Découpe 3 tailles — bloc, rainure bleue dans le flanc, disque gris sur son col
+  slotcut:fzBox(-5,-5,-6,5,5,2,'w')+fzPath([['M',-5,5,-2],['L',5,5,-2]],'fill="none" stroke="#1e88e5" stroke-width="1.6"')+
+    '<rect x="18.1" y="2" width="1.8" height="12.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".6"/>'+
+    '<ellipse cx="19" cy="15" rx="4.6" ry="1.6" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/>',
   contour:fzPath([['M',-5,5,-3],['L',-5,-5,-3],['L',5,-5,-3]],'fill="none" stroke="#1e88e5" stroke-width="1.2" stroke-dasharray="1.6 1.1"')+fzBox(-3,-3,-5,3,3,2,'w')+
     fzPath([['M',-5,5,-3],['L',5,5,-3],['L',5,-5,-3]],'fill="none" stroke="#1e88e5" stroke-width="1.6" stroke-linejoin="round"'),
   drill:fzBox(-5,-5,-6,5,5,-1,'w')+'<ellipse cx="12" cy="13" rx="2.6" ry="1.5" fill="#5b3d1c"/>'+
@@ -88902,6 +89296,8 @@ const MF_IC={
   facing:'<path d="M3 6h18v4H3v4h18v4H3"/>',
   pocket:'<rect x="3" y="4" width="18" height="16" rx="3"/><rect x="7.5" y="8.5" width="9" height="7" rx="1.5"/>',
   contour:'<rect x="6" y="7" width="12" height="10" rx="2"/><rect x="2.5" y="3.5" width="19" height="17" rx="4" stroke-dasharray="2.5 2"/>',
+  /* V0.99.86 : Découpe 3 tailles — disque sur son col, rainure tirée tout droit */
+  slotcut:'<path d="M17 2v10"/><ellipse cx="17" cy="13" rx="5" ry="1.6"/><path d="M2 13h7" stroke-dasharray="2 1.6"/><path d="M2 18h20"/>',
   drill:'<path d="M10 3h4v9l-2 5-2-5z"/><path d="M10 6.5l4 1.5M10 9.5l4 1.5"/><path d="M5 21h14"/>',
   rough3d:'<path d="M3 19l5-8 4 5 3-4 6 7z"/><path d="M3 14h4M14 9h7" stroke-dasharray="2 2"/>',
   finish:'<path d="M3 15c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/><path d="M3 9h18" stroke-dasharray="2 2"/>',
@@ -88991,7 +89387,7 @@ const MF_CAO=[
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['mirror','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd'],['export','Dossier','btnExportPack']]]
 ];
-const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
+const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',slotcut:'slotcut',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
 function mfFaoAdd(type,nm){
   if(type==='pattern'){ try{faoPatternNew();}catch(e){} return; } // V0.95.3 : reprend les opérations sélectionnées
   try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);

@@ -1735,8 +1735,8 @@ function faoChainOk(){
     }
     const chains=faoOrderEdges(faoChainMode.edges,faoChainMode.sel);
     // V0.99.71 : zone = plusieurs contours permis ; contour / chanfrein = un seul trajet
-    let res=faoLoopFromChains(faoChainMode.edges,chains,!(op.type==='chamfer'||faoContourProfil(op)));
-    if(!res.loop.length||faoLoopArea(res.loop)<1e-6){
+    let res=faoLoopFromChains(faoChainMode.edges,chains,!(op.type==='chamfer'||op.type==='slotcut'||faoContourProfil(op)));
+    if(!res.loop.length||(faoLoopArea(res.loop)<1e-6&&!faoLoopLineOK(op,res))){
       faceEl.textContent=PRE+' : boucle dégénérée — limite inchangée.';return;
     }
     // Cap : les très longues chaînes sont sous-échantillonnées (clip en O(n)).

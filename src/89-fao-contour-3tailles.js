@@ -1,5 +1,5 @@
 /* ================================================================
-   CONTOUR À LA FRAISE 3 TAILLES (V0.99.84)
+   CONTOUR À LA FRAISE 3 TAILLES (V0.99.85)
    ----------------------------------------------------------------
    Demande de Fred : « fraise 3 tailles -> ajouter cette possibilité et l'usinage qui va
    avec, pourquoi pas dans Contour », puis « il faut un contour et pouvoir décaler la

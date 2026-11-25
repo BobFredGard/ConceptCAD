@@ -31,7 +31,7 @@ function faoToolKeyObj(t){
   // ajouter des champs aux fiches ne périme aucune trajectoire existante.
   const o={};if(!t)return o;
   FAO_TOOL_LEGACY.forEach(function(k){ if(t[k]!==undefined)o[k]=t[k]; });
-  // V0.99.84 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
+  // V0.99.85 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
   // (fiches des autres outils : clé inchangée)
   if(t.kind==='slot'){ const g=faoToolDims(t); o.ep=g.lc.v; o.col=g.dDeg.v; }
   return o;
@@ -41,7 +41,7 @@ function faoToolDims(t){
   // Géométrie complète, défauts plausibles (fraise carbure monobloc) si non saisis.
   // Foret à centrer : D = Ø du CORPS d2 (= la queue), coupe courte au-dessus du cône 60°.
   const D=faoToolBodyD(t), ctr=!!(t&&t.kind==='center');
-  // V0.99.84 : fraise 3 tailles — Lc = épaisseur du disque, Ø dégagement = Ø du col
+  // V0.99.85 : fraise 3 tailles — Lc = épaisseur du disque, Ø dégagement = Ø du col
   const sl=!!(t&&t.kind==='slot');
   const num=function(k,def){ const v=t&&+t[k]; return (isFinite(v)&&v>0)?{v:v,def:false}:{v:def,def:true}; };
   const tp=ctr?faoToolTipProfile(t):null;
@@ -317,7 +317,7 @@ function faoToolsElement(setup){
     field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive)',0.1);
   }
   field(s2,'Dents',t.flutes||2,false,function(v){set('flutes',Math.max(1,Math.round(v)),'nombre de dents');},'Nombre de dents (sert au calcul de F = fz × z × S)',1);
-  const sl=faoToolIsSlot(t); // V0.99.84 : fraise 3 tailles — disque (épaisseur) au bout d'un col
+  const sl=faoToolIsSlot(t); // V0.99.85 : fraise 3 tailles — disque (épaisseur) au bout d'un col
   field(s2,sl?'Épaisseur':'Long. de coupe Lc',g.lc.v,g.lc.def,function(v){set('lc',v,'longueur de coupe');},
     sl?'Épaisseur du disque : hauteur de rainure taillée en une passe':'Longueur de la partie coupante (hélices) depuis le bout',sl?0.1:0.5);
   field(s2,sl?'Ø du col':'Ø dégagement',g.dDeg.v,g.dDeg.def,function(v){set('dDeg',Math.min(v,t.d),'Ø de dégagement');},
@@ -397,9 +397,9 @@ function faoOpToolSection(setup,op){
   const info=document.createElement('div');info.className='fao-meta';
   info.textContent=faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')+' · '+(t.flutes||2)+' dents · '+(faoToolIsSlot(t)?('épaisseur '+g.lc.v+' · col Ø'+g.dDeg.v):('Lc '+g.lc.v))+' · sous mandrin '+g.lsm.v+' mm · Vc '+C.vc+' m/min';
   box.appendChild(info);
-  if(faoToolIsSlot(t)&&!faoContourProfil(op)){ // V0.99.84
+  if(faoToolIsSlot(t)&&!faoContourProfil(op)&&!faoSlotCut(op)){ // V0.99.85
     const n3=document.createElement('div');n3.className='fao-alert';
-    n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) : cette opération ne produit aucun parcours avec elle.';
+    n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) et en Découpe 3 tailles : cette opération ne produit aucun parcours avec elle.';
     box.appendChild(n3);
   }
   FAO_CUT_FIELDS.forEach(function(F){

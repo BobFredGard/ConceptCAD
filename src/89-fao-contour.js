@@ -365,7 +365,7 @@ function faoContourTrimAir(mv,mat,D){
 // sens, Entrée/sortie, Attaches, Matière à laisser.
 function faoContourRows(d,setup,op){
   const toolD=(function(){const t=faoToolById(setup,op.toolId);return t&&+t.d>0?+t.d:10;})();
-  const slot=faoToolIsSlot(faoToolById(setup,op.toolId)); // V0.99.84 : fraise 3 tailles → rainure
+  const slot=faoToolIsSlot(faoToolById(setup,op.toolId)); // V0.99.85 : fraise 3 tailles → rainure
   d.appendChild(faoH('Profil'));
   const L=(op.limit&&op.limit.mode==='chain')?op.limit:null;
   const has=!!(L&&(L.loop||[]).length>=3);

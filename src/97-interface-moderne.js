@@ -359,6 +359,8 @@ const MF_IC={
   facing:'<path d="M3 6h18v4H3v4h18v4H3"/>',
   pocket:'<rect x="3" y="4" width="18" height="16" rx="3"/><rect x="7.5" y="8.5" width="9" height="7" rx="1.5"/>',
   contour:'<rect x="6" y="7" width="12" height="10" rx="2"/><rect x="2.5" y="3.5" width="19" height="17" rx="4" stroke-dasharray="2.5 2"/>',
+  /* V0.99.86 : Découpe 3 tailles — disque sur son col, rainure tirée tout droit */
+  slotcut:'<path d="M17 2v10"/><ellipse cx="17" cy="13" rx="5" ry="1.6"/><path d="M2 13h7" stroke-dasharray="2 1.6"/><path d="M2 18h20"/>',
   drill:'<path d="M10 3h4v9l-2 5-2-5z"/><path d="M10 6.5l4 1.5M10 9.5l4 1.5"/><path d="M5 21h14"/>',
   rough3d:'<path d="M3 19l5-8 4 5 3-4 6 7z"/><path d="M3 14h4M14 9h7" stroke-dasharray="2 2"/>',
   finish:'<path d="M3 15c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/><path d="M3 9h18" stroke-dasharray="2 2"/>',
@@ -448,7 +450,7 @@ const MF_CAO=[
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['mirror','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd'],['export','Dossier','btnExportPack']]]
 ];
-const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
+const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',slotcut:'slotcut',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
 function mfFaoAdd(type,nm){
   if(type==='pattern'){ try{faoPatternNew();}catch(e){} return; } // V0.95.3 : reprend les opérations sélectionnées
   try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
