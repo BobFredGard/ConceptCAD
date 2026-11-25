@@ -140,7 +140,7 @@ Manuel : [PLAN](docs/manuel/plan.md)
 
 ## RENDU
 
-
+<img width="1920" height="1080" alt="4" src="https://github.com/user-attachments/assets/a29a75e0-584c-488b-aac4-f0fd58b119f9" />
 
 - Images réalistes en 1920×1080 ou en 4K.
 - **Deux moteurs** : rapide, ou lancer de rayons (reflets entre pièces, vrai verre).
