@@ -846,7 +846,8 @@ function faoDrillSections(setup,op,d){
   if(op.cycle==='helix'){
     const tH=faoToolById(setup,op.toolId),dT=(+tH.d>0)?+tH.d:6;
     rd.appendChild(faoLab('Pas d’hélice'));
-    rd.appendChild(faoNumFx(op,'helixP',(+op.helixP)||0,function(v){op.helixP=Math.max(0,v);},48,0.1,'Descente par tour (mm) — 0 = automatique (rampe ≈ 2,5°, ≤ 25 % du Ø fraise)'));
+    rd.appendChild(faoNumFx(op,'helixP',(+op.helixP>0)?+op.helixP:+faoPasTourAuto(dT).toFixed(2),function(v){if(isFinite(v)&&v>0)op.helixP=v;else delete op.helixP;},48,0.1,
+      'Descente par tour (mm). Valeur proposée : 10 % du Ø de la fraise, 0,5 mm au moins ; changez-la à volonté (vide ou 0 = revenir à la valeur proposée).'));
     const h0=(op.holes||[])[0];
     const nt=document.createElement('span');nt.className='fao-meta';
     if(h0){const Rr=(h0.d-dT)/2;nt.textContent=Rr>0.02?('fraise Ø'+dT+' dans Ø'+(+h0.d.toFixed(2))+' · rayon de trajectoire '+Rr.toFixed(2)+(Rr>dT/2*0.9?' · plusieurs anneaux':'')+' · pas '+faoHelixPitch(op,Rr,dT).toFixed(2)):('⚠ fraise Ø'+dT+' trop grosse pour Ø'+(+h0.d.toFixed(2)));}
@@ -1421,7 +1422,9 @@ function faoDrillGamme(setup,op,noSnap,quiet){
 const FAO_MILL_STD=[1,1.5,2,2.5,3,4,5,6,8,10,12,14,16,20,25,32];
 function faoHelixPitch(op,R,toolD){
   const v=+op.helixP;if(isFinite(v)&&v>0)return v;
-  return Math.max(0.1,Math.min(toolD*0.25,2*Math.PI*Math.max(R,0.2)*Math.tan(2.5*Math.PI/180)));
+  // V0.99.88 (« enlever la pente partout, hélices comprises ») : plus de rampe de 2,5° — valeur
+  // proposée en mm/tour, la même que partout (10 % du Ø fraise, 0,5 mm au moins)
+  return faoPasTourAuto(toolD);
 }
 function faoGenHelixPlan(plan,toolD,op,secuAbs){
   const moves=[],rt=toolD/2;

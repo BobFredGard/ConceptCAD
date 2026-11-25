@@ -1138,17 +1138,21 @@ function* faoGenGeoFinishIt(mesh,o){
         }
       }
       for(let i=skip0?1:0;i<pts.length;i++){
-        // 006 : 1er tronçon rampe (pk<1) — descente répartie le long du
-        // segment, puis la chaîne suit à z de coupe.
-        if(i===1&&ramp0&&pts.length>1&&startZ>here.z+1e-9){
-          const nR=Math.max(2,Math.ceil((startZ-here.z)/2));
-          for(let s=1;s<=nR;s++){
-            const f=s/nR;
-            moves.push({r:0,x:here.x+(pts[1].x-here.x)*f,
-                              y:here.y+(pts[1].y-here.y)*f,
-                              z:startZ+(here.z-startZ)*f});
-          }
-        }else moves.push({r:0,x:pts[i].x,y:pts[i].y,z:pts[i].z});
+        // 006 : 1er tronçon rampe (pk<1) — descente le long du début de chaîne, puis la chaîne
+        // suit à z de coupe. V0.99.88 : plus de pente (paliers de 2 mm) — ZIGZAG au-dessus du
+        // tracé (2·Ø au plus, un aller-retour = un tour de « Rampe : descente / tour »), fin au
+        // début de chaîne à la cote (le point 0 vient d'être émis : la descente part de startZ).
+        if(i===1&&ramp0&&startZ>here.z+1e-9){
+          moves.pop(); // le point 0 à la cote (plongée) : remplacé par le zigzag
+          const lm=moves[moves.length-1];
+          if(!lm||Math.abs(lm.x-here.x)>1e-9||Math.abs(lm.y-here.y)>1e-9||Math.abs(lm.z-startZ)>1e-9)
+            moves.push({r:0,x:here.x,y:here.y,z:startZ});
+          const pz=[];for(let k=0;k<pts.length;k++)pz.push([pts[k].x,pts[k].y,pts[k].z]);
+          const zz=faoZigzag(pz,startZ,here.z,faoRampTour(D),2*D);
+          if(zz)zz.forEach(function(m){moves.push(m);});
+          else moves.push({r:0,x:here.x,y:here.y,z:here.z});
+        }
+        moves.push({r:0,x:pts[i].x,y:pts[i].y,z:pts[i].z});
       }
       // Suivi du dernier point émis + tangente (liaison inter-zones par spline).
       // 2026-10-13-007 : + sens de la chaîne (sens opposé bidir).

@@ -5,7 +5,7 @@ Résumé chiffré de chaque opération active des exemples, recalculée par `npm
 | Opération | Mouvements | Coupe (m) | Rapides (m) | Remontées | Z mini | Z maxi | Temps (min) | Niveaux |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Cavité Test.conceptcad › POSAGE1 › 1. Surfaçage (op_4_mvqryqye) | 63 | 3,16 | 0,02 | 1 | 40 | 42,5 | 2,64 | 2 |
-| Cavité Test.conceptcad › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025) | 24 095 | 18,71 | 7,35 | 106 | 15,5 | 44 | 17,54 | 34 |
+| Cavité Test.conceptcad › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025) | 24 253 | 19,03 | 7,35 | 106 | 15,5 | 44 | 17,81 | 34 |
 | Cavité Test.conceptcad › POSAGE1 › 3. Finition (op_3_mvqu822f) | 93 855 | 67,86 | 0,03 | 1 | 15 | 44,8 | 56,56 | 3 |
 | Cavité Test.conceptcad › POSAGE1 › 4. Contour (op_6_mvr0jnwn) | 1 467 | 2,52 | 0,08 | 5 | 36,5 | 38 | 2,13 | 2 |
 | Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye) | 177 | 11,95 | 0,03 | 1 | 50 | 56,667 | 3,99 | 3 |
@@ -13,7 +13,7 @@ Résumé chiffré de chaque opération active des exemples, recalculée par `npm
 | Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j) | 94 880 | 74,87 | 0,98 | 24 | 20 | 54,8 | 37,73 | 4 |
 | Découpe 3 tailles.conceptcad › POSAGE1 › 1. Contour (c1) | 4 057 | 2,98 | 1,65 | 30 | 5 | 15 | 2,89 | 3 |
 | Découpe 3 tailles.conceptcad › POSAGE1 › 2. Découpe 3 tailles (c2) | 14 | 0,17 | 0,09 | 2 | 12 | 12 | 0,17 | 1 |
-| Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l) | 26 113 | 31,31 | 43,85 | 631 | -22,5 | 64,424 | 37,67 | 112 |
+| Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l) | 28 734 | 35,89 | 43,86 | 631 | -22,5 | 64,579 | 41,49 | 112 |
 | Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg) | 38 330 | 32,39 | 2,32 | 38 | -28,419 | 64,701 | 27,61 | 0 |
 | Perçages.conceptcad › POSAGE1 › 1. Surfaçage (op_5_mvjcidjk) | 47 | 1,83 | 0,02 | 1 | 20 | 22,5 | 1,53 | 2 |
 | Perçages.conceptcad › POSAGE1 › 10. Perçage (op_3_mvnrwbxv) | 8 | 0,04 | 0,14 | 0 | 10 | 10 | 0,07 | 0 |
@@ -24,7 +24,7 @@ Résumé chiffré de chaque opération active des exemples, recalculée par `npm
 | Perçages.conceptcad › POSAGE1 › 2. Contour (op_6_mvjcpb4f) | 1 705 | 3,63 | 0,24 | 9 | 0 | 15 | 3,1 | 4 |
 | Perçages.conceptcad › POSAGE1 › 3. Perçage (op_7_mvjrb2sl) | 24 | 0,03 | 0,24 | 6 | 16,5 | 16,5 | 0,1 | 0 |
 | Perçages.conceptcad › POSAGE1 › 4. Perçage (op_8_mvjrb2sl) | 24 | 0,17 | 0,38 | 6 | -6,983 | -6,983 | 0,24 | 0 |
-| Perçages.conceptcad › POSAGE1 › 5. Perçage (op_10_mvjrbe4p) | 294 | 1,08 | 0,27 | 6 | 13,6 | 20,332 | 0,97 | 1 |
+| Perçages.conceptcad › POSAGE1 › 5. Perçage (op_10_mvjrbe4p) | 330 | 1,22 | 0,27 | 6 | 13,6 | 20,353 | 1,09 | 1 |
 | Perçages.conceptcad › POSAGE1 › 6. Perçage (op_12_mvjrbpho) | 16 | 0,02 | 0,26 | 4 | 16,8 | 16,8 | 0,09 | 0 |
 | Perçages.conceptcad › POSAGE1 › 7. Perçage (op_13_mvjrbphp) | 16 | 0,1 | 0,34 | 4 | -2,502 | -2,502 | 0,17 | 0 |
 | Perçages.conceptcad › POSAGE1 › 8. Perçage (op_14_mvjrbphp) | 20 | 0,18 | 0,24 | 4 | 0 | 22 | 0,21 | 0 |

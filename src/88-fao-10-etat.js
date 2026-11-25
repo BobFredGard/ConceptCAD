@@ -146,6 +146,10 @@ function faoSanitiseOps(s){
       if(isFinite(+op.entryR)&&+op.entryR>0)op.entryR=+op.entryR;
       else delete op.entryR;
     }
+    // V0.99.88 : plus de pente maxi des rampes (degrés) — rampTour = descente par tour (mm,
+    // absent = valeur proposée) ; l'angle d'un ancien fichier est retiré (aucun tour de référence)
+    delete op.rampAng; if(op.expr)delete op.expr.rampAng; if(op.pname)delete op.pname.rampAng;
+    if(op.rampTour!==undefined){const t=+op.rampTour;if(isFinite(t)&&t>0)op.rampTour=Math.max(0.01,Math.min(100,t));else delete op.rampTour;}
     // 2026-10-03-004 : mode trocoïdal unique — anciennes stratégies et passes
     // fines ap2 retirées du document à la lecture (migration, comme la laisse).
     delete op.strategy; delete op.ap2; delete op.radial2; delete op.axial2;
@@ -159,10 +163,23 @@ function faoSanitiseOps(s){
       if(op.cside!=='ext'&&op.cside!=='int')delete op.cside;
       ['nR','fin','leadR','overlap','tabN','tabW','tabH'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&+op[k]>=0))delete op[k];});
       // V0.23.18 : descente « Pente » (absent = Paliers, documents inchangés)
-      // V0.99.84 : pente dès 0,01° ; penteTour = descente maxi par tour (mm, absent = sans limite)
-      if(op.descente==='pente'){const a=+op.pente;op.pente=isFinite(a)&&a>0?Math.max(0.01,Math.min(45,a)):5;
-        const tt=+op.penteTour;if(isFinite(tt)&&tt>0)op.penteTour=Math.max(0.01,Math.min(100,tt));else delete op.penteTour;}
-      else{delete op.descente;delete op.pente;delete op.penteTour;}
+      // V0.99.88 : plus d'angle — penteTour = descente par tour (mm, absent = valeur proposée).
+      // Ancien fichier en degrés (op.pente) : converti une fois en mm/tour sur le périmètre du profil
+      // (périmètre × tan angle ; avec un maxi mm/tour de V0.99.84, le plus petit des deux).
+      if(op.descente==='pente'){
+        let tt=+op.penteTour;tt=isFinite(tt)&&tt>0?tt:0;
+        const a=+op.pente,lp=op.limit&&Array.isArray(op.limit.loop)?op.limit.loop:null;
+        if(isFinite(a)&&a>0&&lp&&lp.length>=3){
+          let L=0;for(let i=1;i<lp.length;i++)L+=Math.hypot(lp[i][0]-lp[i-1][0],lp[i][1]-lp[i-1][1]);
+          const a0=lp[0],a1=lp[lp.length-1];L+=Math.hypot(a0[0]-a1[0],a0[1]-a1[1]);
+          const conv=Math.round(L*Math.tan(Math.min(45,a)*Math.PI/180)*100)/100;
+          if(conv>0)tt=tt?Math.min(tt,conv):conv;
+        }
+        if(tt)op.penteTour=Math.max(0.01,Math.min(100,tt));else delete op.penteTour;
+      }
+      else{delete op.descente;delete op.penteTour;}
+      delete op.pente;
+      if(op.expr)delete op.expr.pente; if(op.pname)delete op.pname.pente;
       if(op.sautVide!==false)delete op.sautVide; // V0.99.18 : rapide dans le vide (absent = oui)
       // V0.99.85 : fraise 3 tailles — hauteur et décalages de la rainure (absents = défauts)
       if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
