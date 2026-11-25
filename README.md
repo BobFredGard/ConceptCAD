@@ -140,7 +140,7 @@ Manuel : [PLAN](docs/manuel/plan.md)
 
 ## RENDU
 
-![Atelier RENDU : moteur, ambiance, fond et sol, appareil photo](docs/captures/rendu-atelier.png)
+<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/91c1d94c-f159-4308-b191-a6ce34b57b77" />
 
 - Images réalistes en 1920×1080 ou en 4K.
 - **Deux moteurs** : rapide, ou lancer de rayons (reflets entre pièces, vrai verre).
