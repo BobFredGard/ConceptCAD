@@ -1,3 +1,4 @@
+<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/8a6d635a-5c11-43e6-91f1-44ed2bc90047" />
 # ConceptCAD
 
 **CAO paramétrique, assemblage, FAO, mise en plan et rendu, dans le navigateur.** Sur PC comme sur téléphone : rien à installer, pas de compte.
@@ -103,6 +104,8 @@ Manuel : [Assemblage](docs/manuel/assemblage.md)
 ## FAO
 
 ![Espace FAO : programme complet taillé dans le brut, avec l'outil réel](docs/captures/fao-simulation.png)
+<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/de37d709-c522-429b-97ca-d59a566261c9" />
+<img width="1920" height="1080" alt="2" src="https://github.com/user-attachments/assets/62479a0a-4410-4c53-a308-43f16214ff06" />
 
 - **Posages** : repère d'usinage sur un des 27 points du brut ou du modèle. Brut en boîte, en cylindre ou en vrai corps. Usinage **3+2**.
 - **Opérations** :
