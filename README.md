@@ -125,7 +125,7 @@ Manuel : [FAO](docs/manuel/fao.md)
 
 ## PLAN
 
-![Espace PLAN : planche A4 du Crochet, vues, cotes, perçages et vue 3D](docs/captures/plan-crochet.png)
+<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/91c1d94c-f159-4308-b191-a6ce34b57b77" />
 
 - **Planches** A4 à A0, cartouche dessiné, nomenclature.
 - **Vues aux arêtes exactes**, calculées sur plusieurs cœurs : face, projections, ISO, caméra, auxiliaire, **coupe** (même brisée), détail, coupe locale. On peut aussi importer un DXF.
@@ -140,7 +140,7 @@ Manuel : [PLAN](docs/manuel/plan.md)
 
 ## RENDU
 
-<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/91c1d94c-f159-4308-b191-a6ce34b57b77" />
+
 
 - Images réalistes en 1920×1080 ou en 4K.
 - **Deux moteurs** : rapide, ou lancer de rayons (reflets entre pièces, vrai verre).
