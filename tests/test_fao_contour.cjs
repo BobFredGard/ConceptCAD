@@ -121,7 +121,9 @@ const vm=require('vm');
     "const keepAM=faoActiveMesh;faoActiveMesh=function(){return {mesh:BOSS,box:{x0:0,y0:0,x1:100,y1:60}};};",
     "let mvD=[];try{mvD=faoOpMoves(op,job);}catch(e){att(false,'dispatch : exception '+e.message);}",
     "faoActiveMesh=keepAM;",
-    "att(mvD.filter(m=>!m.r).length>50&&mvD.filter(m=>!m.r).every(m=>dRect(m.x,m.y,30,70,20,40)>=3-0.005),'dispatch : contour généré, jamais dans la paroi (pas de re-clip par la zone)');",
+    // V1.0.0 : > 20 coupes (avant > 50) — depuis V0.99.96 les congés sont des arcs G2 / G3,
+    // un quart de cercle n'est plus qu'un mouvement
+    "att(mvD.filter(m=>!m.r).length>20&&mvD.filter(m=>!m.r).every(m=>dRect(m.x,m.y,30,70,20,40)>=3-0.005),'dispatch : contour généré, jamais dans la paroi (pas de re-clip par la zone)');",
     "att(op.geoDiag&&op.geoDiag.side==='ext','dispatch : côté détecté affiché (geoDiag)');",
     // 2026-10-27 : aperçu — la chaîne n'est pas une zone de clip (le parcours
     // passe hors du profil) : coupe bleue ET arcs d'entrée verts tous tracés

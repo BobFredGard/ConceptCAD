@@ -193,7 +193,7 @@ function faoOpMovesKey(op,job){
     if(op&&(faoContourProfil(op)||op.type==='chamfer'))dep=['arcs-g2g3',dep];
     // V0.99.97 : contour sur profil — même entrée à chaque niveau, la fraise reste en bas entre
     // les niveaux, approche droit sur la vraie entrée (seuls ces contours sont à refaire)
-    if(op&&faoContourProfil(op))dep=['entree-niveaux',dep];
+    if(op&&faoContourProfil(op))dep=['entree-niveaux-v1',dep]; // V1.0.0 : passage entre niveaux dans le vide
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);

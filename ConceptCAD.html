@@ -54986,7 +54986,7 @@ function faoOpMovesKey(op,job){
     if(op&&(faoContourProfil(op)||op.type==='chamfer'))dep=['arcs-g2g3',dep];
     // V0.99.97 : contour sur profil — même entrée à chaque niveau, la fraise reste en bas entre
     // les niveaux, approche droit sur la vraie entrée (seuls ces contours sont à refaire)
-    if(op&&faoContourProfil(op))dep=['entree-niveaux',dep];
+    if(op&&faoContourProfil(op))dep=['entree-niveaux-v1',dep]; // V1.0.0 : passage entre niveaux dans le vide
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -74516,8 +74516,11 @@ function faoContourTrimAir(mv,mat,D){
     }
     const airRaw=S.map(function(q){return !mat(q.x,q.y,q.z);});
     // V0.99.97 : passage au niveau suivant en restant en bas (m.stay) : jamais sauté (un saut
-    // ferait remonter la liaison du posage)
-    const air=airRaw.map(function(a,ix){const m=mv[S[ix].k];return a&&!(m&&m.stay);});
+    // ferait remonter la liaison du posage) — V1.0.0 : seulement ENTRE deux coupes en matière ;
+    // avant la première ou après la dernière, il suit le vide (passe toute dans le vide =
+    // supprimée, niveau du dessus vide = approche directe au-dessus de l'entrée du suivant)
+    let m0=-1,m1=-1;airRaw.forEach(function(a,ix){if(!a){if(m0<0)m0=ix;m1=ix;}});
+    const air=airRaw.map(function(a,ix){const m=mv[S[ix].k];return a&&!(m&&m.stay&&ix>m0&&ix<m1);});
     const airEnd={};S.forEach(function(q,ix){if(q.end)airEnd[q.k]=airRaw[ix];});
     const put=function(m,k){
       // plongée sur place (stay) dans le vide : rapide jusqu'à 1 mm au-dessus, puis avance
@@ -74539,7 +74542,12 @@ function faoContourTrimAir(mv,mat,D){
         if(d2-d1>=(lead||trail?Lend:Lmid)){
           let s1=a,s2=b;
           if(!lead){while(s1<b&&S[s1].d<d1)s1++;}else s1=0;
-          if(!trail){while(s2>s1&&S[s2].d>d2)s2--;}else s2=last;
+          if(!trail){while(s2>s1&&S[s2].d>d2)s2--;
+            // V1.0.0 : la matière commence au bas d'une plongée sur place (passage d'un niveau
+            // à l'autre) : le vide va jusqu'au haut de la plongée (pas de marge en longueur)
+            const nm=mv[S[b+1].k];
+            if(nm&&nm.stay&&!nm.r&&S[b+1].k!==S[b].k&&Math.hypot(nm.x-S[b].x,nm.y-S[b].y)<=1e-9)s2=b;
+          }else s2=last;
           if(s2>s1)skips.push([s1,s2,lead?'debut':(trail?'fin':'milieu')]);
         }
       }
@@ -74561,8 +74569,16 @@ function faoContourTrimAir(mv,mat,D){
               for(let t=out.length-1;t>=0&&out[t].r;t--)
                 if(Math.hypot(out[t].x-S[0].x,out[t].y-S[0].y)<=1e-6)out[t]=Object.assign({},out[t],{x:q.x,y:q.y});
             }
-            out.push({r:1,x:q.x,y:q.y,z:q.z+1});
-            out.push({r:0,ent:1,x:q.x,y:q.y,z:q.z});}
+            // V1.0.0 : le vide finit juste avant la plongée sur place d'un niveau à l'autre
+            // (niveau du dessus vide) : rapide jusqu'à 1 mm au-dessus du niveau suivant, la
+            // plongée sur place fait le dernier millimètre en avance
+            const nx=s<last?mv[S[s+1].k]:null;
+            if(nx&&nx.stay&&!nx.r&&Math.hypot(nx.x-q.x,nx.y-q.y)<=1e-9&&q.z-nx.z>1.5){
+              out.push({r:1,x:q.x,y:q.y,z:Math.min(q.z+1,nx.z+1)});nPl++;
+            }else{
+              out.push({r:1,x:q.x,y:q.y,z:q.z+1});
+              out.push({r:0,ent:1,x:q.x,y:q.y,z:q.z});
+            }}
           nSaut++;si++;
         }
         continue;

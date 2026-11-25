@@ -53,6 +53,21 @@ const vm=require('vm');
     "const app=tv.slice(0,e0);",
     "att(app.length>=2&&app.every(m=>Math.hypot(m.x-tv[e0].x,m.y-tv[e0].y)<1e-9),'vide au début : toute l’approche au-dessus de la vraie entrée ('+tv[e0].x.toFixed(2)+','+tv[e0].y.toFixed(2)+'), jamais à l’entrée prévue');",
     "att(Math.hypot(app[0].x-mv[0].x,app[0].y-mv[0].y)>0.1,'l’entrée prévue (début de l’arc) était dans le vide : déplacée');",
+    // V1.0.0 (suite complète) : tout dans le vide -> rien, passages entre niveaux compris
+    "const tA=faoContourTrimAir(mv,function(){return false;},10);",
+    "att(tA.filter(m=>!m.r).length===0&&tA.vide.passes===1,'tout vide : aucune coupe, passage entre niveaux compris');",
+    // niveau du dessus vide (matière seulement sous −12) : approche directe, rapide jusqu'à 1 mm au-dessus du niveau 2
+    "const matB=(x,y,z)=>z<-12&&sd(x,y)<6.2;",
+    "const tB=faoContourTrimAir(mv,matB,10);",
+    "const cB=tB.filter(m=>!m.r);",
+    "att(cB.length>0&&cB.every(m=>m.z<-18.5+1e-6),'niveau du dessus vide : plus aucune coupe à −9,5 (vu z '+[...new Set(cB.map(m=>m.z))].join(' ')+')');",
+    "const jB=tB.findIndex(m=>!m.r);",
+    // matière à moins de 6,2 mm du profil : l'entrée se fait sur l'arc d'entrée du niveau 2, 1 mm avant la matière
+    "att(jB>0&&tB[jB-1].r===1&&Math.abs(tB[jB-1].z+18.5)<1e-6&&Math.abs(tB[jB].z+19.5)<1e-6&&tB[jB].ent&&tB.slice(0,jB).every(m=>m.r&&Math.hypot(m.x-tB[jB].x,m.y-tB[jB].y)<1e-9)&&!tB.some(m=>m.stay),'niveau du dessus vide : approche droit au-dessus de l’entrée en matière du niveau 2, rapide jusqu’à −18,5, 1 mm en avance, plus de passage par −9,5');",
+    // matière partout sous −12 : elle commence au bas de la plongée sur place
+    "const tC=faoContourTrimAir(mv,(x,y,z)=>z<-12,10);",
+    "const jC=tC.findIndex(m=>!m.r);",
+    "att(jC>0&&tC[jC].stay&&Math.abs(tC[jC].z+19.5)<1e-6&&tC[jC-1].r===1&&Math.abs(tC[jC-1].z+18.5)<1e-6&&tC.slice(0,jC).every(m=>m.r&&Math.hypot(m.x-st[1].x,m.y-st[1].y)<1e-6)&&tC.filter(m=>!m.r).every(m=>m.z<-18.5),'matière dès le bas de la plongée sur place : approche au-dessus de l’entrée, rapide jusqu’à −18,5, 1 mm en avance');",
     // 3. purge hors brut : descente gardée au-dessus de la plongée
     "const job={stock:{x0:-130.5,y0:-13.5,z0:-33.5,x1:130.5,y1:13.5,z1:1}};",
     "const seq=[{r:1,x:0,y:0,z:11},{r:0,x:0,y:0,z:-5},{r:0,x:-140,y:-20,z:-5},{r:1,x:-140,y:-20,z:11},{r:1,x:-150,y:-25,z:11},{r:1,x:-150,y:-25,z:-18.5},{r:0,x:-150,y:-25,z:-19.5},{r:0,x:0,y:0,z:-19.5},{r:1,x:0,y:0,z:11}];",

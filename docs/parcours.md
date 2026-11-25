@@ -11,7 +11,7 @@ Résumé chiffré de chaque opération active des exemples, recalculée par `npm
 | Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye) | 177 | 11,95 | 0,03 | 1 | 50 | 56,667 | 3,99 | 3 |
 | Cavité Usinage.conceptcad › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho) | 41 165 | 35,59 | 5,67 | 196 | 20 | 53 | 10,83 | 37 |
 | Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j) | 94 880 | 74,87 | 0,98 | 24 | 20 | 54,8 | 37,73 | 4 |
-| Découpe 3 tailles.conceptcad › POSAGE1 › 1. Contour (c1) | 217 | 3,1 | 1,27 | 21 | 5 | 15 | 2,88 | 3 |
+| Découpe 3 tailles.conceptcad › POSAGE1 › 1. Contour (c1) | 199 | 3,05 | 1,16 | 18 | 5 | 15 | 2,81 | 3 |
 | Découpe 3 tailles.conceptcad › POSAGE1 › 2. Découpe 3 tailles (c2) | 14 | 0,17 | 0,09 | 2 | 12 | 12 | 0,17 | 1 |
 | Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l) | 28 734 | 35,89 | 43,86 | 631 | -22,5 | 64,579 | 41,49 | 112 |
 | Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg) | 38 330 | 32,39 | 2,32 | 38 | -28,419 | 64,701 | 27,61 | 0 |
