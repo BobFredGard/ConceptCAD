@@ -219,6 +219,16 @@ const faoRapideMin=30;
       +'.fao-op.isoff{opacity:.5}'
       +'.fao-op.ishid{opacity:.62}'
       +'.fao-op.isoff.ishid{opacity:.42}'
+      /* V0.99.86 : opération survolée, montrée seule en couleurs dans la vue (src/88-fao-61) */
+      +'.fao-op.survol{box-shadow:inset 3px 0 0 #2f80ff}'
+      +'.fao-op.survol:not(.sel){background:rgba(47,128,255,.22)}'
+      +'.fao-op.ishid.survol{opacity:.9}'
+      +'.fao-survol-leg{position:fixed;z-index:40;pointer-events:none;background:rgba(16,20,26,.88);'
+      +'border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:7px 11px;color:#e8ecf1;'
+      +'font-size:.74rem;box-shadow:0 4px 18px rgba(0,0,0,.4)}'
+      +'.fao-survol-ti{font-weight:700;color:#fff;margin-bottom:4px}'
+      +'.fao-survol-it{display:flex;align-items:center;gap:7px;margin:2px 0}'
+      +'.fao-survol-gris{opacity:.75}'
       /* --- barre d'actions de l'arbre FAO --- */
       +'.fao-actions{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:8px}'
       +'.fao-actions button{flex:1 1 auto;font-size:.72rem;padding:5px 7px;white-space:nowrap}'

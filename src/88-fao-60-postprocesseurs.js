@@ -479,6 +479,7 @@ let faoPrevWanted=false; // 'full'/'lecture' : travail reporte jusqu'a la fin de
 let faoGenBtnEl=null;   // refs RÉELLES des boutons (lecture par id ambiguë sous stub)
 let faoExportBtnEl=null;
 function faoClearPreview(){
+  try{ if(typeof faoSurvolOublie==='function')faoSurvolOublie(); }catch(e){} // V0.99.86 : survol de l'arbre
   try{
     if(faoPrevGroup&&typeof scene!=='undefined'&&scene){
       faoDel3D(faoPrevGroup);
@@ -525,7 +526,9 @@ function faoPrevSigSame(a,b){
 function faoPrevOpEntry(op){
   if(!faoPrevOps)faoPrevOps=new Map();
   let e=faoPrevOps.get(op);
-  if(!e){ e={g:null,parts:[],n:0}; faoPrevOps.set(op,e); }
+  // src : mouvements de l'opération (séquence de l'aperçu, rapides et zone compris), relus
+  // par le survol de l'arbre (src/88-fao-61) — des références, rien n'est copié
+  if(!e){ e={g:null,parts:[],n:0,src:[]}; faoPrevOps.set(op,e); }
   return e;
 }
 function faoPrevOpGroup(op,group){
@@ -733,7 +736,7 @@ function faoRefreshPreview(mode){
       const mv=b.tail?b.moves.concat(b.tail):b.moves; // tail : remontée avant un changement d'outil
       const clip=b.xf?null:faoSegClipper(op,job); // copie d'une répétition : la zone de la source ne la borne pas
       if(!mv||!mv.length)return;
-      const e=faoPrevOpEntry(op); e.n+=b.moves.length;
+      const e=faoPrevOpEntry(op); e.n+=b.moves.length; e.src.push({b:b,clip:clip});
       // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde : mises de côté,
       // dessinées au premier « Afficher » (faoPrevToggleFast)
       if(op&&op.hidden===true){ e.parts.push({mv:mv,clip:clip}); return; }

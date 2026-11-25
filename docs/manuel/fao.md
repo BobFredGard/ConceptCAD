@@ -106,6 +106,10 @@
 
 - **Parcours à l'écran** : rapides et remontées bien visibles, et distincts des passes d'usinage.
 - **Afficher / masquer un parcours** : instantané, même sur une grosse pièce ; Ctrl+Z le rétablit sans recalculer.
+- **Survol d'une opération dans l'arbre** : l'opération est montrée seule en couleurs, même masquée ; les autres passent en gris pâle le temps du survol.
+  - Coupe bleue, **entrée** verte (rampe, hélice, plongée), **sortie** orange, liaison au contact bleu clair, rapides jaunes et remontées magenta en pointillés.
+  - Rapides montrés même si le bouton « Rapides » les estompe ou les cache.
+  - Une légende s'affiche en bas de la vue ; tout revient comme avant quand la souris quitte la ligne.
 - **Collisions du porte-outil** : dans la simulation, le bouton **⚠ Collisions** rejoue tout le posage et signale chaque opération où le porte-outil (ou une queue plus grosse que l'outil) entre dans la matière restante, rapides compris ; un repère rouge marque le contact, un second clic y amène la simulation. L'outil simulé a sa vraie longueur et son vrai porte-outil. Opérations inclinées (3+2) : contrôle indicatif.
 - **Simulation** sur la **carte graphique** : outil réel, matière enlevée à partir du vrai brut.
   - Rendu réel, matière toujours visible ; sol miroir et plan d'ombre placés sous le brut.

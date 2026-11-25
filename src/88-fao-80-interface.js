@@ -402,7 +402,7 @@ async function faoRegenOpStream(setupId,opId){
   try{ faoRefreshFaoUI(); }catch(e){} // triangle retiré tout de suite
   const g=faoPrevGroup;
   if(g)faoPrevStreamG=g; // « Masquer » pendant le calcul : éteint les traits provisoires (faoPrevToggleFast)
-  try{ if(g&&faoPrevOps){ const e=faoPrevOps.get(o); if(e)e.parts=[]; } }catch(e){} // jamais l'ancien tracé sous le nouveau
+  try{ if(g&&faoPrevOps){ const e=faoPrevOps.get(o); if(e){ e.parts=[]; e.src=[]; } } }catch(e){} // jamais l'ancien tracé sous le nouveau (survol compris)
   const dit=function(t){ try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent=t; }catch(e){} };
   dit('FAO : génération de « '+faoOpShortLabel(o)+' »…');
   let n=0;
@@ -870,6 +870,8 @@ function faoRenderTree(){
   let tree=null;
   try{ tree=document.getElementById('faoTree'); }catch(e){ return; }
   if(!tree)return;
+  // V0.99.86 : lignes refaites -> le survol en cours s'arrête (il reprend au prochain mouvement de souris)
+  try{ if(typeof faoSurvolFin==='function')faoSurvolFin(); }catch(e){}
   try{
     tree.innerHTML='';
     const r=faoRoot();
@@ -971,6 +973,10 @@ function faoRenderTree(){
         }
         d.appendChild(mb);
         d.onclick=function(ev){ if(faoMultiClick(ev,s,op))return; faoSelectOp(s.id,op.id); };
+        // V0.99.86 (demande de Fred) : survol = l'opération seule en couleurs dans la vue,
+        // même masquée ; les autres en gris le temps du survol (src/88-fao-61-survol.js)
+        d.onmouseenter=function(){ faoSurvolPrevoir(op,d); };
+        d.onmouseleave=function(){ faoSurvolFin(); };
         tree.appendChild(d);
       });
     });
