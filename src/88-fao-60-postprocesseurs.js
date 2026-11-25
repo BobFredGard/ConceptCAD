@@ -50,6 +50,29 @@ function faoWorkpieceBox(job,ox,oy,oz){
     faoFmtXYZ(v[3]-ox)+','+faoFmtXYZ(v[4]-oy)+','+faoFmtXYZ(v[0]-ox)+','+faoFmtXYZ(v[1]-oy)+')';
 }
 function faoToday(){ try{ return new Date().toISOString().slice(0,10); }catch(e){ return ''; } }
+/* ----- V0.99.92 : usinage grande vitesse HSC du Fagor (G501 / G500) -----
+   Comme le post Fusion fagor 8065 (« Use HSC high speed machining » Automatique / Arrêt et
+   « Smoothing contouring acceleration ») : réglages du posage (hsc, hscAccel), défaut de la fiche
+   machine (hsc, hscAccel), sinon Automatique et 60 %. Chaque opération de fraisage commence par
+   G501 A<accélération %> E<tolérance × 1,2> J100 M1 ; G500 avant un changement d'outil, un perçage
+   (jamais de HSC dans un cycle) et la fin du programme. Tolérance des défauts Fusion : ébauches
+   (Ébauche 3D, poche adaptative) 0,1 mm, autres opérations 0,01 mm. */
+function faoHscReglage(job,post){
+  if(!post||post.kind!=='fagor')return {on:false,accel:60};
+  const m=(job&&(job.hsc==='auto'||job.hsc==='off'))?job.hsc:(post.hsc==='off'?'off':'auto');
+  const a=(job&&+job.hscAccel>0)?+job.hscAccel:(+post.hscAccel>0?+post.hscAccel:60);
+  return {on:m==='auto',accel:Math.max(30,Math.min(200,a))};
+}
+function faoHscTol(op){
+  if(op&&(op.type==='rough3d'||faoPocketAdapt(op)))return 0.1;
+  return 0.01;
+}
+function faoHscBloc(R,op){
+  // ligne G501 de l'opération, ou null : pas de HSC (réglage Arrêt, perçage en cycle)
+  if(!R||!R.on||!op||(op.type==='drill'&&op.cycle!=='helix'))return null;
+  const f=function(v,d){ return String(+(+v).toFixed(d)); };
+  return 'G501 A'+f(R.accel,2)+' E'+f(faoHscTol(op)*1.2,5)+' J100 M1';
+}
 
 function faoArcWords(m,ox,oy,oz){
   // Bloc G2/G3 complet, IJK incrémental (centre relatif au départ).
@@ -143,6 +166,8 @@ function faoPost(job,postId){
   const fw=function(v){ v=String(v); if(v===fCur)return ''; fCur=v; return ' F'+v; };
   const CO=post.coolant;
   const cool=(job.coolant==='off')?null:(job.coolant==='through'?CO.through:CO.flood);
+  const HSC=faoHscReglage(job,post); // V0.99.92 : G501 / G500 du Fagor
+  let hscCur=null; // ligne G501 en vigueur, null = G500
   // G40 (annule la compensation d'outil) + G80 (annule les cycles en canneau) en
   // entête : programme démarré proprement, jamais laissé d'un usage précédent.
   if(fag){
@@ -203,6 +228,7 @@ function faoPost(job,postId){
       if(qb&&qb.on!==false){ retrCur=faoClearAbs(qb,job); break; }
     }
     if(gi>0){ nc(CO.off);
+      if(hscCur){ nc('G500'); hscCur=null; } // post Fusion : HSC coupé avant le dégagement du changement d'outil
       if(c800&&swUsed&&swCur!=='0,0,0')faoPostLines(post.swivelRetract,{}).forEach(nc); // plan incliné : retrait machine
       else nc('G0 Z'+faoFmtXYZ(retrPrev-oz)); }
     if(c800)swCur=null; // V0.89.0 : plan recommandé après CHAQUE changement d'outil, à plat compris (post Fusion)
@@ -214,7 +240,7 @@ function faoPost(job,postId){
     faoPostLines(post.toolChange,{T:t.num||1,NAME:name}).forEach(nc);
     faoPostLines(post.spindle,{S:S}).forEach(nc);
     if(cool)nc(cool);
-    let sCur=S;
+    let sCur=S, bInG=0;
     g.blocks.forEach(function(b){
       // 2026-10-15-010 : conditions de coupe de CETTE opération (fiche outil ou
       // surcharge de l'opération). Par défaut identiques au groupe → sortie inchangée.
@@ -224,6 +250,21 @@ function faoPost(job,postId){
       // V0.95.3 : copie d'une répétition — origine propre (G55…) et libellé
       if(b.xf&&b.xf.wcs&&b.xf.wcs!==wcsCur){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(b.xf.wcs); wcsCur=b.xf.wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
       else if(!(b.xf&&b.xf.wcs)&&wcsCur!==wcs){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(wcs); wcsCur=wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
+      // V0.99.92 : HSC Fagor de l'opération. Changement avec le même outil : dégagement d'abord
+      // (le post Fusion remonte avant G500 / G501), puis G500 et le nouveau G501.
+      if(fag){
+        const hW=faoHscBloc(HSC,b.op);
+        if(hW!==hscCur){
+          if(bInG>0&&prev){
+            const zr=Math.max(b.op?faoClearAbs(b.op,job):retr,+prev.z);
+            nc('G0 Z'+faoFmtXYZ(zr-OZ)); prev={x:prev.x,y:prev.y,z:zr};
+          }
+          if(hscCur)nc('G500');
+          if(hW)nc(hW);
+          hscCur=hW;
+        }
+      }
+      bInG++;
       cmt(faoOpLabel(b.op,job)+(b.n>1?(' - copie '+(b.k+1)+'/'+b.n+(b.xf?' ('+b.xf.lab+')':'')):''));
       // 2026-10-13-007 : #MSG par opération sur Fagor (rétro-ingénierie
       // cav.txt : N60 #MSG["OPT1: Paroies"]) — l'opérateur voit l'opération
@@ -423,6 +464,7 @@ function faoPost(job,postId){
   });
   // 3+2 : annuler la transformation AVANT les coordonnées machine de fin (SUPA/park).
   if(traOn)nc('TRAFOOF');
+  if(hscCur)nc('G500'); // V0.99.92 : HSC coupé en fin de programme (post Fusion : onClose)
   nc(CO.off);
   if(c800&&swCur!=='0,0,0')swOut({a:0,b:0,c:0}); // table remise à plat (post Fusion : onClose)
   // fin de la fiche machine (Fagor : retrait + #MSG[""] qui efface le message op — cav.txt N243150 ;

@@ -86,6 +86,8 @@ function faoSanitiseOps(s){
   }else if(s.planes!==undefined)delete s.planes;
   if(s.liftMin!==undefined&&!(+s.liftMin>0))delete s.liftMin; // V0.61.0 : retrait minimum entre passes (mm)
   if(s.toolOrder!==undefined&&s.toolOrder!=='tool'&&s.toolOrder!=='num')delete s.toolOrder; // V0.99.76 : ordre d'usinage (absent = liste)
+  if(s.hsc!==undefined&&s.hsc!=='auto'&&s.hsc!=='off')delete s.hsc; // V0.99.92 : HSC Fagor (absent = fiche machine)
+  if(s.hscAccel!==undefined&&!(+s.hscAccel>0))delete s.hscAccel;
   if(s.fixture&&typeof s.fixture==='object'){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;

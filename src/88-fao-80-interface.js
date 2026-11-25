@@ -2108,6 +2108,28 @@ function faoSetupFiche(p,setup){
   rM.appendChild(faoSel([['G54','G54'],['G55','G55'],['G56','G56'],['G57','G57'],['G58','G58'],['G59','G59']],
     setup.wcs||'G54',function(v){ setup.wcs=v; }));
   p.appendChild(rM);
+  // V0.99.92 : usinage grande vitesse HSC du Fagor (G501 / G500), comme le post Fusion
+  const PMh=FAO_POSTS[setup.machine||setup.post];
+  if(PMh&&PMh.kind==='fagor'){
+    const R=faoHscReglage(setup,PMh);
+    const rH=faoRow();
+    rH.appendChild(faoLab('Usinage grande vitesse HSC'));
+    rH.appendChild(faoSel([
+      ['auto','Automatique','G501 au début de chaque opération de fraisage, G500 avant un changement d’outil, un perçage et la fin du programme.'],
+      ['off','Arrêt','Aucun G501 / G500 dans le programme.']],
+      R.on?'auto':'off',function(v){ setup.hsc=v; },
+      'Use HSC high speed machining (post Fusion Fagor) : lissage de trajectoire G501 de la CN Fagor.'));
+    p.appendChild(rH);
+    if(R.on){
+      const rA=faoRow();
+      rA.appendChild(faoLab('Accélération de lissage'));
+      rA.appendChild(faoNumFx(setup,'hscAccel',R.accel,function(v){ if(v>0)setup.hscAccel=Math.max(30,Math.min(200,v)); },48,5,
+        'Smoothing contouring acceleration : pourcentage d’accélération du G501 (mot A), de 30 à 200 %. 60 par défaut.'));
+      rA.appendChild(faoLab('%'));
+      p.appendChild(rA);
+      p.appendChild(faoHelp('G501 A'+(+R.accel.toFixed(2))+' E… J100 M1 au début de chaque opération de fraisage : E = tolérance × 1,2 comme Fusion (0,12 en ébauche 3D et poche adaptative, 0,012 ailleurs). G500 avant un changement d’outil, un perçage et la fin du programme.'));
+    }
+  }
   // 2026-10-16-017 : origine = un des 27 points cardinaux (clic dans la vue) du brut ou du modèle
   const rO=faoRow();
   const spO=faoOriginSpec(setup);
