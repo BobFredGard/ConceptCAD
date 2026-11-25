@@ -124,6 +124,8 @@ function faoGenChamfer(mesh,op,job,secu){
     overlap:isFinite(+op.overlap)&&+op.overlap>=0?+op.overlap:1,tabN:0,secu:secu});
   const diag=mv&&mv.diag;
   if(Z3&&mv&&mv.length){mv=faoChamferDrape(mv,Z3.pts,drop,0.5);try{mv.diag=diag;}catch(e){}}
+  // V0.99.96 : chanfrein plan — arcs de l'arête en G2 / G3 (src/89-fao-arcs.js)
+  else if(mv&&mv.length&&mv.arcC){ try{ mv=faoFitArcsMoves(mv,mv.arcC); }catch(e){} }
   try{ if(diag){ diag.chamfer={zTip:+(zTop-drop).toFixed(3),d:+G.d.toFixed(3),b:+G.b.toFixed(3),rho:+G.rho.toFixed(3)};
     if(Z3)diag.chamfer.z3=[+Z3.zMin.toFixed(3),+Z3.zMax.toFixed(3)];
     op.geoDiag=diag; } }catch(e){}
@@ -199,11 +201,33 @@ function faoChamferRows(d,setup,op){
       'Ajoute à la liste d’outils une fraise à chanfreiner Ø6 à 90° (pointe Ø0,5) et l’affecte à cette opération.'));
     d.appendChild(rb);
   }else if(G){
+    // V0.99.96 (Renfort : « le chanfrein est presque inexistant… Le calcul est fait / à la pointe de
+    // la fraise ? ») : Ø de pointe de l'outil modifiable ici, Z donné au BOUT de l'outil, et ce que
+    // donnerait une pointe vive si le méplat déclaré n'existe pas
+    if(t.kind==='chamfer'){
+      const rP=faoRow();
+      rP.appendChild(faoLab('Ø de pointe'));
+      const iP=faoNum(+(2*G.rt).toFixed(3),function(v){ if(v>=0)t.dt=Math.max(0,Math.min(v,(+t.d||6)*0.9)); },52,0.1,'Diamètre du méplat au bout de la fraise à chanfreiner T'+t.num+' (0 = pointe vive). C’est la valeur de la fiche de l’outil : la changer ici la change pour toutes ses opérations.');
+      rP.appendChild(iP);
+      const nP=document.createElement('span');nP.className='fao-meta';
+      nP.textContent='fiche de l’outil T'+t.num+(G.rt>0?' · méplat au bout':' · pointe vive');
+      rP.appendChild(nP);
+      d.appendChild(rP);
+    }
     n.className=G.ok?'fao-help':'fao-alert';
     n.textContent=(G.ok?'':'⚠ '+G.warn+'. ')+'Outil '+G.ang+'°'+(G.rt>0?' pointe Ø'+(2*G.rt).toFixed(2):' pointe vive')+
       ' : chanfrein '+G.a.toFixed(2)+' × '+G.b.toFixed(2)+' mm ; pointe '+
       (Z3?(G.b+G.t).toFixed(3)+' mm sous l’arête (parcours 3D, axe outil en Z)':'à Z '+faoDsp(op,G.zTip,2))+
-      ', axe à '+G.d.toFixed(3)+' mm de l’arête ; contact haut sur Ø'+(2*G.rho).toFixed(2)+'.';
+      ', axe à '+G.d.toFixed(3)+' mm de l’arête ; contact haut sur Ø'+(2*G.rho).toFixed(2)+'.'+
+      ' Le Z est celui du BOUT de l’outil'+(G.rt>0?' (méplat Ø'+(2*G.rt).toFixed(2)+')':'')+', là où la CN mesure sa longueur.';
     d.appendChild(n);
+    if(G.rt>0){
+      // pointe vive au lieu du méplat : flanc à rt de moins à chaque hauteur -> largeur a − rt
+      const aV=Math.max(0,G.a-G.rt);
+      const w=document.createElement('div');w.className='fao-note';
+      w.textContent='Si la pointe réelle de T'+t.num+' est vive, mettez Ø de pointe = 0 : avec Ø'+(2*G.rt).toFixed(2)+
+        ' déclaré, le flanc passe '+G.rt.toFixed(2)+' mm trop loin et le chanfrein ne ferait que '+aV.toFixed(2)+' mm au lieu de '+G.a.toFixed(2)+'.';
+      d.appendChild(w);
+    }
   }
 }

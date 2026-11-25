@@ -485,7 +485,9 @@ function faoOpLabel(op,job){
   if(!op)return '?';
   const t=op.type;
   const tool=job?faoToolById(job,op.toolId):null;
-  const tag=tool?(' [T'+tool.num+' D'+tool.d+']'):'';
+  // V0.99.96 : correction de Ø (outil + opération) rappelée dans le libellé et le programme
+  const dc=(tool&&typeof faoOpDCor==='function')?faoOpDCor(op,tool):0;
+  const tag=tool?(' [T'+tool.num+' D'+tool.d+(dc?(' corr '+(dc>0?'+':'')+dc):'')+']'):'';
   const off=(op&&op.on===false)?' (désactivée)':'';
   const RA=faoRA(op||{});
   const ra=((op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='facing'))&&(RA.radial>0||RA.axial>0))?(' R'+RA.radial+' A'+RA.axial):'';

@@ -92,7 +92,10 @@ function faoSanitiseOps(s){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;
   }
+  // V0.99.96 : correction de Ø (outil, opération) — nombre non nul borné, sinon retirée
+  (s.tools||[]).forEach(function(t){ if(t&&t.dCor!==undefined){ const c=faoDCorVal(t.dCor); if(c)t.dCor=c; else delete t.dCor; } });
   (s.ops||[]).forEach(function(op){
+    if(op&&op.dCor!==undefined){ const c=faoDCorVal(op.dCor); if(c)op.dCor=c; else delete op.dCor; }
     if(!op.id)op.id=faoNewId('op');
     if(op.on===undefined)op.on=true;
     faoHtsClean(op); // V0.26.0 : références Haut/Bas

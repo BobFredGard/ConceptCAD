@@ -46,7 +46,9 @@ const R=String.raw`
    o2.limit={mode:'chain',loop:L,closed:true,nEdges:1,tangent:true,side:'center',extra:0};s.ops.push(o2);
    const c2=(faoOpMoves(o2,s)||[]).filter(m=>m&&!m.r&&!m.ent&&isFinite(+m.x));
    const rr=c2.map(m=>Math.hypot(m.x-50,m.y-30));
-   A(c2.length>10&&rr.every(r=>near(r,4.45,0.02)),'14 : bord de trou R5 : axe sur R4,45 (à l’intérieur), '+c2.length+' points');}
+   // V0.99.96 : le cercle sort en blocs G2 / G3 (rayon de l'arc = |I J|), plus en petits segments
+   const ar=c2.filter(m=>m.arc);
+   A(ar.length>=2&&rr.every(r=>near(r,4.45,0.02))&&ar.every(m=>near(Math.hypot(m.arc.i,m.arc.j),4.45,0.02)),'14 : bord de trou R5 : axe sur R4,45 (à l’intérieur), '+c2.length+' points dont '+ar.length+' arcs');}
   // 6. simulation : la matière taillée a bien un chanfrein de 1 × 1 à 45°
   {const g=faoMatterGrid({x0:90,y0:20,z0:20,x1:105,y1:40,z1:30},0.1);
    // matière = bossage jusqu'à X100 : la partie X>100 vidée d'abord (paroi verticale)

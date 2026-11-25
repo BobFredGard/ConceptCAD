@@ -34,7 +34,32 @@ function faoToolKeyObj(t){
   // V0.99.85 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
   // (fiches des autres outils : clé inchangée)
   if(t.kind==='slot'){ const g=faoToolDims(t); o.ep=g.lc.v; o.col=g.dDeg.v; }
+  // V0.99.96 : fraise à chanfreiner / foret à pointer — l'angle et le Ø de pointe placent le
+  // chanfrein (avant, les changer ne refaisait pas le parcours : l'ancien restait servi)
+  if(t.kind==='chamfer'||t.kind==='spot'){ o.ang=faoToolAngle(t); if(t.kind==='chamfer')o.dt=isFinite(+t.dt)&&+t.dt>=0?+t.dt:0.5; }
+  // V0.99.96 : correction de Ø de la fraise (cylindrique, torique) — absente = clé inchangée
+  const dc=faoToolDCor(t); if(dc)o.dCor=dc;
   return o;
+}
+/* ----- V0.99.96 : CORRECTION DE Ø (demande de Fred : « dès que l'on parle de fraise
+   cylindrique/torique, il faut pouvoir ajouter un paramètre pour induire un diamètre de fraise
+   + grand ou - grand. cela se joue des fois à +/-0.035 », réglée « dans les deux » : l'outil et
+   l'opération, qui s'additionnent). Les parcours sont calculés avec Ø + correction (comme si la
+   fraise était plus grosse ou plus petite) : + = plus de matière laissée sur les parois.
+   Fraises cylindriques et toriques seulement ; l'affichage de l'outil garde le Ø de la fiche. */
+function faoToolDCorOk(t){ return !!(t&&(t.kind==='flat'||t.kind==='bull'||!t.kind)); }
+function faoDCorVal(v){ v=+v; return isFinite(v)&&Math.abs(v)>1e-9?Math.max(-2,Math.min(2,Math.round(v*10000)/10000)):0; } // ±2 mm au plus
+function faoToolDCor(t){ return faoToolDCorOk(t)?faoDCorVal(t.dCor):0; }
+function faoOpDCor(op,t){
+  // correction totale de l'opération (outil + opération) ; 0 hors fraise cylindrique / torique
+  if(!faoToolDCorOk(t))return 0;
+  return Math.round((faoToolDCor(t)+faoDCorVal(op&&op.dCor))*10000)/10000;
+}
+function faoOpToolD(op,t){
+  // Ø de calcul des parcours : Ø de la fiche + correction (au moins 0,1 mm)
+  const D=(t&&isFinite(+t.d)&&+t.d>0)?+t.d:10;
+  const c=faoOpDCor(op,t);
+  return c?Math.max(0.1,Math.round((D+c)*10000)/10000):D;
 }
 const faoR1=function(v){ return Math.round(v*10)/10; };
 function faoToolDims(t){
@@ -290,6 +315,12 @@ function faoToolsElement(setup){
   const s2=sec('Géométrie (mm) — valeurs grisées = défaut calculé, à préciser');
   field(s2,t.kind==='center'?'Ø pilote d1':'Ø coupe',t.d,false,function(v){set('d',Math.max(0.1,v),'Ø outil');if(t.kind==='ball')t.cornerR=t.d/2;},'Diamètre de coupe',0.1);
   if(t.kind==='bull')field(s2,'Rayon de coin',t.cornerR||0,false,function(v){set('cornerR',Math.min(v,t.d/2),'rayon de coin');},'Rayon du coin torique',0.1);
+  if(faoToolDCorOk(t)){ // V0.99.96 : correction de Ø (± , 0 accepté)
+    const iK=field(s2,'Correction Ø',faoToolDCor(t),!faoToolDCor(t),function(){},
+      'Correction du Ø pour le calcul des parcours (mm, + ou −), par exemple −0,035 pour une D10 qui mesure 9,965. + : la fraise est vue plus grosse, il reste plus de matière sur les parois ; − : elle est vue plus petite, elle en enlève plus. Vaut pour toutes les opérations de cet outil ; chaque opération peut en ajouter une autre (onglet Outil).',0.005);
+    iK.onchange=function(){const v=parseFloat(String(iK.value).replace(',','.'));if(!isFinite(v))return;
+      faoSnapshot('correction de Ø');const c=faoDCorVal(v);if(c)t.dCor=c;else delete t.dCor;faoChanged();rerender();};
+  }
   if(t.kind==='tap'){
     const pT=document.createElement('label');pT.className='fao-tl-f';pT.innerHTML='<span>Filet</span>';
     const sT=document.createElement('select');sT.className='fao-sel';
@@ -314,7 +345,10 @@ function faoToolsElement(setup){
   }
   if(t.kind==='chamfer'){ // V0.7.9
     field(s2,'Angle',faoToolAngle(t),!(+t.ang>0),function(v){set('ang',Math.min(150,Math.max(30,v)),'angle de la fraise à chanfreiner');},'Angle inclus du cône (°) : 90 pour un chanfrein à 45°, 60, 120…',1,'°');
-    field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive)',0.1);
+    const iDt=field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive). Le Z du chanfrein est donné au bout de l’outil : un Ø de pointe plus grand que le vrai donne un chanfrein plus petit.',0.1);
+    // V0.99.96 : 0 = pointe vive accepté (le champ commun refuse 0 : la pointe restait à Ø0,5 et le
+    // chanfrein de Renfort sortait à 0,05 au lieu de 0,3 — constat de Fred)
+    iDt.onchange=function(){const v=parseFloat(String(iDt.value).replace(',','.'));if(isFinite(v)&&v>=0){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');faoChanged();rerender();}};
   }
   field(s2,'Dents',t.flutes||2,false,function(v){set('flutes',Math.max(1,Math.round(v)),'nombre de dents');},'Nombre de dents (sert au calcul de F = fz × z × S)',1);
   const sl=faoToolIsSlot(t); // V0.99.85 : fraise 3 tailles — disque (épaisseur) au bout d'un col
@@ -397,6 +431,19 @@ function faoOpToolSection(setup,op){
   const info=document.createElement('div');info.className='fao-meta';
   info.textContent=faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')+' · '+(t.flutes||2)+' dents · '+(faoToolIsSlot(t)?('épaisseur '+g.lc.v+' · col Ø'+g.dDeg.v):('Lc '+g.lc.v))+' · sous mandrin '+g.lsm.v+' mm · Vc '+C.vc+' m/min';
   box.appendChild(info);
+  if(faoToolDCorOk(t)){
+    // V0.99.96 : correction de Ø de l'opération, ajoutée à celle de l'outil
+    const rK=faoRow();
+    rK.appendChild(faoLab('Correction Ø'));
+    rK.appendChild(faoNumFx(op,'dCor',faoDCorVal(op.dCor),function(v){const c=faoDCorVal(v);if(c)op.dCor=c;else delete op.dCor;},60,0.005,
+      'Correction du Ø pour CETTE opération (mm, + ou −), ajoutée à celle de la fiche de l’outil. + : la fraise est vue plus grosse, il reste plus de matière sur les parois ; − : elle est vue plus petite, elle en enlève plus (une paroi extérieure sort plus petite, un alésage plus grand).'));
+    const tc=faoToolDCor(t),tot=faoOpDCor(op,t),sg=function(v){return (v>0?'+':'')+(+v.toFixed(4));};
+    const tk=document.createElement('span');tk.className='fao-meta';
+    tk.textContent=(tc?'outil '+sg(tc)+' · ':'')+(tot?'Ø de calcul '+(+faoOpToolD(op,t).toFixed(4))+' ('+sg(tot)+')':'Ø de calcul '+t.d+' (aucune correction)');
+    if(tot)tk.style.color='#ff9f0a';
+    rK.appendChild(tk);
+    box.appendChild(rK);
+  }
   if(faoToolIsSlot(t)&&!faoContourProfil(op)&&!faoSlotCut(op)){ // V0.99.85
     const n3=document.createElement('div');n3.className='fao-alert';
     n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) et en Découpe 3 tailles : cette opération ne produit aucun parcours avec elle.';

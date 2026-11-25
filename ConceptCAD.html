@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.95';
+const APP_VER='V0.99.96';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -52345,7 +52345,10 @@ function faoSanitiseOps(s){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;
   }
+  // V0.99.96 : correction de Ø (outil, opération) — nombre non nul borné, sinon retirée
+  (s.tools||[]).forEach(function(t){ if(t&&t.dCor!==undefined){ const c=faoDCorVal(t.dCor); if(c)t.dCor=c; else delete t.dCor; } });
   (s.ops||[]).forEach(function(op){
+    if(op&&op.dCor!==undefined){ const c=faoDCorVal(op.dCor); if(c)op.dCor=c; else delete op.dCor; }
     if(!op.id)op.id=faoNewId('op');
     if(op.on===undefined)op.on=true;
     faoHtsClean(op); // V0.26.0 : références Haut/Bas
@@ -54950,6 +54953,9 @@ function faoOpMovesKey(op,job){
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
       if(op.type==='geofinish'&&op.traj==='scallop')dep=['restant-zone',dep]; }
+    // V0.99.96 : profils (contour, chanfrein, contour 3 tailles) — congés en G2 / G3 : seules ces
+    // opérations sont à refaire (CACHE_VER inchangé)
+    if(op&&(faoContourProfil(op)||op.type==='chamfer'))dep=['arcs-g2g3',dep];
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -55435,7 +55441,9 @@ function* faoOpMovesIt0(op,job){
     if(ch&&op&&op.stale===true&&op.type!=='drill')return faoZoneServe(ch,op,job,secu);
   }
   const tool=faoToolById(job,op&&op.toolId);
-  const D=isFinite(+tool.d)&&+tool.d>0?+tool.d:10;
+  // V0.99.96 : Ø de calcul = Ø de la fiche + correction (outil + opération, fraises cylindriques et
+  // toriques — src/89-fao-outils.js faoOpToolD) ; sans correction : Ø de la fiche, comme avant
+  const D=faoOpToolD(op,tool);
   const sortie=(isFinite(+((job||{}).secu))?+job.secu:5);
   const base={toolD:D, secu:secu, sortie:sortie};
   const RA=faoRA(op||{});
@@ -55475,6 +55483,7 @@ function* faoOpMovesIt0(op,job){
         slotH:op.slotH,dz:op.slotDz,dr:op.slotDr,
         lead:op.slotLead,lin:op.slotLin,lout:op.slotLout, // V0.99.89 : entrée droite
         clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null,part:ob?ob.part:null})); // V0.99.91 : pièce seule
+      if(mv&&mv.length&&mv.arcC){ try{ mv=faoFitArcsMoves(mv,mv.arcC); }catch(e){} } // V0.99.96 : G2 / G3
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
     else if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3){
@@ -55483,6 +55492,7 @@ function* faoOpMovesIt0(op,job){
         radial:RA.radial,axial:RA.axial,side:op.cside,sens:op.sens==='opp'?'opp':'climb',
         leadR:op.leadR,overlap:op.overlap,tabN:op.tabN,tabW:op.tabW,tabH:op.tabH,
         descente:op.descente,penteTour:op.penteTour}));
+      const arcC=mv&&mv.arcC; // V0.99.96 : centres des arcs (congés, coins, entrées)
       // V0.99.18 : fraise dans le vide (hors brut, ou matière déjà enlevée par les opérations
       // précédentes) -> rapide jusqu'au prochain point d'entrée en matière
       if(faoContourVideOn(op)&&mv&&mv.length){
@@ -55490,6 +55500,8 @@ function* faoOpMovesIt0(op,job){
         try{ const mat=faoContourMatFn(op,job,D,RA.radial,isFinite(+op.fin)?+op.fin:0);
           if(mat){ mv=faoContourTrimAir(mv,mat,D); if(dg){ dg.vide=mv.vide; mv.diag=dg; } } }catch(e){}
       }
+      // V0.99.96 : congés en G2 / G3 (src/89-fao-arcs.js), après le saut du vide (qui découpe en droites)
+      if(arcC&&mv&&mv.length){ try{ mv=faoFitArcsMoves(mv,arcC); }catch(e){} }
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
   }
@@ -58082,7 +58094,9 @@ function faoOpLabel(op,job){
   if(!op)return '?';
   const t=op.type;
   const tool=job?faoToolById(job,op.toolId):null;
-  const tag=tool?(' [T'+tool.num+' D'+tool.d+']'):'';
+  // V0.99.96 : correction de Ø (outil + opération) rappelée dans le libellé et le programme
+  const dc=(tool&&typeof faoOpDCor==='function')?faoOpDCor(op,tool):0;
+  const tag=tool?(' [T'+tool.num+' D'+tool.d+(dc?(' corr '+(dc>0?'+':'')+dc):'')+']'):'';
   const off=(op&&op.on===false)?' (désactivée)':'';
   const RA=faoRA(op||{});
   const ra=((op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='facing'))&&(RA.radial>0||RA.axial>0))?(' R'+RA.radial+' A'+RA.axial):'';
@@ -73210,6 +73224,219 @@ function faoChainOk(){
 }
 try{ faoInitUI(); }catch(e){}
 
+/* ═══════════════ 89-fao-arcs.js — fao arcs ═══════════════ */
+/* ================================================================
+   FAO : ARCS G2 / G3 SUR LES PROFILS (V0.99.96)
+   ----------------------------------------------------------------
+   Demande de Fred sur Renfort.conceptcad (opération 3, Contour) : « les congés ne sont
+   pas passés en interpolation circulaire mais linéaire, ce qui a fait qu'ils sont
+   facétisés … il faut l'utiliser le plus souvent possible cette interpolation circulaire ».
+   La chaîne d'arêtes arrive en POINTS (un congé R5 = 9 cordes de 10°, flèche 0,019 mm) ;
+   le contour décalait ces cordes et sortait une suite de G1 : facettes sur la pièce.
+   1. faoLoopArcs     : arcs de la boucle — au moins 3 cordes dont les sommets sont sur un
+                        même cercle (1,5 µm : coordonnées gardées au µm), cordes de 20° au
+                        plus (au-delà : un polygone), toujours dans le même sens ; centre et
+                        rayon ajustés sur tous les sommets (moindres carrés) ;
+   2. faoLoopArcDense : ces arcs re-découpés sur le VRAI cercle (flèche ≤ 0,2 µm) avant le
+                        décalage — la passe décalée est alors un cercle exact (R ± rayon) ;
+   3. faoArcCenters   : centres connus — arcs de la boucle et coins vifs (le décalage les
+                        arrondit au rayon de l'outil) ; entrées / sorties ajoutent le leur ;
+   4. faoFitArcsMoves : une suite de coupes (2 segments au moins) dont les points sont à la
+                        même distance d'un centre connu (2 µm), qui tourne toujours dans le
+                        même sens, en cordes de flèche ≤ 2 µm, devient UN bloc G2 / G3
+                        (180° au plus) ; Z constant ou linéaire (hélice de la descente en
+                        pente) ; centre recalé sur la médiatrice départ / arrivée (rayons
+                        égaux au départ et à l'arrivée, comme l'exigent les CN).
+   ================================================================ */
+const FAO_ARC_TOL=0.002;        // mm — écart des points au cercle, flèche des cordes remplacées
+const FAO_ARC_LOOP_TOL=0.0015;  // mm — sommets de la boucle (arrondis au µm)
+const FAO_ARC_MAXSTEP=20*Math.PI/180; // une corde de boucle couvre au plus 20°
+const FAO_ARC_DENSE_SAG=0.0002; // mm — flèche des cordes de la boucle re-découpée
+function faoCircle3(a,b,c){
+  // cercle par 3 points (repère local en a : précision au-delà de 100 mm) ; null si alignés
+  const bx=b[0]-a[0],by=b[1]-a[1],cx=c[0]-a[0],cy=c[1]-a[1];
+  const d=2*(bx*cy-by*cx);
+  if(!(Math.abs(d)>1e-12))return null;
+  const b2=bx*bx+by*by,c2=cx*cx+cy*cy;
+  const ux=(cy*b2-by*c2)/d,uy=(bx*c2-cx*b2)/d;
+  return {x:a[0]+ux,y:a[1]+uy,r:Math.hypot(ux,uy)};
+}
+function faoCircleFit(P){
+  // cercle des moindres carrés algébriques (Kasa), centré sur la moyenne ; null si dégénéré
+  const n=P.length;if(n<3)return null;
+  let mx=0,my=0;for(let i=0;i<n;i++){mx+=P[i][0];my+=P[i][1];}mx/=n;my/=n;
+  let suu=0,svv=0,suv=0,suuu=0,svvv=0,suvv=0,svuu=0;
+  for(let i=0;i<n;i++){const u=P[i][0]-mx,v=P[i][1]-my;
+    suu+=u*u;svv+=v*v;suv+=u*v;suuu+=u*u*u;svvv+=v*v*v;suvv+=u*v*v;svuu+=v*u*u;}
+  const det=suu*svv-suv*suv;
+  if(!(Math.abs(det)>1e-18))return null;
+  const b1=(suuu+suvv)/2,b2=(svvv+svuu)/2;
+  const uc=(b1*svv-b2*suv)/det,vc=(suu*b2-suv*b1)/det;
+  const r=Math.sqrt(uc*uc+vc*vc+(suu+svv)/n);
+  return isFinite(r)?{x:uc+mx,y:vc+my,r:r}:null;
+}
+function faoLoopArcs(loop){
+  // -> {P (sommets, sans le point de fermeture), n, arcs:[{a,b,x,y,r,ccw}]} — a..b : indices de
+  //    sommets (b > a, peut dépasser n : boucle cyclique) ; null si la boucle est trop courte
+  if(!Array.isArray(loop)||loop.length<5)return null;
+  const P=[];
+  for(let i=0;i<loop.length;i++){const x=+loop[i][0],y=+loop[i][1];if(!isFinite(x)||!isFinite(y))return null;P.push([x,y]);}
+  if(Math.hypot(P[0][0]-P[P.length-1][0],P[0][1]-P[P.length-1][1])<1e-6)P.pop();
+  const n=P.length;
+  if(n<4)return null;
+  const at=function(k){return P[((k%n)+n)%n];};
+  const fit=function(i,j){
+    // sommets i..j (j−i cordes) sur un même cercle ? -> {x,y,r,ccw} ou null
+    // 3 points les plus écartés : bouts et milieu ; tour complet (bouts confondus) : au tiers
+    let C=j-i>=n?faoCircle3(at(i),at(i+Math.floor(n/3)),at(i+Math.floor(2*n/3))):faoCircle3(at(i),at((i+j)>>1),at(j));
+    if(!C||!(C.r>=0.05&&C.r<=1e4))return null;
+    if(j-i>=3){const Q=[];for(let k=i;k<=j;k++)Q.push(at(k));const L=faoCircleFit(Q);if(L&&L.r>=0.05&&L.r<=1e4)C=L;}
+    const chMax=2*C.r*Math.sin(FAO_ARC_MAXSTEP/2)+1e-9;
+    let sg=0,sw=0;
+    for(let k=i;k<=j;k++){const q=at(k);if(Math.abs(Math.hypot(q[0]-C.x,q[1]-C.y)-C.r)>FAO_ARC_LOOP_TOL)return null;}
+    for(let k=i;k<j;k++){
+      const q=at(k),w=at(k+1);
+      const ax=q[0]-C.x,ay=q[1]-C.y,bx=w[0]-C.x,by=w[1]-C.y;
+      const cr=ax*by-ay*bx,s=cr>1e-15?1:(cr<-1e-15?-1:0);
+      if(!s)return null;
+      if(!sg)sg=s;else if(s!==sg)return null;
+      if(Math.hypot(w[0]-q[0],w[1]-q[1])>chMax)return null;
+      sw+=Math.abs(Math.atan2(cr,ax*bx+ay*by));
+    }
+    if(sw>2*Math.PI+1e-6)return null;
+    return {x:C.x,y:C.y,r:C.r,ccw:sg>0};
+  };
+  const arcs=[];
+  let i=0;
+  while(i+3<=n){
+    let j=i+3,f=fit(i,j);
+    if(!f){i++;continue;}
+    while(j+1<=n){const g=fit(i,j+1);if(!g)break;f=g;j++;}
+    arcs.push({a:i,b:j,x:f.x,y:f.y,r:f.r,ccw:f.ccw});
+    i=j;
+  }
+  // arc à cheval sur le départ de la boucle : les deux morceaux n'en font qu'un
+  if(arcs.length>=2){
+    const A=arcs[0],Z=arcs[arcs.length-1];
+    if(A.a===0&&Z.b===n&&A.ccw===Z.ccw&&Math.hypot(A.x-Z.x,A.y-Z.y)<4*FAO_ARC_LOOP_TOL&&Math.abs(A.r-Z.r)<4*FAO_ARC_LOOP_TOL){
+      const g=fit(Z.a,n+A.b);
+      if(g){arcs.pop();arcs[0]={a:Z.a,b:n+A.b,x:g.x,y:g.y,r:g.r,ccw:g.ccw};}
+    }
+  }
+  return {P:P,n:n,arcs:arcs};
+}
+function faoLoopArcDense(loop){
+  // -> {loop (re-découpée, refermée), centers:[{x,y,r}]} ; boucle inchangée si aucun arc
+  const LA=faoLoopArcs(loop);
+  if(!LA)return {loop:loop,centers:[],arcs:0};
+  const P=LA.P,n=LA.n,arcs=LA.arcs;
+  const at=function(k){return P[((k%n)+n)%n];};
+  const centers=arcs.map(function(A){return {x:A.x,y:A.y,r:A.r};});
+  // coins vifs (hors arcs) : le décalage les arrondit autour du sommet
+  const inArc=new Uint8Array(n);
+  arcs.forEach(function(A){for(let k=A.a+1;k<A.b;k++)inArc[((k%n)+n)%n]=1;});
+  for(let k=0;k<n;k++){
+    if(inArc[k])continue;
+    const p=at(k-1),q=at(k),w=at(k+1);
+    const ux=q[0]-p[0],uy=q[1]-p[1],vx=w[0]-q[0],vy=w[1]-q[1];
+    const t=Math.abs(Math.atan2(ux*vy-uy*vx,ux*vx+uy*vy));
+    if(t>2*Math.PI/180)centers.push({x:q[0],y:q[1],r:0});
+  }
+  if(!arcs.length)return {loop:loop,centers:centers,arcs:0};
+  // départ : un sommet hors de tout arc (sinon le début du premier arc — cercle complet)
+  let s=-1;
+  for(let k=0;k<n&&s<0;k++)if(!inArc[k]&&!arcs.some(function(A){return ((A.a%n)+n)%n===k;}))s=k;
+  if(s<0)s=((arcs[0].a%n)+n)%n;
+  const byStart=new Map();arcs.forEach(function(A){byStart.set(((A.a%n)+n)%n,A);});
+  const out=[];
+  let k=s;
+  while(k<s+n){
+    const A=byStart.get(((k%n)+n)%n);
+    out.push(at(k).slice());
+    if(A){
+      const q0=at(A.a),q1=at(A.b);
+      const a0=Math.atan2(q0[1]-A.y,q0[0]-A.x);
+      let sw=Math.atan2(q1[1]-A.y,q1[0]-A.x)-a0;
+      if(A.ccw){while(sw<=1e-12)sw+=2*Math.PI;}else{while(sw>=-1e-12)sw-=2*Math.PI;}
+      if(A.b-A.a>=n)sw=A.ccw?2*Math.PI:-2*Math.PI; // cercle complet
+      const c=1-FAO_ARC_DENSE_SAG/A.r;
+      let st=2*Math.acos(c>1?1:(c<-1?-1:c));
+      if(!(st>0))st=Math.PI/180;
+      st=Math.max(0.25*Math.PI/180,Math.min(st,Math.PI/180*2));
+      const m=Math.min(2880,Math.max(2,Math.ceil(Math.abs(sw)/st)));
+      for(let q=1;q<m;q++){const a=a0+sw*q/m;out.push([A.x+A.r*Math.cos(a),A.y+A.r*Math.sin(a)]);}
+      k+=Math.max(1,A.b-A.a);
+    }else k++;
+  }
+  out.push(out[0].slice());
+  return {loop:out,centers:centers,arcs:arcs.length};
+}
+function faoFitArcsMoves(mv,centers,opt){
+  // Coupes consécutives sur un cercle de centre connu -> blocs G2 / G3 (voir l'en-tête).
+  if(!Array.isArray(mv)||mv.length<3||!Array.isArray(centers)||!centers.length)return mv;
+  const tol=(opt&&+opt.tol>0)?+opt.tol:FAO_ARC_TOL;
+  const minSeg=(opt&&+opt.minSeg>=2)?Math.round(+opt.minSeg):2;
+  const rnd=function(v){return Math.round(v*10000)/10000;};
+  const C=centers.filter(function(c){return c&&isFinite(+c.x)&&isFinite(+c.y);});
+  const plain=function(m){return m&&!m.r&&!m.arc&&isFinite(+m.x)&&isFinite(+m.y)&&isFinite(+m.z);};
+  const out=[];let nArc=0;
+  let prev=null,i=0;
+  while(i<mv.length){
+    const m=mv[i];
+    if(!prev||!plain(m)||!isFinite(+prev.x)){out.push(m);prev=m;i++;continue;}
+    const ent=m.ent?1:0;
+    let best=null;
+    for(let c=0;c<C.length;c++){
+      const cx=+C[c].x,cy=+C[c].y;
+      const r0=Math.hypot(prev.x-cx,prev.y-cy);
+      if(!(r0>0.01))continue;
+      if(Math.abs(Math.hypot(m.x-cx,m.y-cy)-r0)>tol)continue;
+      // flèche des cordes remplacées : 2,5 × tol (la simplification laisse déjà 2 µm) ; points
+      // tirés du cercle lui-même (entrées / sorties, C.ex) : cordes de 45° au plus
+      const sagMax=C[c].ex?1/0:2.5*tol;
+      // extension : même rayon, même sens, cordes courtes, 180° au plus
+      let k=i,sw=0,dir=0,qx=+prev.x,qy=+prev.y;
+      const sws=[0];
+      while(k<mv.length){
+        const p=mv[k];
+        if(!plain(p)||(p.ent?1:0)!==ent)break;
+        if(Math.abs(Math.hypot(p.x-cx,p.y-cy)-r0)>tol)break;
+        const ax=qx-cx,ay=qy-cy,bx=p.x-cx,by=p.y-cy;
+        const phi=Math.atan2(ax*by-ay*bx,ax*bx+ay*by);
+        if(!(Math.abs(phi)>1e-7))break;
+        const s=phi>0?1:-1;
+        if(dir&&s!==dir)break;
+        if(r0*(1-Math.cos(phi/2))>sagMax||Math.abs(phi)>Math.PI/4)break;
+        if(sw+Math.abs(phi)>Math.PI-1e-6)break;
+        dir=s;sw+=Math.abs(phi);sws.push(sw);qx=+p.x;qy=+p.y;k++;
+      }
+      // Z linéaire le long de l'arc (plan ou hélice) : on raccourcit jusqu'à ce qu'il le soit
+      let e=k-1;
+      while(e-i+1>=minSeg){
+        const z0=+prev.z,z1=+mv[e].z,tot=sws[e-i+1];
+        let ok=true;
+        for(let q=i;q<e&&ok;q++)if(Math.abs(+mv[q].z-(z0+(z1-z0)*sws[q-i+1]/tot))>tol)ok=false;
+        if(ok)break;
+        e--;
+      }
+      const nSeg=e-i+1;
+      if(nSeg>=minSeg&&(!best||nSeg>best.n))best={n:nSeg,e:e,cx:cx,cy:cy,cw:dir<0};
+    }
+    if(!best){out.push(m);prev=m;i++;continue;}
+    // centre recalé sur la médiatrice départ / arrivée : même rayon aux deux bouts
+    const E=mv[best.e],sx=+prev.x,sy=+prev.y,ex=+E.x,ey=+E.y;
+    const mx=(sx+ex)/2,my=(sy+ey)/2,L=Math.hypot(ex-sx,ey-sy);
+    let cx=best.cx,cy=best.cy;
+    if(L>1e-9){const ux=-(ey-sy)/L,uy=(ex-sx)/L,t=(cx-mx)*ux+(cy-my)*uy;cx=mx+ux*t;cy=my+uy*t;}
+    const q=Object.assign({},E,{x:rnd(ex),y:rnd(ey),z:rnd(+E.z),arc:{i:rnd(cx-sx),j:rnd(cy-sy),cw:best.cw}});
+    if(ent)q.ent=1;
+    out.push(q);prev=q;nArc++;i=best.e+1;
+  }
+  try{ if(mv.diag)out.diag=mv.diag; if(mv.vide)out.vide=mv.vide; }catch(e){}
+  try{ if(out.diag)out.diag.arcs=nArc; }catch(e){}
+  return out;
+}
+
 /* ═══════════════ 89-fao-chanfrein.js — fao chanfrein ═══════════════ */
 /* ---------- FAO : opération CHANFREIN (V0.7.9) ----------
    « L'opération Poche n'a pas l'air utile car l'Ébauche 3D fait aussi bien le travail. Il faudrait la
@@ -73337,6 +73564,8 @@ function faoGenChamfer(mesh,op,job,secu){
     overlap:isFinite(+op.overlap)&&+op.overlap>=0?+op.overlap:1,tabN:0,secu:secu});
   const diag=mv&&mv.diag;
   if(Z3&&mv&&mv.length){mv=faoChamferDrape(mv,Z3.pts,drop,0.5);try{mv.diag=diag;}catch(e){}}
+  // V0.99.96 : chanfrein plan — arcs de l'arête en G2 / G3 (src/89-fao-arcs.js)
+  else if(mv&&mv.length&&mv.arcC){ try{ mv=faoFitArcsMoves(mv,mv.arcC); }catch(e){} }
   try{ if(diag){ diag.chamfer={zTip:+(zTop-drop).toFixed(3),d:+G.d.toFixed(3),b:+G.b.toFixed(3),rho:+G.rho.toFixed(3)};
     if(Z3)diag.chamfer.z3=[+Z3.zMin.toFixed(3),+Z3.zMax.toFixed(3)];
     op.geoDiag=diag; } }catch(e){}
@@ -73412,12 +73641,34 @@ function faoChamferRows(d,setup,op){
       'Ajoute à la liste d’outils une fraise à chanfreiner Ø6 à 90° (pointe Ø0,5) et l’affecte à cette opération.'));
     d.appendChild(rb);
   }else if(G){
+    // V0.99.96 (Renfort : « le chanfrein est presque inexistant… Le calcul est fait / à la pointe de
+    // la fraise ? ») : Ø de pointe de l'outil modifiable ici, Z donné au BOUT de l'outil, et ce que
+    // donnerait une pointe vive si le méplat déclaré n'existe pas
+    if(t.kind==='chamfer'){
+      const rP=faoRow();
+      rP.appendChild(faoLab('Ø de pointe'));
+      const iP=faoNum(+(2*G.rt).toFixed(3),function(v){ if(v>=0)t.dt=Math.max(0,Math.min(v,(+t.d||6)*0.9)); },52,0.1,'Diamètre du méplat au bout de la fraise à chanfreiner T'+t.num+' (0 = pointe vive). C’est la valeur de la fiche de l’outil : la changer ici la change pour toutes ses opérations.');
+      rP.appendChild(iP);
+      const nP=document.createElement('span');nP.className='fao-meta';
+      nP.textContent='fiche de l’outil T'+t.num+(G.rt>0?' · méplat au bout':' · pointe vive');
+      rP.appendChild(nP);
+      d.appendChild(rP);
+    }
     n.className=G.ok?'fao-help':'fao-alert';
     n.textContent=(G.ok?'':'⚠ '+G.warn+'. ')+'Outil '+G.ang+'°'+(G.rt>0?' pointe Ø'+(2*G.rt).toFixed(2):' pointe vive')+
       ' : chanfrein '+G.a.toFixed(2)+' × '+G.b.toFixed(2)+' mm ; pointe '+
       (Z3?(G.b+G.t).toFixed(3)+' mm sous l’arête (parcours 3D, axe outil en Z)':'à Z '+faoDsp(op,G.zTip,2))+
-      ', axe à '+G.d.toFixed(3)+' mm de l’arête ; contact haut sur Ø'+(2*G.rho).toFixed(2)+'.';
+      ', axe à '+G.d.toFixed(3)+' mm de l’arête ; contact haut sur Ø'+(2*G.rho).toFixed(2)+'.'+
+      ' Le Z est celui du BOUT de l’outil'+(G.rt>0?' (méplat Ø'+(2*G.rt).toFixed(2)+')':'')+', là où la CN mesure sa longueur.';
     d.appendChild(n);
+    if(G.rt>0){
+      // pointe vive au lieu du méplat : flanc à rt de moins à chaque hauteur -> largeur a − rt
+      const aV=Math.max(0,G.a-G.rt);
+      const w=document.createElement('div');w.className='fao-note';
+      w.textContent='Si la pointe réelle de T'+t.num+' est vive, mettez Ø de pointe = 0 : avec Ø'+(2*G.rt).toFixed(2)+
+        ' déclaré, le flanc passe '+G.rt.toFixed(2)+' mm trop loin et le chanfrein ne ferait que '+aV.toFixed(2)+' mm au lieu de '+G.a.toFixed(2)+'.';
+      d.appendChild(w);
+    }
   }
 }
 
@@ -73556,6 +73807,10 @@ function faoGenContourSlot(mesh,loop0,o){
     if(Math.hypot(a[0]-b[0],a[1]-b[1])>1e-6)loop.push([a[0],a[1]]);}
   let ar=0;for(let i=0;i+1<loop.length;i++)ar+=loop[i][0]*loop[i+1][1]-loop[i+1][0]*loop[i][1];
   if(ar<0)loop=loop.slice().reverse();
+  // V0.99.96 : arcs de la chaîne re-découpés sur le vrai cercle ; centres gardés pour les G2 / G3
+  let arcC=null;
+  try{ const DA=faoLoopArcDense(loop); if(DA&&DA.loop&&DA.loop.length>=4){ loop=DA.loop; arcC=DA.centers; } }catch(e){ arcC=null; }
+  try{ moves.arcC=arcC; }catch(e){}
   // --- côté matière : section au milieu de la tranche du disque (dans la rainure)
   let side=o.side==='ext'||o.side==='int'?o.side:null;
   if(!side&&mesh){
@@ -73639,6 +73894,7 @@ function faoGenContourSlot(mesh,loop0,o){
     for(let k=0;k<=N;k++){const th=k/N*Math.PI/2;
       if(isIn)pts.push([C[0]-R*(t[0]*Math.cos(th)+nf[0]*Math.sin(th)),C[1]-R*(t[1]*Math.cos(th)+nf[1]*Math.sin(th))]);
       else pts.push([C[0]+R*(-nf[0]*Math.cos(th)+t[0]*Math.sin(th)),C[1]+R*(-nf[1]*Math.cos(th)+t[1]*Math.sin(th))]);}
+    pts.c=C; // V0.99.96 : centre de l'arc d'entrée / sortie
     return pts;
   };
   const arcOK=function(pts,d){
@@ -73654,7 +73910,7 @@ function faoGenContourSlot(mesh,loop0,o){
   if(straight){diag.lineN=0;diag.perpN=0;}
   const leadArc=function(P,t,nf,d,isIn){
     if(straight)return null;
-    for(let R=leadR;R>=0.5;R*=0.6){const a=arcPts(P,t,nf,R,isIn);if(arcOK(a,d))return a;}
+    for(let R=leadR;R>=0.5;R*=0.6){const a=arcPts(P,t,nf,R,isIn);if(arcOK(a,d)){if(arcC)arcC.push({x:a.c[0],y:a.c[1],ex:1});return a;}}
     return null;
   };
   // sortie à l'air : de P, le long de la normale côté libre, jusqu'au premier point où le
@@ -73925,6 +74181,16 @@ function faoGenContourProfil(mesh,loop0,o){
     if(Math.hypot(a[0]-b[0],a[1]-b[1])>1e-6)loop.push([a[0],a[1]]);}
   let ar=0;for(let i=0;i+1<loop.length;i++)ar+=loop[i][0]*loop[i+1][1]-loop[i+1][0]*loop[i][1];
   if(ar<0)loop=loop.slice().reverse();
+  // V0.99.96 : congés et arcs de la chaîne retrouvés et re-découpés sur le VRAI cercle avant le
+  // décalage ; leurs centres (et ceux des coins vifs) servent ensuite aux blocs G2 / G3
+  // (faoFitArcsMoves, src/89-fao-arcs.js) — o.arcs === false : boucle telle quelle
+  let arcC=null;
+  if(o.arcs!==false){
+    try{ const DA=faoLoopArcDense(loop); if(DA&&DA.loop&&DA.loop.length>=4){ loop=DA.loop; arcC=DA.centers; diag.arcsBoucle=DA.arcs; } }catch(e){ arcC=null; }
+  }
+  const arcCk=new Set();
+  const arcCAdd=function(c){ if(!arcC||!c)return; const k=c[0].toFixed(4)+','+c[1].toFixed(4); if(arcCk.has(k))return; arcCk.add(k); arcC.push({x:c[0],y:c[1],ex:1}); };
+  try{ moves.arcC=arcC; }catch(e){}
   // --- côté matière : section à mi-hauteur, parité de part et d'autre
   let side=o.side==='ext'||o.side==='int'?o.side:null;
   if(!side&&mesh){
@@ -74005,6 +74271,7 @@ function faoGenContourProfil(mesh,loop0,o){
     for(let k=0;k<=N;k++){const th=k/N*Math.PI/2;
       if(isIn)pts.push([C[0]-R*(t[0]*Math.cos(th)+nf[0]*Math.sin(th)),C[1]-R*(t[1]*Math.cos(th)+nf[1]*Math.sin(th))]);
       else pts.push([C[0]+R*(-nf[0]*Math.cos(th)+t[0]*Math.sin(th)),C[1]+R*(-nf[1]*Math.cos(th)+t[1]*Math.sin(th))]);}
+    pts.c=C; // V0.99.96 : centre de l'entrée / sortie (bloc G2 / G3)
     return pts;
   };
   const arcOK=function(pts,d){
@@ -74063,6 +74330,8 @@ function faoGenContourProfil(mesh,loop0,o){
     let lin=null,lout=null;
     for(let R=leadR;R>=0.5&&!lin;R*=0.6){const a=arcPts(pts[0],t0,nf0,R,true);if(arcOK(a,d))lin=a;}
     for(let R=leadR;R>=0.5&&!lout;R*=0.6){const a=arcPts(pts[pts.length-1],t1,nf1,R,false);if(arcOK(a,d))lout=a;}
+    if(lin)arcCAdd(lin.c);
+    if(lout)arcCAdd(lout.c);
     const S=lin?lin[0]:pts[0];
     // approche : dégagement, rapide au-dessus du départ, plongée en avance
     if(!cur){push({r:1,x:S[0],y:S[1],z:secu});if(zClear<secu-1e-9)push({r:1,x:S[0],y:S[1],z:zClear});}
@@ -78708,7 +78977,32 @@ function faoToolKeyObj(t){
   // V0.99.85 : fraise 3 tailles — l'épaisseur règle les passes en hauteur, le col les alertes
   // (fiches des autres outils : clé inchangée)
   if(t.kind==='slot'){ const g=faoToolDims(t); o.ep=g.lc.v; o.col=g.dDeg.v; }
+  // V0.99.96 : fraise à chanfreiner / foret à pointer — l'angle et le Ø de pointe placent le
+  // chanfrein (avant, les changer ne refaisait pas le parcours : l'ancien restait servi)
+  if(t.kind==='chamfer'||t.kind==='spot'){ o.ang=faoToolAngle(t); if(t.kind==='chamfer')o.dt=isFinite(+t.dt)&&+t.dt>=0?+t.dt:0.5; }
+  // V0.99.96 : correction de Ø de la fraise (cylindrique, torique) — absente = clé inchangée
+  const dc=faoToolDCor(t); if(dc)o.dCor=dc;
   return o;
+}
+/* ----- V0.99.96 : CORRECTION DE Ø (demande de Fred : « dès que l'on parle de fraise
+   cylindrique/torique, il faut pouvoir ajouter un paramètre pour induire un diamètre de fraise
+   + grand ou - grand. cela se joue des fois à +/-0.035 », réglée « dans les deux » : l'outil et
+   l'opération, qui s'additionnent). Les parcours sont calculés avec Ø + correction (comme si la
+   fraise était plus grosse ou plus petite) : + = plus de matière laissée sur les parois.
+   Fraises cylindriques et toriques seulement ; l'affichage de l'outil garde le Ø de la fiche. */
+function faoToolDCorOk(t){ return !!(t&&(t.kind==='flat'||t.kind==='bull'||!t.kind)); }
+function faoDCorVal(v){ v=+v; return isFinite(v)&&Math.abs(v)>1e-9?Math.max(-2,Math.min(2,Math.round(v*10000)/10000)):0; } // ±2 mm au plus
+function faoToolDCor(t){ return faoToolDCorOk(t)?faoDCorVal(t.dCor):0; }
+function faoOpDCor(op,t){
+  // correction totale de l'opération (outil + opération) ; 0 hors fraise cylindrique / torique
+  if(!faoToolDCorOk(t))return 0;
+  return Math.round((faoToolDCor(t)+faoDCorVal(op&&op.dCor))*10000)/10000;
+}
+function faoOpToolD(op,t){
+  // Ø de calcul des parcours : Ø de la fiche + correction (au moins 0,1 mm)
+  const D=(t&&isFinite(+t.d)&&+t.d>0)?+t.d:10;
+  const c=faoOpDCor(op,t);
+  return c?Math.max(0.1,Math.round((D+c)*10000)/10000):D;
 }
 const faoR1=function(v){ return Math.round(v*10)/10; };
 function faoToolDims(t){
@@ -78964,6 +79258,12 @@ function faoToolsElement(setup){
   const s2=sec('Géométrie (mm) — valeurs grisées = défaut calculé, à préciser');
   field(s2,t.kind==='center'?'Ø pilote d1':'Ø coupe',t.d,false,function(v){set('d',Math.max(0.1,v),'Ø outil');if(t.kind==='ball')t.cornerR=t.d/2;},'Diamètre de coupe',0.1);
   if(t.kind==='bull')field(s2,'Rayon de coin',t.cornerR||0,false,function(v){set('cornerR',Math.min(v,t.d/2),'rayon de coin');},'Rayon du coin torique',0.1);
+  if(faoToolDCorOk(t)){ // V0.99.96 : correction de Ø (± , 0 accepté)
+    const iK=field(s2,'Correction Ø',faoToolDCor(t),!faoToolDCor(t),function(){},
+      'Correction du Ø pour le calcul des parcours (mm, + ou −), par exemple −0,035 pour une D10 qui mesure 9,965. + : la fraise est vue plus grosse, il reste plus de matière sur les parois ; − : elle est vue plus petite, elle en enlève plus. Vaut pour toutes les opérations de cet outil ; chaque opération peut en ajouter une autre (onglet Outil).',0.005);
+    iK.onchange=function(){const v=parseFloat(String(iK.value).replace(',','.'));if(!isFinite(v))return;
+      faoSnapshot('correction de Ø');const c=faoDCorVal(v);if(c)t.dCor=c;else delete t.dCor;faoChanged();rerender();};
+  }
   if(t.kind==='tap'){
     const pT=document.createElement('label');pT.className='fao-tl-f';pT.innerHTML='<span>Filet</span>';
     const sT=document.createElement('select');sT.className='fao-sel';
@@ -78988,7 +79288,10 @@ function faoToolsElement(setup){
   }
   if(t.kind==='chamfer'){ // V0.7.9
     field(s2,'Angle',faoToolAngle(t),!(+t.ang>0),function(v){set('ang',Math.min(150,Math.max(30,v)),'angle de la fraise à chanfreiner');},'Angle inclus du cône (°) : 90 pour un chanfrein à 45°, 60, 120…',1,'°');
-    field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive)',0.1);
+    const iDt=field(s2,'Ø de pointe',isFinite(+t.dt)?+t.dt:0.5,!(+t.dt>=0),function(v){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');},'Diamètre du méplat en bout de la fraise à chanfreiner (0 = pointe vive). Le Z du chanfrein est donné au bout de l’outil : un Ø de pointe plus grand que le vrai donne un chanfrein plus petit.',0.1);
+    // V0.99.96 : 0 = pointe vive accepté (le champ commun refuse 0 : la pointe restait à Ø0,5 et le
+    // chanfrein de Renfort sortait à 0,05 au lieu de 0,3 — constat de Fred)
+    iDt.onchange=function(){const v=parseFloat(String(iDt.value).replace(',','.'));if(isFinite(v)&&v>=0){set('dt',Math.max(0,Math.min(v,(+t.d||6)*0.9)),'Ø de pointe');faoChanged();rerender();}};
   }
   field(s2,'Dents',t.flutes||2,false,function(v){set('flutes',Math.max(1,Math.round(v)),'nombre de dents');},'Nombre de dents (sert au calcul de F = fz × z × S)',1);
   const sl=faoToolIsSlot(t); // V0.99.85 : fraise 3 tailles — disque (épaisseur) au bout d'un col
@@ -79071,6 +79374,19 @@ function faoOpToolSection(setup,op){
   const info=document.createElement('div');info.className='fao-meta';
   info.textContent=faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')+' · '+(t.flutes||2)+' dents · '+(faoToolIsSlot(t)?('épaisseur '+g.lc.v+' · col Ø'+g.dDeg.v):('Lc '+g.lc.v))+' · sous mandrin '+g.lsm.v+' mm · Vc '+C.vc+' m/min';
   box.appendChild(info);
+  if(faoToolDCorOk(t)){
+    // V0.99.96 : correction de Ø de l'opération, ajoutée à celle de l'outil
+    const rK=faoRow();
+    rK.appendChild(faoLab('Correction Ø'));
+    rK.appendChild(faoNumFx(op,'dCor',faoDCorVal(op.dCor),function(v){const c=faoDCorVal(v);if(c)op.dCor=c;else delete op.dCor;},60,0.005,
+      'Correction du Ø pour CETTE opération (mm, + ou −), ajoutée à celle de la fiche de l’outil. + : la fraise est vue plus grosse, il reste plus de matière sur les parois ; − : elle est vue plus petite, elle en enlève plus (une paroi extérieure sort plus petite, un alésage plus grand).'));
+    const tc=faoToolDCor(t),tot=faoOpDCor(op,t),sg=function(v){return (v>0?'+':'')+(+v.toFixed(4));};
+    const tk=document.createElement('span');tk.className='fao-meta';
+    tk.textContent=(tc?'outil '+sg(tc)+' · ':'')+(tot?'Ø de calcul '+(+faoOpToolD(op,t).toFixed(4))+' ('+sg(tot)+')':'Ø de calcul '+t.d+' (aucune correction)');
+    if(tot)tk.style.color='#ff9f0a';
+    rK.appendChild(tk);
+    box.appendChild(rK);
+  }
   if(faoToolIsSlot(t)&&!faoContourProfil(op)&&!faoSlotCut(op)){ // V0.99.85
     const n3=document.createElement('div');n3.className='fao-alert';
     n3.textContent='⚠ La fraise 3 tailles ne sert qu’en Contour (profil d’arêtes) et en Découpe 3 tailles : cette opération ne produit aucun parcours avec elle.';
@@ -79971,13 +80287,18 @@ function faoDrillSections(setup,op,d){
   d.appendChild(rc);
   const rd=faoRow();
   if(op.cycle==='helix'){
-    const tH=faoToolById(setup,op.toolId),dT=(+tH.d>0)?+tH.d:6;
+    // V0.99.96 : Ø de calcul (correction de Ø de l'outil et de l'opération comprise)
+    const tH=faoToolById(setup,op.toolId),dT=(typeof faoOpToolD==='function')?faoOpToolD(op,tH):((+tH.d>0)?+tH.d:6);
     rd.appendChild(faoLab('Pas d’hélice'));
     rd.appendChild(faoNumFx(op,'helixP',(+op.helixP>0)?+op.helixP:+faoPasTourAuto(dT).toFixed(2),function(v){if(isFinite(v)&&v>0)op.helixP=v;else delete op.helixP;},48,0.1,
       'Descente par tour (mm). Valeur proposée : 10 % du Ø de la fraise, 0,5 mm au moins ; changez-la à volonté (vide ou 0 = revenir à la valeur proposée).'));
-    const h0=(op.holes||[])[0];
+    // V0.99.96 : « Parois » — matière laissée sur la paroi pour la finition de l'alésage
+    rd.appendChild(faoLab('Parois'));
+    rd.appendChild(faoNumFx(op,'radial',faoHelixWall(op),function(v){op.radial=Math.max(0,v);},44,0.05,
+      'Matière laissée sur la paroi du trou (mm, au rayon) pour la finition : alésoir, outil à aléser ou passe de finition. 0 = trou fraisé à la cote.'));
+    const h0=(op.holes||[])[0],wall=faoHelixWall(op);
     const nt=document.createElement('span');nt.className='fao-meta';
-    if(h0){const Rr=(h0.d-dT)/2;nt.textContent=Rr>0.02?('fraise Ø'+dT+' dans Ø'+(+h0.d.toFixed(2))+' · rayon de trajectoire '+Rr.toFixed(2)+(Rr>dT/2*0.9?' · plusieurs anneaux':'')+' · pas '+faoHelixPitch(op,Rr,dT).toFixed(2)):('⚠ fraise Ø'+dT+' trop grosse pour Ø'+(+h0.d.toFixed(2)));}
+    if(h0){const Rr=(h0.d-dT)/2-wall;nt.textContent=Rr>0.02?('fraise Ø'+(+dT.toFixed(4))+' dans Ø'+(+h0.d.toFixed(2))+(wall>0?' · laisse '+(+wall.toFixed(3))+' à la paroi (fraisé à Ø'+(+(h0.d-2*wall).toFixed(3))+')':'')+' · rayon de trajectoire '+Rr.toFixed(3)+(Rr>dT/2*0.9?' · plusieurs anneaux':'')+' · pas '+faoHelixPitch(op,Rr,dT).toFixed(2)):('⚠ fraise Ø'+(+dT.toFixed(4))+' trop grosse pour Ø'+(+h0.d.toFixed(2))+(wall>0?' avec '+(+wall.toFixed(3))+' laissé à la paroi':''));}
     rd.appendChild(nt);
   }else if(op.cycle==='tap'){
     rd.appendChild(faoLab('Longueur filetée'));
@@ -80553,10 +80874,16 @@ function faoHelixPitch(op,R,toolD){
   // proposée en mm/tour, la même que partout (10 % du Ø fraise, 0,5 mm au moins)
   return faoPasTourAuto(toolD);
 }
+function faoHelixWall(op){
+  // V0.99.96 : matière laissée sur la paroi du trou (« Parois », demande de Fred : « sur l'opération
+  // de perçage/lamage/alésage, il me faut ajouter Parois à Matière pour laisser la finition d'un alésage »)
+  const v=op?faoRA(op).radial:0;
+  return isFinite(v)&&v>0?v:0;
+}
 function faoGenHelixPlan(plan,toolD,op,secuAbs){
-  const moves=[],rt=toolD/2;
+  const moves=[],rt=toolD/2,wall=faoHelixWall(op);
   plan.forEach(function(p){
-    const Rf=(p.d-toolD)/2;
+    const Rf=(p.d-toolD)/2-wall;
     if(!(Rf>0.02))return; // fraise trop grosse : rien (signalé dans la fiche)
     const s=Math.max(+secuAbs||0,p.rfp+2);
     // anneaux : extérieur = Rf, pas radial ≤ 1,6 × rayon fraise, jusqu'à couvrir le centre

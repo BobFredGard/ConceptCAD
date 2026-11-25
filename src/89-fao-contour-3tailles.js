@@ -132,6 +132,10 @@ function faoGenContourSlot(mesh,loop0,o){
     if(Math.hypot(a[0]-b[0],a[1]-b[1])>1e-6)loop.push([a[0],a[1]]);}
   let ar=0;for(let i=0;i+1<loop.length;i++)ar+=loop[i][0]*loop[i+1][1]-loop[i+1][0]*loop[i][1];
   if(ar<0)loop=loop.slice().reverse();
+  // V0.99.96 : arcs de la chaîne re-découpés sur le vrai cercle ; centres gardés pour les G2 / G3
+  let arcC=null;
+  try{ const DA=faoLoopArcDense(loop); if(DA&&DA.loop&&DA.loop.length>=4){ loop=DA.loop; arcC=DA.centers; } }catch(e){ arcC=null; }
+  try{ moves.arcC=arcC; }catch(e){}
   // --- côté matière : section au milieu de la tranche du disque (dans la rainure)
   let side=o.side==='ext'||o.side==='int'?o.side:null;
   if(!side&&mesh){
@@ -215,6 +219,7 @@ function faoGenContourSlot(mesh,loop0,o){
     for(let k=0;k<=N;k++){const th=k/N*Math.PI/2;
       if(isIn)pts.push([C[0]-R*(t[0]*Math.cos(th)+nf[0]*Math.sin(th)),C[1]-R*(t[1]*Math.cos(th)+nf[1]*Math.sin(th))]);
       else pts.push([C[0]+R*(-nf[0]*Math.cos(th)+t[0]*Math.sin(th)),C[1]+R*(-nf[1]*Math.cos(th)+t[1]*Math.sin(th))]);}
+    pts.c=C; // V0.99.96 : centre de l'arc d'entrée / sortie
     return pts;
   };
   const arcOK=function(pts,d){
@@ -230,7 +235,7 @@ function faoGenContourSlot(mesh,loop0,o){
   if(straight){diag.lineN=0;diag.perpN=0;}
   const leadArc=function(P,t,nf,d,isIn){
     if(straight)return null;
-    for(let R=leadR;R>=0.5;R*=0.6){const a=arcPts(P,t,nf,R,isIn);if(arcOK(a,d))return a;}
+    for(let R=leadR;R>=0.5;R*=0.6){const a=arcPts(P,t,nf,R,isIn);if(arcOK(a,d)){if(arcC)arcC.push({x:a.c[0],y:a.c[1],ex:1});return a;}}
     return null;
   };
   // sortie à l'air : de P, le long de la normale côté libre, jusqu'au premier point où le

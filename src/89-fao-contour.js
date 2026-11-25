@@ -51,6 +51,16 @@ function faoGenContourProfil(mesh,loop0,o){
     if(Math.hypot(a[0]-b[0],a[1]-b[1])>1e-6)loop.push([a[0],a[1]]);}
   let ar=0;for(let i=0;i+1<loop.length;i++)ar+=loop[i][0]*loop[i+1][1]-loop[i+1][0]*loop[i][1];
   if(ar<0)loop=loop.slice().reverse();
+  // V0.99.96 : congés et arcs de la chaîne retrouvés et re-découpés sur le VRAI cercle avant le
+  // décalage ; leurs centres (et ceux des coins vifs) servent ensuite aux blocs G2 / G3
+  // (faoFitArcsMoves, src/89-fao-arcs.js) — o.arcs === false : boucle telle quelle
+  let arcC=null;
+  if(o.arcs!==false){
+    try{ const DA=faoLoopArcDense(loop); if(DA&&DA.loop&&DA.loop.length>=4){ loop=DA.loop; arcC=DA.centers; diag.arcsBoucle=DA.arcs; } }catch(e){ arcC=null; }
+  }
+  const arcCk=new Set();
+  const arcCAdd=function(c){ if(!arcC||!c)return; const k=c[0].toFixed(4)+','+c[1].toFixed(4); if(arcCk.has(k))return; arcCk.add(k); arcC.push({x:c[0],y:c[1],ex:1}); };
+  try{ moves.arcC=arcC; }catch(e){}
   // --- côté matière : section à mi-hauteur, parité de part et d'autre
   let side=o.side==='ext'||o.side==='int'?o.side:null;
   if(!side&&mesh){
@@ -131,6 +141,7 @@ function faoGenContourProfil(mesh,loop0,o){
     for(let k=0;k<=N;k++){const th=k/N*Math.PI/2;
       if(isIn)pts.push([C[0]-R*(t[0]*Math.cos(th)+nf[0]*Math.sin(th)),C[1]-R*(t[1]*Math.cos(th)+nf[1]*Math.sin(th))]);
       else pts.push([C[0]+R*(-nf[0]*Math.cos(th)+t[0]*Math.sin(th)),C[1]+R*(-nf[1]*Math.cos(th)+t[1]*Math.sin(th))]);}
+    pts.c=C; // V0.99.96 : centre de l'entrée / sortie (bloc G2 / G3)
     return pts;
   };
   const arcOK=function(pts,d){
@@ -189,6 +200,8 @@ function faoGenContourProfil(mesh,loop0,o){
     let lin=null,lout=null;
     for(let R=leadR;R>=0.5&&!lin;R*=0.6){const a=arcPts(pts[0],t0,nf0,R,true);if(arcOK(a,d))lin=a;}
     for(let R=leadR;R>=0.5&&!lout;R*=0.6){const a=arcPts(pts[pts.length-1],t1,nf1,R,false);if(arcOK(a,d))lout=a;}
+    if(lin)arcCAdd(lin.c);
+    if(lout)arcCAdd(lout.c);
     const S=lin?lin[0]:pts[0];
     // approche : dégagement, rapide au-dessus du départ, plongée en avance
     if(!cur){push({r:1,x:S[0],y:S[1],z:secu});if(zClear<secu-1e-9)push({r:1,x:S[0],y:S[1],z:zClear});}

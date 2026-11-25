@@ -844,13 +844,18 @@ function faoDrillSections(setup,op,d){
   d.appendChild(rc);
   const rd=faoRow();
   if(op.cycle==='helix'){
-    const tH=faoToolById(setup,op.toolId),dT=(+tH.d>0)?+tH.d:6;
+    // V0.99.96 : Ø de calcul (correction de Ø de l'outil et de l'opération comprise)
+    const tH=faoToolById(setup,op.toolId),dT=(typeof faoOpToolD==='function')?faoOpToolD(op,tH):((+tH.d>0)?+tH.d:6);
     rd.appendChild(faoLab('Pas d’hélice'));
     rd.appendChild(faoNumFx(op,'helixP',(+op.helixP>0)?+op.helixP:+faoPasTourAuto(dT).toFixed(2),function(v){if(isFinite(v)&&v>0)op.helixP=v;else delete op.helixP;},48,0.1,
       'Descente par tour (mm). Valeur proposée : 10 % du Ø de la fraise, 0,5 mm au moins ; changez-la à volonté (vide ou 0 = revenir à la valeur proposée).'));
-    const h0=(op.holes||[])[0];
+    // V0.99.96 : « Parois » — matière laissée sur la paroi pour la finition de l'alésage
+    rd.appendChild(faoLab('Parois'));
+    rd.appendChild(faoNumFx(op,'radial',faoHelixWall(op),function(v){op.radial=Math.max(0,v);},44,0.05,
+      'Matière laissée sur la paroi du trou (mm, au rayon) pour la finition : alésoir, outil à aléser ou passe de finition. 0 = trou fraisé à la cote.'));
+    const h0=(op.holes||[])[0],wall=faoHelixWall(op);
     const nt=document.createElement('span');nt.className='fao-meta';
-    if(h0){const Rr=(h0.d-dT)/2;nt.textContent=Rr>0.02?('fraise Ø'+dT+' dans Ø'+(+h0.d.toFixed(2))+' · rayon de trajectoire '+Rr.toFixed(2)+(Rr>dT/2*0.9?' · plusieurs anneaux':'')+' · pas '+faoHelixPitch(op,Rr,dT).toFixed(2)):('⚠ fraise Ø'+dT+' trop grosse pour Ø'+(+h0.d.toFixed(2)));}
+    if(h0){const Rr=(h0.d-dT)/2-wall;nt.textContent=Rr>0.02?('fraise Ø'+(+dT.toFixed(4))+' dans Ø'+(+h0.d.toFixed(2))+(wall>0?' · laisse '+(+wall.toFixed(3))+' à la paroi (fraisé à Ø'+(+(h0.d-2*wall).toFixed(3))+')':'')+' · rayon de trajectoire '+Rr.toFixed(3)+(Rr>dT/2*0.9?' · plusieurs anneaux':'')+' · pas '+faoHelixPitch(op,Rr,dT).toFixed(2)):('⚠ fraise Ø'+(+dT.toFixed(4))+' trop grosse pour Ø'+(+h0.d.toFixed(2))+(wall>0?' avec '+(+wall.toFixed(3))+' laissé à la paroi':''));}
     rd.appendChild(nt);
   }else if(op.cycle==='tap'){
     rd.appendChild(faoLab('Longueur filetée'));
@@ -1426,10 +1431,16 @@ function faoHelixPitch(op,R,toolD){
   // proposée en mm/tour, la même que partout (10 % du Ø fraise, 0,5 mm au moins)
   return faoPasTourAuto(toolD);
 }
+function faoHelixWall(op){
+  // V0.99.96 : matière laissée sur la paroi du trou (« Parois », demande de Fred : « sur l'opération
+  // de perçage/lamage/alésage, il me faut ajouter Parois à Matière pour laisser la finition d'un alésage »)
+  const v=op?faoRA(op).radial:0;
+  return isFinite(v)&&v>0?v:0;
+}
 function faoGenHelixPlan(plan,toolD,op,secuAbs){
-  const moves=[],rt=toolD/2;
+  const moves=[],rt=toolD/2,wall=faoHelixWall(op);
   plan.forEach(function(p){
-    const Rf=(p.d-toolD)/2;
+    const Rf=(p.d-toolD)/2-wall;
     if(!(Rf>0.02))return; // fraise trop grosse : rien (signalé dans la fiche)
     const s=Math.max(+secuAbs||0,p.rfp+2);
     // anneaux : extérieur = Rf, pas radial ≤ 1,6 × rayon fraise, jusqu'à couvrir le centre

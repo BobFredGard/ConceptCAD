@@ -188,6 +188,9 @@ function faoOpMovesKey(op,job){
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
       if(op.type==='geofinish'&&op.traj==='scallop')dep=['restant-zone',dep]; }
+    // V0.99.96 : profils (contour, chanfrein, contour 3 tailles) — congés en G2 / G3 : seules ces
+    // opérations sont à refaire (CACHE_VER inchangé)
+    if(op&&(faoContourProfil(op)||op.type==='chamfer'))dep=['arcs-g2g3',dep];
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -673,7 +676,9 @@ function* faoOpMovesIt0(op,job){
     if(ch&&op&&op.stale===true&&op.type!=='drill')return faoZoneServe(ch,op,job,secu);
   }
   const tool=faoToolById(job,op&&op.toolId);
-  const D=isFinite(+tool.d)&&+tool.d>0?+tool.d:10;
+  // V0.99.96 : Ø de calcul = Ø de la fiche + correction (outil + opération, fraises cylindriques et
+  // toriques — src/89-fao-outils.js faoOpToolD) ; sans correction : Ø de la fiche, comme avant
+  const D=faoOpToolD(op,tool);
   const sortie=(isFinite(+((job||{}).secu))?+job.secu:5);
   const base={toolD:D, secu:secu, sortie:sortie};
   const RA=faoRA(op||{});
@@ -713,6 +718,7 @@ function* faoOpMovesIt0(op,job){
         slotH:op.slotH,dz:op.slotDz,dr:op.slotDr,
         lead:op.slotLead,lin:op.slotLin,lout:op.slotLout, // V0.99.89 : entrée droite
         clear:ob?ob.clear:null,neckTop:ob?ob.neckTop:null,part:ob?ob.part:null})); // V0.99.91 : pièce seule
+      if(mv&&mv.length&&mv.arcC){ try{ mv=faoFitArcsMoves(mv,mv.arcC); }catch(e){} } // V0.99.96 : G2 / G3
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
     else if(L&&(L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=3){
@@ -721,6 +727,7 @@ function* faoOpMovesIt0(op,job){
         radial:RA.radial,axial:RA.axial,side:op.cside,sens:op.sens==='opp'?'opp':'climb',
         leadR:op.leadR,overlap:op.overlap,tabN:op.tabN,tabW:op.tabW,tabH:op.tabH,
         descente:op.descente,penteTour:op.penteTour}));
+      const arcC=mv&&mv.arcC; // V0.99.96 : centres des arcs (congés, coins, entrées)
       // V0.99.18 : fraise dans le vide (hors brut, ou matière déjà enlevée par les opérations
       // précédentes) -> rapide jusqu'au prochain point d'entrée en matière
       if(faoContourVideOn(op)&&mv&&mv.length){
@@ -728,6 +735,8 @@ function* faoOpMovesIt0(op,job){
         try{ const mat=faoContourMatFn(op,job,D,RA.radial,isFinite(+op.fin)?+op.fin:0);
           if(mat){ mv=faoContourTrimAir(mv,mat,D); if(dg){ dg.vide=mv.vide; mv.diag=dg; } } }catch(e){}
       }
+      // V0.99.96 : congés en G2 / G3 (src/89-fao-arcs.js), après le saut du vide (qui découpe en droites)
+      if(arcC&&mv&&mv.length){ try{ mv=faoFitArcsMoves(mv,arcC); }catch(e){} }
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
   }
