@@ -1,4 +1,3 @@
-<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/8a6d635a-5c11-43e6-91f1-44ed2bc90047" />
 # ConceptCAD
 
 **CAO paramétrique, assemblage, FAO, mise en plan et rendu, dans le navigateur.** Sur PC comme sur téléphone : rien à installer, pas de compte.
