@@ -1206,7 +1206,9 @@ function faoPlanesCard(setup,op){
   box.appendChild(faoPlaneRow('clear','Dégagement',eff.clear,setup,op,tgt));
   box.appendChild(faoPlaneRow('retr','Retrait',eff.retr,setup,op,tgt));
   if(faoHtsOps(op)){
-    box.appendChild(faoHtRow('top','Haut',setup,op));
+    const slot=faoContourSlotOp(op,setup); // V0.99.84 : fraise 3 tailles — hauteur de rainure dans la fiche Contour
+    if(slot)box.appendChild(faoHelp('Haut : non utilisé par la fraise 3 tailles — la rainure monte de sa hauteur (fiche Contour) au-dessus du Bas.'));
+    else box.appendChild(faoHtRow('top','Haut',setup,op));
     box.appendChild(faoHtRow('bot','Bas',setup,op));
     if(op.type==='rough3d'||faoPocketAdapt(op)){
       const rz=faoRow();

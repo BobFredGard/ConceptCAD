@@ -458,6 +458,10 @@ function faoOpLabel(op,job){
   if(t==='pocket'&&faoPocketAdapt(op))return 'Poche adaptative '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(bord à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='pocket')return 'Poche ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
   if(t==='chamfer')return 'Chanfrein '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(arêtes à sélectionner) ')+(+op.w||0.5)+' mm'+tag+off;
+  if(t==='contour'&&faoContourProfil(op)&&faoToolIsSlot(tool)){ // rainure : du Bas (+ décalage) sur sa hauteur, Haut non utilisé
+    const sg=faoSlotGeom(op,tool),fz=function(z){return +(+z).toFixed(3);};
+    return 'Contour 3 tailles '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(profil à sélectionner) ')+'rainure '+fz(sg.z0)+' -> '+fz(sg.z1)+ra+tag+off;
+  }
   if(t==='contour'&&faoContourProfil(op))return 'Contour '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(profil à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='contour')return 'Contour ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
   if(t==='drill')return 'Perçage '+((op.src==='model'&&op.holes)?op.holes:(op.pts||[])).length+' trou(s) '+op.ztop+' -> '+op.zbot+((+op.peck)>0?' Q'+op.peck:'')+tag+off+lim;

@@ -164,12 +164,15 @@ function faoSanitiseOps(s){
         const tt=+op.penteTour;if(isFinite(tt)&&tt>0)op.penteTour=Math.max(0.01,Math.min(100,tt));else delete op.penteTour;}
       else{delete op.descente;delete op.pente;delete op.penteTour;}
       if(op.sautVide!==false)delete op.sautVide; // V0.99.18 : rapide dans le vide (absent = oui)
+      // V0.99.84 : fraise 3 tailles — hauteur et décalages de la rainure (absents = défauts)
+      if('slotH' in op&&!(isFinite(+op.slotH)&&+op.slotH>0))delete op.slotH;
+      ['slotDz','slotDr'].forEach(function(k){if(k in op&&!isFinite(+op[k]))delete op[k];});
     }else if(op.type==='chamfer'){ // V0.7.9 : chanfrein — côté, entrées, recouvrement, largeur, décalage de pointe
       if(op.cside!=='ext'&&op.cside!=='int'&&op.cside!=='auto')delete op.cside;
       ['leadR','overlap','w','tipOff','z'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&(k==='z'||+op[k]>=0)))delete op[k];});
-      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour'].forEach(function(k){delete op[k];});
+      ['nR','fin','tabN','tabW','tabH','descente','pente','penteTour','slotH','slotDz','slotDr'].forEach(function(k){delete op[k];});
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
-    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d'].forEach(function(k){delete op[k];});
+    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','penteTour','c3d','slotH','slotDz','slotDr'].forEach(function(k){delete op[k];});
     if(!(op.type==='contour'&&op.strat==='profil'))delete op.sautVide;
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout

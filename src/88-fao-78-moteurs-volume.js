@@ -27,6 +27,7 @@ function faoEngineSet(k){
   try{if(faoVwEngSel&&faoVwEngSel.value!==k)faoVwEngSel.value=k;}catch(e){}
   const vw=(typeof faoVw!=='undefined')?faoVw:null;
   if(vw&&vw.matterOn!==false){try{faoViewerMatterEnable(vw);}catch(e){}}
+  if(vw){try{ const n=faoSlotSimNote(vw); if(n)faoViewerMsg('FAO : moteur '+(FAO_ENGINES[k]||k)+n); }catch(e){}}
 }
 /* ── outil : profil de révolution ──
    hmin(ρ) : hauteur du dessous de l'outil au rayon ρ, depuis la pointe (fond plat 0, arrondi
@@ -35,13 +36,15 @@ const faoEngToolCache=new Map();
 function faoEngTool(r,cr,tp){
   r=+r||5;
   const CR=(isFinite(+cr)&&+cr>0)?Math.min(+cr,r):0,TP=(tp&&tp.length>1)?tp:null;
-  const key=r.toFixed(4)+'|'+CR.toFixed(4)+'|'+(TP?faoTipSig(TP):'');
+  // V0.99.84 : fraise 3 tailles — disque d'épaisseur e au bout d'un col de rayon rn
+  const SL=(tp&&tp.slot&&tp.slot.e>0)?{e:+tp.slot.e,rn:Math.max(0.05,Math.min(r,+tp.slot.rn||0))}:null;
+  const key=r.toFixed(4)+'|'+CR.toFixed(4)+'|'+(TP?faoTipSig(TP):'')+(SL?'|s'+SL.e.toFixed(4)+','+SL.rn.toFixed(4):'');
   let T=faoEngToolCache.get(key);if(T)return T;
   const N=48,hs=new Float64Array(N+1),rc=r-CR;
   for(let i=0;i<=N;i++){const rho=r*i/N;let h=0;
     if(TP)h=faoTipZAt(TP,rho);else if(CR>0&&rho>rc){const e=Math.min(rho-rc,CR);h=CR-Math.sqrt(Math.max(0,CR*CR-e*e));}
     hs[i]=i?Math.max(hs[i-1],h):h;}
-  T={r,N,hs,h0:hs[0],htop:hs[N],key,sdfT:null,
+  T={r,N,hs,h0:hs[0],htop:hs[N],key,sdfT:null,slot:SL,
     hmin(rho){if(rho>r)return Infinity;const f=rho/r*N,i=Math.min(N-1,Math.floor(f)),t=f-i;return hs[i]+(hs[i+1]-hs[i])*t;},
     rmax(h){if(h<hs[0])return -1;if(h>=hs[N])return r;let lo=0,hi=N;while(hi-lo>1){const m=(lo+hi)>>1;if(hs[m]<=h)lo=m;else hi=m;}
       const d=hs[hi]-hs[lo];return r*(lo+(d>1e-12?(h-hs[lo])/d:1))/N;}};
@@ -113,6 +116,7 @@ function faoEngCarve(E,a,b,r,cr,tp,ax){
   // calcul exact dans le repère permuté de l'outil, par pas « à hauteur constante » le long de l'axe ;
   // outil oblique : positions échantillonnées le long du segment.
   const T=faoEngTool(r,cr,tp),al=faoEngAxis(ax);
+  if(T.slot&&E.kind!=='sdf')return; // V0.99.84 : le tri-dexel ne connaît que les outils pleins vers le haut
   if(al){
     const w=al.w,U=FAO_DEX_UV[w][0],V=FAO_DEX_UV[w][1],ca=[a.x,a.y,a.z],cb=[b.x,b.y,b.z];
     const dw=Math.abs(cb[w]-ca[w]),st=Math.max(0.02,E.p/4),n=dw>st?Math.min(400,Math.ceil(dw/st)):1;
@@ -568,18 +572,25 @@ function faoSdfCreate(s,p){
 function faoSdfToolTable(T,p,TR){
   // distance signée au profil de l'outil dans le plan (ρ, h), tabulée au pas p/4 (négative dedans)
   if(T.sdfT&&T.sdfT.p===p)return T.sdfT;
-  const q=p/4,R=T.r,nr=Math.ceil((R+TR)/q)+2,h0=-TR,nh=Math.ceil((T.htop+2*TR)/q)+2,tab=new Float32Array(nr*nh);
-  const pts=[];for(let i=0;i<=T.N;i++)pts.push([R*i/T.N,T.hs[i]]);pts.push([R,T.htop+1e6]); // dessous puis paroi
+  // V0.99.84 : fraise 3 tailles — profil = dessous plat, flanc du disque, dessus du disque, col ;
+  // au-dessus de la table, la distance est celle au col (Rn), pas au Ø de coupe
+  const SL=T.slot,ht=SL?SL.e:T.htop;
+  const q=p/4,R=T.r,nr=Math.ceil((R+TR)/q)+2,h0=-TR,nh=Math.ceil((ht+2*TR)/q)+2,tab=new Float32Array(nr*nh);
+  const pts=[];
+  if(SL)pts.push([0,0],[R,0],[R,SL.e],[SL.rn,SL.e],[SL.rn,SL.e+1e6]);
+  else{for(let i=0;i<=T.N;i++)pts.push([R*i/T.N,T.hs[i]]);pts.push([R,T.htop+1e6]);} // dessous puis paroi
   for(let jh=0;jh<nh;jh++){const h=h0+jh*q;for(let ir=0;ir<nr;ir++){const rho=ir*q;
     let dm=Infinity;
     for(let m=0;m<pts.length-1;m++){const a=pts[m],b=pts[m+1],dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy;
       let t=L2>0?((rho-a[0])*dx+(h-a[1])*dy)/L2:0;t=t<0?0:(t>1?1:t);const ex=a[0]+dx*t-rho,ey=a[1]+dy*t-h,d=ex*ex+ey*ey;if(d<dm)dm=d;}
-    dm=Math.sqrt(dm);const inside=rho<=R&&h>=T.hmin(rho);tab[jh*nr+ir]=inside?-dm:dm;}}
-  T.sdfT={p,q,nr,nh,h0,tab,R,htop:T.htop};return T.sdfT;
+    dm=Math.sqrt(dm);
+    const inside=SL?(h>=0&&(h<=SL.e?rho<=R:rho<=SL.rn)):(rho<=R&&h>=T.hmin(rho));
+    tab[jh*nr+ir]=inside?-dm:dm;}}
+  T.sdfT={p,q,nr,nh,h0,tab,R,htop:ht,Rn:SL?SL.rn:0};return T.sdfT;
 }
 function faoSdfToolD(S,rho,h,TR){
   const q=S.q;if(rho>S.R+TR||h<S.h0)return TR;
-  if(h>S.htop+TR){const d=rho-S.R;return d>TR?TR:d;}
+  if(h>S.htop+TR){const d=rho-(S.Rn>0?S.Rn:S.R);return d>TR?TR:d;}
   const fr=rho/q,fh=(h-S.h0)/q,ir=Math.min(S.nr-2,Math.floor(fr)),jh=Math.min(S.nh-2,Math.floor(fh)),tr=fr-ir,th=fh-jh,t=S.tab,o=jh*S.nr+ir;
   return (t[o]*(1-tr)+t[o+1]*tr)*(1-th)+(t[o+S.nr]*(1-tr)+t[o+S.nr+1]*tr)*th;
 }
@@ -774,7 +785,7 @@ const FAO_SDFC_VS=[
 const FAO_SDFC_FS=[
   'precision highp sampler2D;',
   'out highp vec4 sdOut;', // GLSL 3 : three.js r147 ne déclare pas la sortie du fragment
-  'uniform sampler2D uTab; uniform vec4 uTP[64];', // par outil : (R, htop, ligne 0, nr) (q, h0, nh, 0)
+  'uniform sampler2D uTab; uniform vec4 uTP[64];', // par outil : (R, htop, ligne 0, nr) (q, h0, nh, Rn : col d'une 3 tailles, 0 sinon)
   'uniform vec3 uLo; uniform float uP; uniform float uK; uniform float uTR;',
   'flat in vec3 vA; flat in vec3 vB; flat in vec4 vAx;',
   'float tab(int r0,int nr,int nh,float fr,float fh){',
@@ -790,7 +801,7 @@ const FAO_SDFC_FS=[
   '  float s=(L2>1e-12)?clamp(dot(Xp-vA,d)/L2,0.0,1.0):0.0; float rho=length(Xp-(vA+d*s));',
   '  float dt;',
   '  if(rho>R+uTR||h<P1.y)discard;',
-  '  if(h>htop+uTR)dt=rho-R;',
+  '  if(h>htop+uTR)dt=rho-(P1.w>0.0?P1.w:R);',
   '  else dt=tab(int(P0.z+0.5),int(P0.w+0.5),int(P1.z+0.5),rho/P1.x,(h-P1.y)/P1.x);',
   '  if(dt>=uTR)discard;',
   '  sdOut=vec4(clamp(0.5-dt/(2.0*uTR),0.0,1.0),0.0,0.0,1.0);', // max(d, −d_outil), encodé comme le champ
@@ -863,7 +874,7 @@ function faoSdfCAtlas(E){
   L.forEach(tt=>{W=Math.max(W,tt.nr);H+=tt.nh;});
   const data=new Float32Array(W*Math.max(1,H));let row=0;
   L.forEach((tt,i)=>{for(let j=0;j<tt.nh;j++)for(let r=0;r<tt.nr;r++)data[(row+j)*W+r]=tt.tab[j*tt.nr+r];
-    C.U.uTP.value[2*i].set(tt.R,tt.htop,row,tt.nr);C.U.uTP.value[2*i+1].set(tt.q,tt.h0,tt.nh,0);row+=tt.nh;});
+    C.U.uTP.value[2*i].set(tt.R,tt.htop,row,tt.nr);C.U.uTP.value[2*i+1].set(tt.q,tt.h0,tt.nh,tt.Rn||0);row+=tt.nh;});
   if(C.tab)C.tab.dispose();
   const tx=new THREE.DataTexture(data,W,Math.max(1,H),THREE.RedFormat,THREE.FloatType);
   tx.magFilter=THREE.NearestFilter;tx.minFilter=THREE.NearestFilter;tx.generateMipmaps=false;tx.unpackAlignment=1;tx.needsUpdate=true;

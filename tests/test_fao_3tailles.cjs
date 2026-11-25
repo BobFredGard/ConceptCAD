@@ -1,0 +1,150 @@
+// FAO — CONTOUR À LA FRAISE 3 TAILLES (V0.99.84, src/89-fao-contour-3tailles.js).
+// 1. bossage 40×20 (z 5..20) sur dalle, rainure extérieure (Bas 5, décalée de +6 en hauteur,
+//    +2 dans la paroi) : une passe à z 11, centre à r − 2 de la paroi, côté extérieur, avalant ;
+//    le disque ne monte ni ne descend jamais au-dessus du bossage (dehors de r + garde) ;
+// 2. rainure plus haute que le disque : passes en hauteur de haut en bas ;
+// 3. alertes : col qui frotte (rainure trop profonde), disque plus épais que la rainure,
+//    aucune entrée par le côté ;
+// 4. gorge intérieure d'une ouverture 20×20 (cadre) : côté intérieur, descente au milieu ;
+// 5. fiche outil (clé de parcours, dimensions par défaut), sanitise, simulation (carte de
+//    hauteurs sautée, moteur Lisse = disque + col), obstacles du posage (brut), dispatch, fiche.
+const {loadApp}=require('./appvm.cjs');
+const vm=require('vm');
+(async()=>{
+  const {ctx}=loadApp();
+  const R=[
+    "const P=[];const p=s=>P.push(String(s));",
+    "const ATT=[];const att=(ok,msg)=>{if(!ok)ATT.push(msg);};",
+    "const mkBox=function(x0,x1,y0,y1,z0,z1){return {v:[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]],t:[[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[2,3,7],[2,7,6],[0,4,7],[0,7,3],[1,2,6],[1,6,5]]};};",
+    "const merge=function(){const o={v:[],t:[]};for(let a=0;a<arguments.length;a++){const B=arguments[a],off=o.v.length;o.v=o.v.concat(B.v);o.t=o.t.concat(B.t.map(function(t){return [t[0]+off,t[1]+off,t[2]+off];}));}return o;};",
+    "const dRect=function(x,y,x0,x1,y0,y1){const dx=Math.max(x0-x,0,x-x1),dy=Math.max(y0-y,0,y-y1);if(dx>0||dy>0)return Math.hypot(dx,dy);return -Math.min(x-x0,x1-x,y-y0,y1-y);};",
+    "const area=function(c){let a=0;for(let i=0;i+1<c.length;i++)a+=c[i].x*c[i+1].y-c[i+1].x*c[i].y;return a/2;};",
+    // mouvements verticaux (même XY, Z qui change) : le disque y traverse toute la hauteur
+    "const verts=function(mv){const o=[];for(let i=1;i<mv.length;i++){const a=mv[i-1],b=mv[i];if(Math.hypot(b.x-a.x,b.y-a.y)<1e-6&&Math.abs(b.z-a.z)>1e-6)o.push(b);}return o;};",
+    // --- 1. bossage, rainure extérieure
+    "const BOSS=merge(mkBox(0,100,0,60,0,5),mkBox(30,70,20,40,5,20));",
+    "const loopB=[[30,20],[70,20],[70,40],[30,40],[30,20]];",
+    "const o={toolD:20,ep:3,rn:4,secu:30,zbot:5,dz:6,dr:2,nR:1,fin:0,sens:'climb',overlap:1};",
+    "const mv=faoGenContourSlot(BOSS,loopB,o);",
+    "const dg=mv.diag||{};",
+    "p('bossage : '+mv.length+' moves, diag '+JSON.stringify(dg));",
+    "att(dg.side==='ext','bossage : côté auto extérieur (vu '+dg.side+')');",
+    "const cut=mv.filter(m=>!m.r);",
+    "att(cut.length>10,'bossage : des coupes ('+cut.length+')');",
+    "att(cut.every(m=>Math.abs(m.z-11)<1e-6),'bossage : une seule passe à z 11 (Bas 5 + 6), vu '+Array.from(new Set(cut.map(m=>m.z))).join(' '));",
+    "const dmin=Math.min.apply(null,cut.map(m=>dRect(m.x,m.y,30,70,20,40)));",
+    "att(Math.abs(dmin-8)<0.01,'bossage : centre à r − décalage (10 − 2 = 8) de la paroi (d min '+dmin.toFixed(4)+')');",
+    "const main=cut.filter(m=>!m.ent);",
+    "att(main.length>=4&&main.every(m=>Math.abs(dRect(m.x,m.y,30,70,20,40)-8)<0.01),'bossage : le tour est à 8 mm du contour');",
+    "const vb=verts(mv);",
+    "att(vb.length>=2&&vb.every(m=>dRect(m.x,m.y,30,70,20,40)>=10.5-0.01),'bossage : montées et descentes hors du bossage (d >= r + garde), vu '+vb.map(m=>dRect(m.x,m.y,30,70,20,40).toFixed(2)).join(' '));",
+    "att(mv.filter(m=>m.r&&m.z<20).every(m=>dRect(m.x,m.y,30,70,20,40)>=10.5-0.01),'bossage : aucun rapide au-dessus du bossage sous son dessus');",
+    "att(mv.filter(m=>!m.r&&m.ent).length>4,'bossage : entrée et sortie par le côté');",
+    "att(area(main)<0,'bossage : avalant = sens horaire autour du bossage');",
+    "att(mv[mv.length-1].r===1&&mv[mv.length-1].z===30,'bossage : retrait final à secu');",
+    "att(dg.neck===0&&!dg.noEntry&&!dg.thick&&!dg.over,'bossage : aucune alerte');",
+    "att(dg.zb===11&&dg.zt===14,'bossage : rainure de z 11 à 14 (vu '+dg.zb+' / '+dg.zt+')');",
+    // --- 2. rainure de 7 mm avec un disque de 3 : 15, 12, 11
+    "const mv2=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{slotH:7}));",
+    "const zs2=[];mv2.filter(m=>!m.r&&!m.ent).forEach(m=>{const z=+m.z.toFixed(3);if(zs2[zs2.length-1]!==z)zs2.push(z);});",
+    "att(zs2.join(',')==='15,12,11','hauteur 7 : passes 15, 12, 11 de haut en bas (vu '+zs2.join(',')+')');",
+    "att(mv2.diag.levels===3,'hauteur 7 : 3 niveaux');",
+    "const mv2b=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{slotH:7,ap:2}));",
+    "const zs2b=[];mv2b.filter(m=>!m.r&&!m.ent).forEach(m=>{const z=+m.z.toFixed(3);if(zs2b[zs2b.length-1]!==z)zs2b.push(z);});",
+    "att(zs2b.join(',')==='15,13,11','hauteur 7, pas 2 : 15, 13, 11 (vu '+zs2b.join(',')+')');",
+    "const mv2c=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{slotH:7,ap:9}));",
+    "att(mv2c.diag.levels===3,'pas plus grand que le disque : ramené à l’épaisseur');",
+    "const vb2=verts(mv2);",
+    "att(vb2.every(m=>dRect(m.x,m.y,30,70,20,40)>=10.5-0.01),'hauteur 7 : changements de niveau hors du bossage');",
+    // --- 3. alertes
+    "const mv3=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{dr:7}));",
+    "p('col : '+JSON.stringify(mv3.diag));",
+    "att(mv3.diag.neck>5&&mv3.diag.neckN>0,'col Ø8, disque Ø20, rainure de 7 : le col frotte (vu '+mv3.diag.neck+')');",
+    "const mv3b=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{dr:5.5}));",
+    "att(mv3b.diag.neck===0,'rainure de 5,5 (≤ (20 − 8) / 2) : le col passe (vu '+mv3b.diag.neck+')');",
+    "const mv3c=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{slotH:2}));",
+    "att(mv3c.diag.thick===1,'rainure de 2 avec un disque de 3 : alerte 1 mm (vu '+mv3c.diag.thick+')');",
+    "const mv3d=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{clear:function(){return false;}}));",
+    "att(mv3d.diag.noEntry>0&&mv3d.filter(m=>!m.r).length===0,'aucune entrée par le côté : rien n’est coupé, alerte');",
+    "const mv3e=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{dr:15}));",
+    "att(mv3e.diag.over===1,'décalage dans la paroi plus grand que le rayon : alerte');",
+    "const mvO=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{sens:'opp'}));",
+    "att(area(mvO.filter(m=>!m.r&&!m.ent))>0,'opposition : sens trigo');",
+    "const mvN=faoGenContourSlot(BOSS,loopB,Object.assign({},o,{nR:2,ae:3,fin:0.5}));",
+    "const dN={};mvN.filter(m=>!m.r&&!m.ent).forEach(m=>{dN[dRect(m.x,m.y,30,70,20,40).toFixed(2)]=1;});",
+    "att(dN['11.50']&&dN['8.50']&&dN['8.00'],'passes latérales 11,5 / 8,5 puis finition 8 (vu '+Object.keys(dN).join(' ')+')');",
+    // --- 4. gorge intérieure d'une ouverture 20×20 dans un cadre (z 0..20)
+    "const FR=merge(mkBox(0,60,0,20,0,20),mkBox(0,60,40,60,0,20),mkBox(0,20,20,40,0,20),mkBox(40,60,20,40,0,20));",
+    "const loopI=[[20,20],[40,20],[40,40],[20,40],[20,20]];",
+    "const mvI=faoGenContourSlot(FR,loopI,{toolD:12,ep:2,rn:2,secu:30,zbot:0,dz:8,dr:1.5,nR:1,fin:0,sens:'climb',overlap:1});",
+    "p('gorge : '+mvI.length+' moves, diag '+JSON.stringify(mvI.diag));",
+    "att(mvI.diag.side==='int','gorge : côté auto intérieur (vu '+mvI.diag.side+')');",
+    "const cI=mvI.filter(m=>!m.r);",
+    "att(cI.length>4&&cI.every(m=>-dRect(m.x,m.y,20,40,20,40)>=4.5-0.01),'gorge : centre à 6 − 1,5 = 4,5 des parois au plus près');",
+    "att(cI.filter(m=>!m.ent).every(m=>Math.abs(-dRect(m.x,m.y,20,40,20,40)-4.5)<0.01),'gorge : le tour est à 4,5 des parois');",
+    "att(verts(mvI).every(m=>-dRect(m.x,m.y,20,40,20,40)>=6.5-0.01),'gorge : descente là où le disque passe dans l’ouverture');",
+    "att(area(cI.filter(m=>!m.ent))>0,'gorge : avalant = sens trigo dans une ouverture');",
+    // --- 5. outil, sanitise, simulation, obstacles, dispatch, fiche
+    "const T3={id:'T9',num:9,name:'3 tailles D20',kind:'slot',d:20,flutes:8,vc:120,fz:0.03};",
+    "const g3=faoToolDims(T3);",
+    "att(g3.lc.v===2.4&&g3.dDeg.v===8&&g3.dq.v===8,'défauts 3 tailles D20 : épaisseur 2,4, col Ø8, queue Ø8 (vu '+g3.lc.v+' / '+g3.dDeg.v+' / '+g3.dq.v+')');",
+    "const k3=faoToolKeyObj(Object.assign({},T3,{lc:3,dDeg:6}));",
+    "att(k3.ep===3&&k3.col===6,'clé de parcours : épaisseur et col de la 3 tailles');",
+    "const kF=faoToolKeyObj({id:'T1',num:1,name:'F',kind:'flat',d:10,cornerR:0,flutes:2,vc:250,fz:0.06,lc:30,dDeg:9});",
+    "att(!('ep' in kF)&&!('col' in kF)&&!('lc' in kF),'clé de parcours des autres outils inchangée');",
+    "att(faoKindLabel('slot')==='Fraise 3 tailles'&&FAO_TOOL_KINDS.indexOf('slot')>=0,'libellé et fichier d’outils');",
+    "const sv=faoToolSvg(Object.assign({},T3,{lc:3,dDeg:8}),null);",
+    "att(/ép\\. 3/.test(sv)&&/rainure ≤ 6 mm/.test(sv),'schéma : épaisseur et profondeur maxi');",
+    "const tp3=faoToolSlotTp(Object.assign({},T3,{lc:3,dDeg:8}));",
+    "att(tp3&&tp3.slot&&tp3.slot.e===3&&tp3.slot.rn===4&&faoToolSlotTp({kind:'flat',d:10})===null,'profil de simulation : disque 3 et col R4');",
+    "att(Array.isArray(faoMatterCarveSeg(null,0,0,5,10,0,5,10,null,0,tp3))&&faoMatterCarveSeg(null,0,0,5,10,0,5,10,null,0,tp3).length===0,'cartes de hauteurs : segment de 3 tailles sauté');",
+    "const TE=faoEngTool(10,0,tp3),TF=faoEngTool(10,0,null);",
+    "att(TE.slot&&TE.key!==TF.key,'moteur Lisse : outil 3 tailles distinct');",
+    "const ST=faoSdfToolTable(TE,0.5,1),SF=faoSdfToolTable(TF,0.5,1);",
+    "const dIn=faoSdfToolD(ST,8,1.5,1),dUp=faoSdfToolD(ST,8,10,1),dNk=faoSdfToolD(ST,2,10,1),dFl=faoSdfToolD(SF,8,10,1);",
+    "p('distances : disque '+dIn.toFixed(3)+', au-dessus '+dUp.toFixed(3)+', col '+dNk.toFixed(3)+', fraise pleine '+dFl.toFixed(3));",
+    "att(dIn<0&&dUp>0&&dNk<0&&dFl<0,'moteur Lisse : dedans le disque et le col, dehors au-dessus du disque hors du col');",
+    "const sA={id:'a',type:'contour',strat:'profil',slotH:4,slotDz:-2,slotDr:1.5},sB={id:'b',type:'contour',strat:'profil',slotH:-1,slotDz:'x'},sC={id:'c',type:'pocket',slotH:4,slotDr:1};",
+    "faoSanitiseOps({ops:[sA,sB,sC]});",
+    "att(sA.slotH===4&&sA.slotDz===-2&&sA.slotDr===1.5,'sanitise : hauteur et décalages gardés');",
+    "att(!('slotH' in sB)&&!('slotDz' in sB)&&!('slotH' in sC)&&!('slotDr' in sC),'sanitise : valeurs invalides / hors contour purgées');",
+    // dispatch : posage avec brut autour du bossage, outil 3 tailles
+    "const job=faoDefaultJob();job.stock={x0:0,y0:0,z0:0,x1:100,y1:60,z1:20};job.tools=[Object.assign({},T3,{id:'TS',lc:3,dDeg:8})];",
+    "const op=faoOpDefaults('contour');op.id='s1';op.toolId='TS';op.limit={mode:'chain',loop:loopB,closed:true,nEdges:4,tangent:true,side:'center',extra:0};op.ztop=20;op.zbot=5;op.slotDz=6;op.slotDr=2;op.nR=1;op.fin=0;",
+    "job.ops=[op];",
+    "const ob=faoSlotObstacles(op,job,BOSS,10,4);",
+    "att(ob&&!ob.clear(85,30,11)&&ob.clear(-15,30,11),'obstacles : le brut plein empêche de descendre dedans, pas dehors');",
+    "const keepAM=faoActiveMesh;faoActiveMesh=function(){return {mesh:BOSS,box:{x0:0,y0:0,x1:100,y1:60}};};",
+    "let mvD=[];try{mvD=faoOpMoves(op,job);}catch(e){att(false,'dispatch : exception '+e.message);}",
+    "faoActiveMesh=keepAM;",
+    "p('dispatch : '+mvD.length+' moves, diag '+JSON.stringify(op.geoDiag));",
+    "const cD=mvD.filter(m=>!m.r);",
+    "att(cD.length>10&&cD.every(m=>Math.abs(m.z-11)<1e-6),'dispatch : rainure à z 11');",
+    "att(verts(mvD).every(m=>m.x<-10||m.x>110||m.y<-10||m.y>70),'dispatch : brut plein → le disque descend hors du brut (vu '+verts(mvD).map(m=>m.x.toFixed(1)+','+m.y.toFixed(1)).join(' ')+')');",
+    "att(op.geoDiag&&op.geoDiag.slot===1&&op.geoDiag.side==='ext','dispatch : diagnostic de rainure');",
+    "att(/Contour 3 tailles 4 arêtes rainure 11 -> 14/.test(faoOpLabel(op,job)),'libellé : '+faoOpLabel(op,job));",
+    "const opP=faoOpDefaults('pocket');opP.id='p1';opP.toolId='TS';",
+    "att(faoOpMoves(opP,job).length===0,'3 tailles dans une poche : aucun parcours');",
+    // (sans corps construit, faoOpMovesKey rend null : la signature de l'opération en est le cœur)
+    "const kA=JSON.stringify(faoOpSig(op));op.slotDr=3;const kB=JSON.stringify(faoOpSig(op));op.slotDr=2;",
+    "att(kA!==kB&&/slotDr/.test(kA),'clé : le décalage dans la paroi change le parcours');",
+    // simulation : message « moteur lisse » seulement en cartes et avec une 3 tailles
+    "const keepE=faoSimEngine;faoSimEngine='cartes';",
+    "att(/moteur : lisse/.test(faoSlotSimNote({tp:[null,tp3]}))&&faoSlotSimNote({tp:[null,null]})==='','simulation : rainure invisible en cartes annoncée');",
+    "faoSimEngine='sdf';att(faoSlotSimNote({tp:[tp3]})==='','simulation : rien à dire en moteur lisse');faoSimEngine=keepE;",
+    // fiche
+    "const all=function(root){const out=[];(function w(n){out.push(n);(n.children||[]).forEach(w);})(root);return out;};",
+    "const keepS=faoSetup;faoSetup=function(){return job;};",
+    "let card=null;try{card=faoOpCardElement(job,op,0);}catch(e){att(false,'fiche : exception '+e.message);}",
+    "faoSetup=keepS;",
+    "const txt=card?all(card).map(n=>String(n.textContent||'')).join('|'):'';",
+    "att(card&&/Rainure \\(fraise 3 tailles\\)/.test(txt)&&/décalage dans la paroi/.test(txt)&&/décalage en hauteur/.test(txt),'fiche : section Rainure avec les décalages');",
+    "att(card&&!/Attaches/.test(txt)&&!/Rapide dans le vide/.test(txt),'fiche : ni attaches ni rapide dans le vide');",
+    "if(ATT.length){p('');p('ECHECS ('+ATT.length+') :');ATT.forEach(function(m){p('  x '+m);});}",
+    "else p('TOUT EST CONFORME');",
+    "return {txt:P.join(String.fromCharCode(10)),ko:ATT.length};"
+  ].join('\n');
+  const r=await vm.runInContext('(async()=>{'+R+'})()',ctx,{filename:'fao_3tailles.js'});
+  console.log(r.txt);
+  process.exit(r.ko?1:0);
+})().catch(e=>{console.log('FATAL',e&&e.stack||e);process.exit(1);});

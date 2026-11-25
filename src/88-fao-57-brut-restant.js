@@ -196,6 +196,7 @@ function faoRestMap(op,job,D,radial){
   L.forEach(function(E){
     const q=E.op;
     const t=faoToolById(P,q.toolId);if(!t)return;
+    if(faoToolIsSlot(t))return; // V0.99.84 : rainure de 3 tailles sous la matière — le dessus ne change pas
     const r=faoToolBodyD(t)/2;if(!(r>0))return;
     const cr=faoToolEffCr(t),tp=faoToolTipProfile(t);
     let mv=null;
