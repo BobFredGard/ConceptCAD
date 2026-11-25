@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**781 versions**, de `2026-09-28b` à `V0.99.94` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**782 versions**, de `2026-09-28b` à `V0.99.95` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8667,3 +8667,18 @@ Manuel Fonctions 3D.
 - Survol (`src/90-10-selection-mesure.js`) : surbrillance pendant « Jusqu'à » de l'extrusion et la saisie de face du perçage, effacée à la sortie.
 
 **Test** : `tests/test_asm_jusqua.cjs` (nouveau, 36 contrôles sans noyau : face 40 mm, nom, ±1, décalage refusé, arête parallèle, arête en biais, sommet +1, suivi du socle déplacé (capot actif) et modifié (capot inactif), stabilité, perçage jusqu'à la face, −2, décalage derrière le trou, perçage jusqu'à une arête, holePlaneSuit, face perdue puis retrouvée, attente du clic, fichier, choix arête / sommet au clic, saisie du décalage, pièce seule) ; inscrit dans tests/run.cjs et run-fast.cjs. npm run ci vert. Vérifié dans l'aperçu avec le noyau exact (socle 40 × 40 × 20 à Z5, capot à côté) : extrusion du capot sans fonction avant → clic sur le dessus du socle = 25 mm (bloc 0 → 25), −1 = 24, +1 = 26, −40 refusé ; arête du dessus (surbrillance, « Arête · Socle:1 ») et sommet, décalage gardé ; socle remonté de 5 mm → capot 31 mm ; perçage du capot jusqu'à la face du socle 30 mm, −2 = 28 ; enregistrer / rouvrir : cibles et décalages gardés. Manuel : Assemblage, Fonctions 3D. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.95 - Extrusion : contour fermé quand un arc n'a pas tout à fait le rayon de ses extrémités
+
+**Demande de Fred** : « CAO : Pourquoi l'extrusion fait ceci (voir image) avec l'equisse 3? » (capture : l'oblong extrudé ne laisse que des traits, la pièce disparaît).
+
+**Cause** : l'esquisse est un oblong dont l'arc du haut a un rayon donné, mais dont les deux extrémités sont accrochées (« sur le cercle ») à un cercle projeté d'une autre pièce, plus petit de 3e-7 mm. Le solveur laisse ces extrémités à ~1e-7 du cercle de l'arc. `occWireFromChain` (`src/20-10-prismes-booleens-coque.js`) pose l'arc sur son cercle (extrémités projetées) et la ligne voisine sur le point de l'esquisse : l'écart (1,003e-7) dépassait d'un cheveu la tolérance du noyau (1e-7). `BRepBuilderAPI_MakeWire.Add` écarte alors l'arête **sans lever d'erreur** (un `Add` réussi ensuite remet `IsDone` à vrai) : contour ouvert, face invalide, outil à 4 faces et moitié du volume, fusion qui ne garde que cet outil faux, corps impossible à mailler — la pièce disparaissait.
+
+**Correctif** (`occWireFromChain`) :
+- chaque `Add` est contrôlé (`IsDone` juste après), et un contour fermé doit l'être aussi au point de départ (`BRep_Tool.IsClosed`) ;
+- au moindre trait écarté (ou si `MakeWire` refuse tout le contour parce que son dernier trait est écarté), nouvel essai où les bouts d'une ligne voisine d'un arc sont posés **exactement** sur le bout de l'arc (`surArc`, même projection que l'arc) ; gardé seulement s'il raccroche tout ;
+- sinon contour d'origine, ou même erreur qu'avant : une esquisse qui se construisait déjà n'est pas touchée (aucune coordonnée ne change).
+
+Sert aussi à la révolution et au balayage (même constructeur de contour).
+
+**Test** : `tests/test_contour_arc_rayon.cjs` (nouveau, 20 contrôles avec le noyau : oblong 40 × 12 R6 sur une plaque, cohérent, un arc puis deux arcs aux extrémités décalées de 1,5e-7 et de 4e-7 : outil valide à 6 faces, volume du profil × 20, plaque + oblong valide et de bon volume) ; échoue sur V0.99.94 (« contour non fermé ») ; inscrit dans tests/run.cjs et run-fast.cjs. Vérifié dans l'aperçu avec le noyau exact sur la pièce de Fred : avant, outil à 4 faces, moitié du volume, solide invalide ; après, plot valide au volume exact du profil, poche, poche à travers et plot inversé justes. Manuel : Fonctions 3D. CACHE_VER et FORMES_VER inchangés (seules les esquisses qui donnaient un solide faux changent ; une pièce gardée de ce genre est refaite par `pcVerifie`, écart de volume).

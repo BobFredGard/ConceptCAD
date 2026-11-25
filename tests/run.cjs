@@ -320,6 +320,7 @@ const SUITES = [
   "test_composants_references",
   "test_composants_aretes_esquisse",
   "test_asm_jusqua",
+  "test_contour_arc_rayon",
   "test_projeter_appui_long",
   "test_liens_perdus",
   "test_composants_aretes_occ",
