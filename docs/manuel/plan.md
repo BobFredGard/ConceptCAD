@@ -36,6 +36,7 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
 - **Détail d'une coupe** : coupé et hachuré comme sa vue mère, hachures arrêtées au cercle du détail.
 - **Ligne de coupe** droite ou brisée (ISO 128-44), **hachures** (ISO 128-50), **filetages** (ISO 6410), **axes** (ISO 128-2) étirables et cotables ; nom de vue affiché seulement sur les coupes et détails.
 - **Coupe locale** : contour libre plus une arête du plan, modifiable ou supprimable (double-clic sur ses hachures) ; les filetages coupés y sont représentés comme dans une vue en coupe.
+- **Filetages extérieurs** (fonction Filetage, filet cosmétique) : fond de filet en trait fin gris, comme les trous taraudés — 2 traits de côté, du chanfrein à la fin du filet, et 3/4 de cercle vu du bout libre ; trait fort de fin de filetage si le filet s’arrête avant le bout de la face. Une cote Ø du cylindre fileté s’écrit « M4 » (pas fin, filet à gauche, classe « M4-6g ») (V1.0.16).
 - **Import DXF** : un dessin DXF (lignes, arcs, polylignes, splines, blocs) devient une vue de la planche.
 
 ## Cotation et sorties

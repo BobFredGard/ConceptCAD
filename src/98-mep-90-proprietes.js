@@ -996,7 +996,7 @@
       root.appendChild(r);
       return r;
     };
-    const val=mepDimMeasure(sh,d);
+    const val=mepDimMeasure(sh,d);mepDimThreadSync(sh,d);
     const read=document.createElement('div');
     read.className='note';
     read.style.whiteSpace='pre-line';

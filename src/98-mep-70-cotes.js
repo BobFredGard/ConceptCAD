@@ -1216,6 +1216,7 @@
     return (n<0?'−':'+')+mepFmtNum(Math.abs(n),3);
   }
   function mepDimTextParts(d,value){
+    const xt=mepDimThreadText(d);if(xt)return{main:xt,up:'',lo:'',sym:''}; // 2026-11-26 : Ø d'un cylindre fileté → « M4 » (98-mep-76)
     // distance entre génératrices d'un cylindre : préfixe Ø comme une cote de diamètre
     if(d.dsym&&!d.txt&&d.kind!=='dia'&&d.kind!=='rad')return mepDimSymbolParts(Object.assign({},d,{dsym:''}),value,d.dsym);
     const pre=d.pre?String(d.pre).trim():'',post=d.post?String(d.post).trim():'';
@@ -1244,6 +1245,7 @@
   // écart ISO : 0 sans signe (ISO 286), sinon signé
   function mepSignedTol0(v){return Math.abs(+v||0)<1e-9?'0':mepSignedTol(v);}
   function mepDimSymbolParts(d,value,sym){
+    const xt=mepDimThreadText(d);if(xt)return{main:xt,up:'',lo:'',sym:''}; // cercle fileté vu en bout
     const pre=d.pre?String(d.pre).trim():'',post=d.post?String(d.post).trim():'';
     const p=mepDimTextParts(Object.assign({},d,{pre:'',post:''}),value);
     const join=(a,b)=>a&&b?a+' '+b:(a||b);
@@ -1642,6 +1644,7 @@
     if(!w)return;
     const gdt=mepIsTol(d.kind);
     const val=gdt?0:(d.value!=null?d.value:mepDimMeasure(sh,d));
+    if(!gdt)mepDimThreadSync(sh,d);
     let txt=gdt?'':mepDimText(d,val);
     const sel=mepSt.selDim===d.id||!!(mepSt.lot&&mepSt.lot.dims.has(d.id));
     const ghost=!!d.__ghost;

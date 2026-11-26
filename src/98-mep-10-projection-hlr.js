@@ -29,6 +29,7 @@
     try{s+=docHash();}catch(e){s+='?'+(typeof _docVersion!=='undefined'?_docVersion:0);}
     try{s+='|'+tlMark+'|'+(occSkipFeat||'')+'|'+(occStepForce?1:0);}catch(e){}
     try{s+='|'+bodyVisSig();}catch(e){}
+    try{s+='|'+mepXThreadSig();}catch(e){} // 2026-11-26 : filetages extérieurs résolus au rejeu (98-mep-76)
     const list=(typeof bodies!=='undefined'&&bodies)||[];
     list.forEach(b=>{
       if(!b||b.ghost||b.kind==='ghost'||!b.mesh)return;
@@ -1316,6 +1317,7 @@
     try{geo.els=mepMergeCollinear(geo.els);}catch(e){}
     try{geo.els=mepDropHiddenUnder(geo.els);}catch(e){try{console.warn('mep cachées',e);}catch(e2){}}
     try{const th=mepThreadEls(view);if(th.length)geo.els=geo.els.concat(th);}catch(e){try{console.warn('mep filetage',e);}catch(e2){}}
+    try{const xt=mepXThreadEls(view,geo.els);if(xt.length)geo.els=geo.els.concat(xt);}catch(e){try{console.warn('mep filetage extérieur',e);}catch(e2){}}
     if((view.render3d||view.real)&&!view.section&&!view.detail){
       try{geo.img3d=mepRender3dImage(view);}catch(e){geo.img3d=null;}
     }

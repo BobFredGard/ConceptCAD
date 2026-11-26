@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**800 versions**, de `2026-09-28b` à `V1.0.15` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**801 versions**, de `2026-09-28b` à `V1.0.16` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8925,3 +8925,16 @@ Fred : « Pouvoir empiler/ajouter une autre tolérance géométrique en dessous 
 - `src/98-mep-74-axes-sources.js` mepAxisSrcEdge : en mode Symétrie, l'arête allumée est prolongée à tous les traits alignés qui la touchent ou la recouvrent — l'arête entière s'allume au survol, après la création et à la sélection de l'axe.
 
 **Test** : `test_mep_tolerances_pile` (nouveau, inscrit dans run et run-fast, 21 contrôles) : clic droit, 2ᵉ puis 3ᵉ cadre collés et alignés, sans flèche, réglages à part, plus d'« Ajouter » à 3, glisser le 3ᵉ déplace la pile, enregistrement, Suppr du milieu et du 1er, pile sous la valeur d'une cote, flèche à droite → alignés à droite. Sur V1.0.14 : 9 échecs. `test_mep_axes_sources` +3 contrôles (arête en 3 morceaux superposés et bout à bout : survol, création, sélection ; V1.0.14 : échec). Dans le navigateur, sur Support Pédale : cadre posé sur l'arête de la vue de face, clic droit → 2ᵉ puis 3ᵉ, le 3ᵉ glissé emporte la pile (flèche toujours perpendiculaire), Suppr du 1er retire tout, Ctrl+Z ramène les 3 ; arête entière allumée en Symétrie ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.16 - Mise en plan : filetage extérieur dessiné (fond de filet gris, ISO 6410) et coté « M4 »
+
+Fred : « Normalement ce Ø4 est un M4. La vue ne montre pas le filet du cylindre qui existe dans le 3D et ne cote pas comme un filetage. A corriger » ; « Et voir aussi le fond de filet en gris, comme pour les trous taraudés »
+
+**Avant** : la mise en plan ne connaissait que les taraudages des perçages. Un axe fileté par la fonction Filetage (filet cosmétique) apparaissait lisse dans les vues, et sa cote se lisait « Ø4 ». À la réouverture d'un fichier, la pièce relue telle qu'enregistrée et le rejeu de fond qui sautait les filetages laissaient aussi la 3D sans spirale jusqu'à une vraie reconstruction.
+
+**Correctif** :
+- `src/98-mep-76-filetages-exterieurs.js` (nouveau) : mepXThreads (filets cosmétiques de la vue, géométrie du rejeu), mepXThreadEls — vue de côté : 2 traits de fond de filet (Ø d1 = d − 1,0825·P) en trait fin gris (comme les taraudages), du bout libre (première rencontre avec le contour : chanfrein, même posé après le filetage dans l'historique, ou bout plat) jusqu'à la fin du filet ; trait fort de fin de filetage quand le filet s'arrête avant le bout de la face ; vue en bout, bout libre vu : 3/4 de cercle au fond de filet ; coupe par l'axe : mêmes traits ; mepDimThreadOf / mepDimThreadText : une cote Ø entre génératrices de la partie filetée, ou de diamètre sur le cercle vu en bout, s'écrit avec la désignation du filetage (« M4 », « M4×0,5 », « M4-LH », classe → « M4-6g », texte avant et après gardés ; texte imposé : inchangé) ;
+- `src/98-mep-10-projection-hlr.js` : traits ajoutés à la finition de la vue (avant coupe locale et détail) ; mepXThreadSig dans la clé des vues ; `src/98-mep-70-cotes.js` et `98-mep-90-proprietes.js` : texte de la cote ;
+- `src/76-filetage.js` : threadCompute garde les bouts libres et la longueur de la face (f0, f1, span) ; threadReplayStep résout aussi le filet cosmétique pendant le rejeu de fond (copie de la fonction : document, empreinte et pièce gardée intacts) ; threadGeoPut redessine les spirales 3D et le plan quand un filet apparaît ou bouge.
+
+**Test** : `test_mep_filetage_exterieur` (nouveau, inscrit dans run et run-fast, 24 contrôles) : axe M4 chanfreiné avec épaulement — 2 traits fins au Ø 3,242 de l'épaulement jusqu'au chanfrein, chanfrein posé après le filetage, grand chanfrein sans dépassement, longueur filetée 5 avec trait fort de fin, 3/4 de cercle vu du bout libre et rien de l'autre côté, filet modélisé ou masqué : rien ; cotes « M4 », « M4-6g », « 2× M4 », « M4×0,5 », « M4-LH », Ø3,2 du chanfrein, Ø6 de l'épaulement, partie lisse Ø4, cercle vu en bout ; sans géométrie du rejeu : rien et Ø4. Sur V1.0.15 : échec. Dans le navigateur, sur une copie de la pièce de Fred (hors dépôt) : fond de filet gris du chanfrein à l'épaulement dans la vue de face, cote « M4 » au lieu de « Ø4 », Ø6 inchangé ; fichier rouvert : filet en plan et spirale 3D après le seul rejeu de fond, empreinte du document et pièce gardée inchangées (contrôle 3/3) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
