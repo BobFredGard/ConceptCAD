@@ -352,6 +352,7 @@
     }
   }
   function mepDrawAxes(mk,v,sh){
+    mepDrawAxisSrc(mk,v,sh); // 2026-11-26 : traits d'origine de l'axe sélectionné, halo léger dessous (98-mep-74)
     const sa=mepSt.selAxis&&mepSt.selAxis.vid===v.id?mepSt.selAxis:null;
     const hs=2.2/(mepSt.zoom||1),ends=[];
     const ip=mepSt.intPick;

@@ -973,7 +973,7 @@
         if(!holes)holes=mepHoleFeatAxes();
         return !holes.some(h=>mepRevSameAxis(h,g,0.1));
       });
-      list.forEach(g=>{if(!onSlot(g))out.push(...mepRevPrims(g,v,b,over));});
+      list.forEach(g=>{if(!onSlot(g))out.push(...mepAxisSrcTag(mepRevPrims(g,v,b,over),[mepAxisRevSrc(g)]));});
     });
     return out;
   }
@@ -1015,7 +1015,7 @@
       const r=+ref.ax.r||G.r||1,t0=Number.isFinite(G.t0)?G.t0:0,t1=Number.isFinite(G.t1)?G.t1:t0;
       const P=t=>[G.o[0]+G.d[0]*t,G.o[1]+G.d[1]*t,G.o[2]+G.d[2]*t],c=P(t0);
       return{x:mepDot(c,b.u),y:mepDot(c,b.v),r,facing,dir2:[mepDot(G.d,b.u),mepDot(G.d,b.v)],
-        rev:{o:G.o,d:G.d,t0,t1,r}};
+        rev:{o:G.o,d:G.d,t0,t1,r,rs:G.rs}}; // rs : tous les rayons de la révolution (traits d'origine, 98-mep-74)
     }
     if(ref.c){
       const e=mepCircTrack(v,ref.c);
@@ -1077,25 +1077,27 @@
     });
     const face=mepAxisFaceHoles(sh,v).filter(h=>!manual.has(mepAxisKey(h)));
     const inPitch=new Set();
+    // chaque trait porte sa source (p.src) : ses traits d'origine sont soulignés quand il est sélectionné (98-mep-74)
+    const T=mepAxisSrcTag,H=hs=>hs.map(mepAxisHoleSrc);
     if(v.autoPitch){
       mepAxisPitchGroups(face,v).forEach(g=>{
         g.pts.forEach(h=>inPitch.add(mepAxisKey(h)));
-        out.push(...mepAxisPitchPrims(g.C,g.pts,v));
+        out.push(...T(mepAxisPitchPrims(g.C,g.pts,v),H(g.pts)));
       });
     }
     if(v.autoAxes){
       face.forEach(h=>{
-        if(!inPitch.has(mepAxisKey(h)))out.push(...mepAxisCrossPrims(h.x,h.y,h.r,v,'mepAxisCross'));
+        if(!inPitch.has(mepAxisKey(h)))out.push(...T(mepAxisCrossPrims(h.x,h.y,h.r,v,'mepAxisCross'),H([h])));
       });
       const rest=face.filter(h=>!inPitch.has(mepAxisKey(h)));
-      mepAxisLineGroups(rest,v).forEach(g=>out.push(...mepAxisAlignPrims(g.pts,v,false)));
+      mepAxisLineGroups(rest,v).forEach(g=>out.push(...T(mepAxisAlignPrims(g.pts,v,false),H(g.pts))));
       const g=mepGeoOf(v);
       mepAxisFeatureHoles(sh,v).forEach(h=>{
-        if(!manual.has(mepAxisKey(h))&&Math.abs(h.facing)<0.02)out.push(...mepAxisSideLine(h,v,g));
+        if(!manual.has(mepAxisKey(h))&&Math.abs(h.facing)<0.02)out.push(...T(mepAxisSideLine(h,v,g),H([h])));
       });
       try{out.push(...mepAxisCylPrims(sh,v));}catch(e){} // 2026-10-22-012 : cylindres d'un STEP
-      mepSlotsAuto(v).forEach(s=>out.push(...mepSlotPrims(s,v))); // 2026-11-06 : oblongs, sur leurs 2 centres
-      mepASlotsAuto(v).forEach(s=>out.push(...mepASlotPrims(s,v))); // 2026-11-09 : oblongs en arc
+      mepSlotsAuto(v).forEach(s=>out.push(...T(mepSlotPrims(s,v),[{slot:mepSlotMemo(s)}]))); // 2026-11-06 : oblongs, sur leurs 2 centres
+      mepASlotsAuto(v).forEach(s=>out.push(...T(mepASlotPrims(s,v),[{aslot:mepASlotMemo(s)}]))); // 2026-11-09 : oblongs en arc
     }
     return out;
   }

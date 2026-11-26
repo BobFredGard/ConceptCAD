@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**794 versions**, de `2026-09-28b` à `V1.0.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**795 versions**, de `2026-09-28b` à `V1.0.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8843,3 +8843,19 @@ Suite de V1.0.8. Fred : « Oui, la rotation aussi ».
 **Correctif** (`src/10-scene-3d.js`) : `orbitTick` et `skOrbTick` (orbite de la vue d'esquisse) comptent cette part **en millisecondes** (`ORBIT_ROT_TAU` ≈ 75 ms, tiré de `ORBIT_ROT_DAMP`). À 60 images/s, la rotation garde exactement la même douceur (20 % à la première image). Sur une pièce lourde, elle s'arrête dès l'image suivante. L'angle total d'un glisser et la vitesse ne changent pas.
 
 **Test** : `test_zoom_deplacement` +5 contrôles (36 en tout) : 20 % à la première image à 60 images/s ; 99,5 % du glissement appliqué en 2 images à 5 images/s ; même angle final aux deux cadences ; ancien amorti rejoué (20 % par image) : 36 % seulement en 0,4 s, échec. Dans le navigateur, sur Support Pédale, à 1 image par seconde : rotation finie dès l'image suivant le lâcher (ancien réglage : 83 % au bout de 4 s). CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.10 - Mise en plan : un trait d'axe sélectionné souligne les traits qui ont servi à le construire
+
+Demande de Fred : « Mise en plan, traits d'axes -> mettre en surbrillance légère les traits qui servent à leur réalisation ».
+
+**Avant** : un trait d'axe sélectionné passait en bleu, sans rien montrer de ce qui l'avait fait naître. Pendant la création d'un axe de symétrie, la 1re droite cliquée n'était pas marquée du tout.
+
+**Correctif** (`src/98-mep-74-axes-sources.js`, nouveau) : un halo bleu pâle (classe `mepAxisSrc`, 7 px à l'écran à toute échelle, opacité 0,3, sous le trait) souligne les traits d'origine de l'axe sélectionné :
+- perçage (fonction Perçage) : cercles du trou vu de bout, parois vues de côté — reconnus comme la cotation de perçage (`mepHoleAt`, `mepHoleAtLine`) ;
+- révolution du solide exact (cylindre d'un STEP, cercle extrudé…) : cercles concentriques de bout ; génératrices et arêtes vues par la tranche, dans sa longueur, de côté ;
+- cercle de la vue (maillage, DXF) ; 2 droites d'un axe de symétrie, retrouvées comme l'axe lui-même (`mepAxisTrackPair`) ; trous d'un alignement ou d'un cercle de perçage ; bouts et côtés d'un oblong droit ou en arc (contours emboîtés compris) ;
+- axe libre : rien.
+
+Les axes automatiques portent leur source dès leur calcul (`mepAxisAutoGeom`, `mepAxisCylPrims` : `p.src`) ; un axe posé à la main la tire de son annotation, seulement quand il est sélectionné (`mepAxisAnnSrc`). Résultat gardé par géométrie de vue tant que la sélection ne change pas. Pendant la création (outil Axes), la 1re droite d'un axe de symétrie et les trous déjà choisis pour un alignement ou un cercle de perçage sont soulignés de même. Le halo est retiré de l'export SVG, PDF, impression (`mepExportPrep`) et DXF (`MEP_DXF_SKIP`).
+
+**Test** : `test_mep_axes_sources` (nouveau, inscrit dans les tests rapides, 23 contrôles). Sans noyau, vue DXF : axe de symétrie → ses 2 droites, pas la 3e parallèle ; halo aux coordonnées de la planche ; cercle → ce cercle seul ; alignement → ses 2 cercles ; axe libre et rien de sélectionné → rien ; oblong automatique → ses 4 traits ; création : 1re droite d'un axe de symétrie dès le 1er clic, trous d'un alignement, rien après l'outil ; révolution de côté et de bout ; export sans halo. Sur le vrai noyau : bloc percé Ø8 (croix de bout → le cercle seul ; axe de côté → les 2 parois ; axe posé d'un clic sur le trou → le cercle ; même trou vu de côté → les parois) et cylindre extrudé (cercle R10 ; 2 génératrices et 2 bouts). Sur la version précédente : échec. Dans le navigateur, sur Support Pédale : croix du trou Ø8 H7 → son cercle seul ; axe vertical de la vue de droite → bord et arêtes du cylindre ; 1re droite d'un axe de symétrie soulignée ; Échap efface tout. CACHE_VER et FORMES_VER inchangés.

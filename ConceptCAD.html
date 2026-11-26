@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.0.9';
+const APP_VER='V1.0.10';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -92591,6 +92591,7 @@ function filmFrame(){
     .mepAxisCross{fill:none;stroke:var(--mepAxisCol,#111);stroke-width:var(--mepLwAxisX,.62);stroke-linecap:butt;pointer-events:none}
     .mepAxisSel{stroke:#0066ff!important;stroke-width:1.1!important}
     .mepAxisPick{fill:none;stroke:#ffd60a;stroke-width:1.1;pointer-events:none}
+    .mepAxisSrc{fill:none;stroke:#0a84ff;stroke-opacity:.3;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
   `;
   document.head.appendChild(css);
 
@@ -97993,6 +97994,7 @@ function filmFrame(){
     }
   }
   function mepDrawAxes(mk,v,sh){
+    mepDrawAxisSrc(mk,v,sh); // 2026-11-26 : traits d'origine de l'axe sélectionné, halo léger dessous (98-mep-74)
     const sa=mepSt.selAxis&&mepSt.selAxis.vid===v.id?mepSt.selAxis:null;
     const hs=2.2/(mepSt.zoom||1),ends=[];
     const ip=mepSt.intPick;
@@ -99538,7 +99540,7 @@ function filmFrame(){
         if(!holes)holes=mepHoleFeatAxes();
         return !holes.some(h=>mepRevSameAxis(h,g,0.1));
       });
-      list.forEach(g=>{if(!onSlot(g))out.push(...mepRevPrims(g,v,b,over));});
+      list.forEach(g=>{if(!onSlot(g))out.push(...mepAxisSrcTag(mepRevPrims(g,v,b,over),[mepAxisRevSrc(g)]));});
     });
     return out;
   }
@@ -99580,7 +99582,7 @@ function filmFrame(){
       const r=+ref.ax.r||G.r||1,t0=Number.isFinite(G.t0)?G.t0:0,t1=Number.isFinite(G.t1)?G.t1:t0;
       const P=t=>[G.o[0]+G.d[0]*t,G.o[1]+G.d[1]*t,G.o[2]+G.d[2]*t],c=P(t0);
       return{x:mepDot(c,b.u),y:mepDot(c,b.v),r,facing,dir2:[mepDot(G.d,b.u),mepDot(G.d,b.v)],
-        rev:{o:G.o,d:G.d,t0,t1,r}};
+        rev:{o:G.o,d:G.d,t0,t1,r,rs:G.rs}}; // rs : tous les rayons de la révolution (traits d'origine, 98-mep-74)
     }
     if(ref.c){
       const e=mepCircTrack(v,ref.c);
@@ -99642,25 +99644,27 @@ function filmFrame(){
     });
     const face=mepAxisFaceHoles(sh,v).filter(h=>!manual.has(mepAxisKey(h)));
     const inPitch=new Set();
+    // chaque trait porte sa source (p.src) : ses traits d'origine sont soulignés quand il est sélectionné (98-mep-74)
+    const T=mepAxisSrcTag,H=hs=>hs.map(mepAxisHoleSrc);
     if(v.autoPitch){
       mepAxisPitchGroups(face,v).forEach(g=>{
         g.pts.forEach(h=>inPitch.add(mepAxisKey(h)));
-        out.push(...mepAxisPitchPrims(g.C,g.pts,v));
+        out.push(...T(mepAxisPitchPrims(g.C,g.pts,v),H(g.pts)));
       });
     }
     if(v.autoAxes){
       face.forEach(h=>{
-        if(!inPitch.has(mepAxisKey(h)))out.push(...mepAxisCrossPrims(h.x,h.y,h.r,v,'mepAxisCross'));
+        if(!inPitch.has(mepAxisKey(h)))out.push(...T(mepAxisCrossPrims(h.x,h.y,h.r,v,'mepAxisCross'),H([h])));
       });
       const rest=face.filter(h=>!inPitch.has(mepAxisKey(h)));
-      mepAxisLineGroups(rest,v).forEach(g=>out.push(...mepAxisAlignPrims(g.pts,v,false)));
+      mepAxisLineGroups(rest,v).forEach(g=>out.push(...T(mepAxisAlignPrims(g.pts,v,false),H(g.pts))));
       const g=mepGeoOf(v);
       mepAxisFeatureHoles(sh,v).forEach(h=>{
-        if(!manual.has(mepAxisKey(h))&&Math.abs(h.facing)<0.02)out.push(...mepAxisSideLine(h,v,g));
+        if(!manual.has(mepAxisKey(h))&&Math.abs(h.facing)<0.02)out.push(...T(mepAxisSideLine(h,v,g),H([h])));
       });
       try{out.push(...mepAxisCylPrims(sh,v));}catch(e){} // 2026-10-22-012 : cylindres d'un STEP
-      mepSlotsAuto(v).forEach(s=>out.push(...mepSlotPrims(s,v))); // 2026-11-06 : oblongs, sur leurs 2 centres
-      mepASlotsAuto(v).forEach(s=>out.push(...mepASlotPrims(s,v))); // 2026-11-09 : oblongs en arc
+      mepSlotsAuto(v).forEach(s=>out.push(...T(mepSlotPrims(s,v),[{slot:mepSlotMemo(s)}]))); // 2026-11-06 : oblongs, sur leurs 2 centres
+      mepASlotsAuto(v).forEach(s=>out.push(...T(mepASlotPrims(s,v),[{aslot:mepASlotMemo(s)}]))); // 2026-11-09 : oblongs en arc
     }
     return out;
   }
@@ -101135,6 +101139,154 @@ function filmFrame(){
     const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
     bDel.onclick=()=>{mepEdit('suppression rugosité',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();};
     act.appendChild(bDel);root.appendChild(act);
+  }
+
+/* ═══════════════ 98-mep-74-axes-sources.js — mep 74 axes sources ═══════════════ */
+// Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : traits d'origine d'un trait d'axe, surlignés légèrement.
+  /* ═══════════════ O4. traits d'origine d'un trait d'axe ═══════════════ */
+  /* 2026-11-26 : « Mise en plan, traits d'axes → mettre en surbrillance légère les traits qui servent
+     à leur réalisation ». Trait d'axe sélectionné (ou en cours de création : 1re droite d'un axe de
+     symétrie, trous choisis pour un alignement ou un cercle de perçage) : les traits de la vue dont il
+     est tiré sont soulignés d'un halo bleu pâle, sous le trait (classe mepAxisSrc, jamais exportée).
+     Sources (tableau de descripteurs) :
+     - {hole:{fid,pid,x,y,r,facing,dir2}} fonction Perçage — reconnue comme la cotation de perçage
+       (mepHoleAt pour les cercles, mepHoleAtLine pour la paroi, le fond, le cône vus de côté) ;
+     - {rev:{o,d,t0,t1,r,rs}} révolution du solide exact (cylindre d'un STEP, cercle extrudé…) —
+       de bout : cercles et arcs concentriques à l'un de ses rayons ; de côté : génératrices et
+       arêtes vues par la tranche, dans sa longueur ;
+     - {c:{cx,cy,r}} cercle de la vue (maillage, DXF) ; {pair:[l1,l2]} les 2 droites d'un axe de
+       symétrie, suivies comme l'axe lui-même ; {el} un trait de la vue ;
+     - {slot} / {aslot} oblong droit / en arc : bouts, côtés (contours emboîtés compris).
+     Axe automatique : p.src posé à sa création (mepAxisAutoGeom, mepAxisCylPrims) ; axe posé à la
+     main : tiré de son annotation, seulement quand il est sélectionné. Axe libre : aucune source. */
+  function mepAxisSrcTag(ps,src){(ps||[]).forEach(p=>{if(p)p.src=src;});return ps;}
+  function mepAxisRevSrc(g){return{rev:{o:g.o,d:g.d,t0:g.t0,t1:g.t1,r:g.r,rs:g.rs}};}
+  function mepAxisHoleSrc(h){
+    if(!h)return null;
+    if(h.fid)return{hole:{fid:h.fid,pid:h.pid,x:h.x,y:h.y,r:h.r,facing:h.facing,dir2:h.dir2}};
+    if(h.rev)return{rev:h.rev};
+    return{c:{cx:h.x,cy:h.y,r:h.r}};
+  }
+  // sources d'un axe posé à la main
+  function mepAxisAnnSrc(sh,v,ann){
+    if(!ann)return[];
+    if(ann.kind==='sym')return ann.l1&&ann.l2?[{pair:[ann.l1,ann.l2]}]:[];
+    if(ann.kind==='slot')return ann.s?[{slot:ann.s}]:[];
+    if(ann.kind==='aslot')return ann.s?[{aslot:ann.s}]:[];
+    if(ann.kind!=='hole'&&ann.kind!=='align'&&ann.kind!=='pitch')return[]; // axe libre
+    const refs=ann.kind==='hole'?[ann.ref]:(ann.refs||[]);
+    return refs.map(r=>{try{return mepAxisHoleSrc(mepAxisRefGeom(sh,v,r));}catch(e){return null;}}).filter(Boolean);
+  }
+  // ce qui est à souligner dans la vue v : axe sélectionné, puis la création en cours (outil Axes)
+  function mepAxisSrcWanted(sh,v){
+    const out=[],sa=mepSt.selAxis;
+    if(sa&&sa.vid===v.id){
+      const an=sa.id?(v.axes||[]).find(a=>a&&a.id===sa.id):null;
+      if(an)out.push(...mepAxisAnnSrc(sh,v,an));
+      else if(sa.ak){const p=mepAxisLineByKey(sh,v,sa.ak);if(p&&!p.ann&&p.src)out.push(...p.src);}
+    }
+    if(mepSt.tool==='axis'){
+      const f=mepSt.axisSym;if(f&&f.vid===v.id&&f.e)out.push({el:f.e});
+      (mepSt.axisPick||[]).forEach(r=>{
+        if(!r||r.vid!==v.id)return;
+        try{const s=mepAxisHoleSrc(mepAxisRefGeom(sh,v,r));if(s)out.push(s);}catch(e){}
+      });
+    }
+    return out.filter(Boolean);
+  }
+  // n° des traits de la vue qui correspondent à une source
+  function mepAxisSrcMatch(sh,v,els,s){
+    const out=[];
+    if(s.el){
+      const i=els.indexOf(s.el);if(i>=0)return[i];
+      const q=s.el,n=(a,b)=>Math.abs(a-b)<=1e-6;
+      els.forEach((e,j)=>{if(e.t==='L'&&q.t==='L'&&((n(e.x1,q.x1)&&n(e.y1,q.y1)&&n(e.x2,q.x2)&&n(e.y2,q.y2))||(n(e.x1,q.x2)&&n(e.y1,q.y2)&&n(e.x2,q.x1)&&n(e.y2,q.y1))))out.push(j);});
+      return out;
+    }
+    if(s.pair){ // même appariement que l'axe : sans paire retrouvée, l'axe garde sa dernière position, rien à souligner
+      const pr=mepAxisTrackPair(mepGeoOf(v),s.pair[0],s.pair[1]);
+      return pr?pr.map(e=>els.indexOf(e)).filter(i=>i>=0):[];
+    }
+    if(s.slot){
+      mepSlotsOf(v).forEach(q=>{if(mepSlotSameCenters(q,s.slot,0.01))out.push(...q.ia,...q.ib,...q.il);});
+      return out;
+    }
+    if(s.aslot){
+      mepASlotsOf(v).forEach(q=>{if(mepASlotSame(q,s.aslot,0.01))out.push(...q.ia,...q.ib,...q.io,...q.ii);});
+      return out;
+    }
+    if(s.c){
+      const c=s.c,tol=Math.max(0.05,c.r*0.01);
+      els.forEach((e,i)=>{if((e.t==='C'||e.t==='A')&&Math.hypot(e.cx-c.cx,e.cy-c.cy)<=tol&&Math.abs(e.r-c.r)<=tol)out.push(i);});
+      return out;
+    }
+    if(s.hole){
+      const H=s.hole,d2=H.dir2||[0,0],dl=Math.hypot(d2[0],d2[1]),okDir=dl>1e-9; // NaN : direction inconnue, pas de tri préalable
+      const ux=okDir?d2[0]/dl:0,uy=okDir?d2[1]/dl:0,wMax=(+H.r||0)*1.3+0.5; // filetage : rayon nominal au-delà du perçage
+      const mine=m=>!!m&&m.f&&m.f.id===H.fid&&m.P&&m.P.id===H.pid;
+      els.forEach((e,i)=>{
+        if(e.t==='C'||e.t==='A'){
+          if(Math.hypot(e.cx-H.x,e.cy-H.y)<=0.5&&mine(mepHoleAt(sh,v.id,e,i)))out.push(i);
+        }else if(e.t==='L'){
+          if(okDir){ // tri préalable : de bout, pas de paroi ; de côté, à moins d'un rayon de l'axe
+            if(Math.abs(H.facing)>=0.999)return;
+            const w=(x,y)=>Math.abs((x-H.x)*uy-(y-H.y)*ux);
+            if(w(e.x1,e.y1)>wMax||w(e.x2,e.y2)>wMax)return;
+          }
+          if(mine(mepHoleAtLine(sh,v.id,e,i)))out.push(i);
+        }
+      });
+      return out;
+    }
+    if(s.rev){
+      const R=s.rev,b=mepBasisOf(v),f=mepDot(R.d,b.dir);
+      const rs=(Array.isArray(R.rs)&&R.rs.length?R.rs:[R.r]).filter(r=>r>1e-6);if(!rs.length)return out;
+      const rMax=Math.max(...rs),tolR=r=>Math.max(0.05,r*0.01),onR=w=>rs.some(r=>Math.abs(w-r)<=tolR(r));
+      const P=t=>{const p=[R.o[0]+R.d[0]*t,R.o[1]+R.d[1]*t,R.o[2]+R.d[2]*t];return{x:mepDot(p,b.u),y:mepDot(p,b.v)};};
+      const t0=Number.isFinite(R.t0)?R.t0:0,t1=Number.isFinite(R.t1)?R.t1:t0;
+      if(Math.abs(f)>0.999){ // de bout : cercles et arcs concentriques
+        const c=P(t0);
+        els.forEach((e,i)=>{if((e.t==='C'||e.t==='A')&&Math.hypot(e.cx-c.x,e.cy-c.y)<=0.05&&onR(e.r))out.push(i);});
+      }else if(Math.abs(f)<0.02){ // de côté : génératrices, et arêtes circulaires vues par la tranche
+        const A=P(t0),B=P(t1),L=Math.hypot(B.x-A.x,B.y-A.y);if(!(L>1e-6))return out;
+        const ux=(B.x-A.x)/L,uy=(B.y-A.y)/L,tl=0.05;
+        const at=(x,y)=>({t:(x-A.x)*ux+(y-A.y)*uy,w:(x-A.x)*uy-(y-A.y)*ux});
+        els.forEach((e,i)=>{
+          if(e.t!=='L')return;
+          const p=at(e.x1,e.y1),q=at(e.x2,e.y2),aw=Math.abs(p.w),bw=Math.abs(q.w);
+          if(Math.abs(p.w-q.w)<=0.02){ // parallèle à l'axe, à un de ses rayons, dans sa longueur
+            if(onR(aw)&&Math.max(p.t,q.t)>=-tl&&Math.min(p.t,q.t)<=L+tl&&Math.abs(p.t-q.t)>1e-6)out.push(i);
+          }else if(Math.abs(p.t-q.t)<=0.02&&p.t>=-tl&&p.t<=L+tl&&aw<=rMax+tl&&bw<=rMax+tl
+            &&(onR(aw)||onR(bw)||aw<=tl||bw<=tl))out.push(i); // perpendiculaire : un cercle de la révolution vu par la tranche
+        });
+      }
+      return out;
+    }
+    return out;
+  }
+  // n° des traits d'origine (sans doublon), gardés par géométrie de vue tant que les sources ne changent pas
+  const mepAxisSrcMemo=new WeakMap();
+  function mepAxisSrcIdx(sh,v,srcs){
+    const g=mepGeoOf(v),els=(g&&g.els)||[];
+    if(!srcs||!srcs.length||!els.length)return[];
+    let key='';try{key=JSON.stringify(srcs);}catch(e){}
+    const c=mepAxisSrcMemo.get(g);
+    if(key&&c&&c.key===key&&c.els===els&&c.n===els.length)return c.idx;
+    const set=new Set();
+    srcs.forEach(s=>{try{mepAxisSrcMatch(sh,v,els,s).forEach(i=>{if(i>=0&&i<els.length)set.add(i);});}catch(e){}});
+    const idx=[...set].sort((a,b)=>a-b);
+    if(key)mepAxisSrcMemo.set(g,{key,els,n:els.length,idx});
+    return idx;
+  }
+  // halo sous les traits d'origine (dessiné avant les traits de la vue)
+  function mepDrawAxisSrc(mk,v,sh){
+    let srcs=[];try{srcs=mepAxisSrcWanted(sh,v);}catch(e){return;}
+    if(!srcs.length)return;
+    const els=(mepGeoOf(v)||{}).els||[],idx=mepAxisSrcIdx(sh,v,srcs);
+    if(!idx.length)return;
+    const X=lx=>v.x+lx*v.scale,Y=ly=>v.y+ly*v.scale;
+    mepEntSc=v.scale; // rayons des cercles (mepEntEl)
+    idx.forEach(i=>mepEntEl(mk,els[i],X,Y,'mepAxisSrc'));
   }
 
 /* ═══════════════ 98-mep-75-esquisse-solveur-dessin.js — mep 75 esquisse solveur dessin ═══════════════ */
@@ -105189,7 +105341,7 @@ function filmFrame(){
     // Noir : tout en noir sur blanc (ISO), couleurs d'entités comprises. Renvoie le CSS à ajouter.
     if(bw===undefined)bw=mepExportBW();
     // 2026-10-22-012 : les poignées d'axe (interface) ne sortent jamais
-    try{clone.querySelectorAll('.mepAxisHandle').forEach(e=>e.parentNode&&e.parentNode.removeChild(e));}catch(e){}
+    try{clone.querySelectorAll('.mepAxisHandle,.mepAxisSrc').forEach(e=>e.parentNode&&e.parentNode.removeChild(e));}catch(e){} // + halo des traits d'origine (2026-11-26)
     const st=clone.style,set=(k,v)=>{try{st.setProperty(k,v);}catch(e){st[k]=v;}};
     if(bw){
       try{st.removeProperty('--mepDimCol');}catch(e){delete st['--mepDimCol'];}
@@ -105242,7 +105394,7 @@ function filmFrame(){
   const MEP_DXF_LAYERS=[['CONTOUR',7,'CONTINUOUS'],['TANGENTE',9,'CONTINUOUS'],['CACHE',3,'DASHED'],['AXE',1,'CENTER'],
     ['COTES',4,'CONTINUOUS'],['HACHURES',8,'CONTINUOUS'],['CADRE',7,'CONTINUOUS'],['CARTOUCHE',7,'CONTINUOUS'],
     ['TEXTE',7,'CONTINUOUS'],['ESQUISSE',5,'CONTINUOUS'],['FILETAGE',7,'CONTINUOUS']];
-  const MEP_DXF_SKIP=['mepPage','mepGrid','mepVB','mepVBSel','mepSnap','mepAxisPick','mepDraft','mepDimGhost','mepFace'];
+  const MEP_DXF_SKIP=['mepPage','mepGrid','mepVB','mepVBSel','mepSnap','mepAxisPick','mepAxisSrc','mepDraft','mepDimGhost','mepFace'];
   function mepDxfLayer(el){
     const c=el.classList||{contains:()=>false},has=k=>c.contains(k);
     if(has('mepHidden'))return 'CACHE';
@@ -105689,6 +105841,8 @@ function filmFrame(){
       axisManual:(view,ann)=>mepAxisManualGeom(mepSheet(),view,ann),
       slotsOf:view=>mepSlotsOf(view),aslotsOf:view=>mepASlotsOf(view),gdtClick:(P,t)=>mepGdtClick(mepSheet(),P,t),gdtWorld:d=>mepGdtWorld(mepSheet(),d),gdtNext:()=>mepGdtNextLetter(),gdtBox:d=>mepGdtBoxes.get(d),sideDim:(root,d)=>mepSideDim(root,d,mepSheet()),drawAxisPrim:(mk,p,view)=>mepDrawAxisPrim(mk,p,view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
       axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),axisHide:(view,ak)=>mepAxisAutoHide(mepSheet(),view,ak),
+      axisSrc:view=>mepAxisSrcIdx(mepSheet(),view,mepAxisSrcWanted(mepSheet(),view)),axisSrcMatch:(view,s)=>mepAxisSrcMatch(mepSheet(),view,(mepGeoOf(view)||{}).els||[],s),
+      drawAxisSrc:(mk,view)=>mepDrawAxisSrc(mk,view,mepSheet()),selAxis:o=>{mepSt.selAxis=o||null;},
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},
       snapPt:(x,y,o)=>mepSnapPt(x,y,mepSheet(),o),
       snapModePt:(x,y,m)=>mepSnapModePt(mepSheet(),x,y,m),setSnapMode:m=>mepSetSnapMode(m),intCancel:()=>mepIntCancel(),chainStart:(d,e)=>mepChainStart(mepSheet(),d,e),chainRappelAt:(d,P)=>mepChainRappelAt(mepSheet(),d,P),chainEnd:()=>mepChainEnd(),chainClick:P=>mepChainClick(mepSheet(),P),chainHover:P=>mepChainHover(mepSheet(),P),dimLineOf:d=>mepDimLine(mepSheet(),d),angTextPos:d=>mepAngTextPos(mepSheet(),d),angGeom:d=>mepAngGeom(mepSheet(),d),dimMoveTo:(d,P,pk)=>mepDimMoveTo(mepSheet(),d,P,pk),snapMode:()=>mepSt.snapMode||null,dimClick:(P,c,s,a)=>mepDimClick(mepSheet(),P,!!c,!!s,!!a),snapInter:(a,b)=>mepSnapInter(a,b),snapExt:(v,q,e)=>mepSnapExtPrims(v,q,e),

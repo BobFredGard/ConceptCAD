@@ -139,6 +139,7 @@
     .mepAxisCross{fill:none;stroke:var(--mepAxisCol,#111);stroke-width:var(--mepLwAxisX,.62);stroke-linecap:butt;pointer-events:none}
     .mepAxisSel{stroke:#0066ff!important;stroke-width:1.1!important}
     .mepAxisPick{fill:none;stroke:#ffd60a;stroke-width:1.1;pointer-events:none}
+    .mepAxisSrc{fill:none;stroke:#0a84ff;stroke-opacity:.3;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
   `;
   document.head.appendChild(css);
 

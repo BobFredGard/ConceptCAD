@@ -93,6 +93,7 @@ const SUITES = [
   "test_mep_tolerances",
   "test_mep_oblong_reel",
   "test_mep_axes_planche",
+  "test_mep_axes_sources",
   "test_mep_filigrane",
   "test_mep_rugosite",
   "test_mep_angle_texte",

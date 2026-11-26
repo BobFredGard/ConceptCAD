@@ -6,7 +6,7 @@
     // Noir : tout en noir sur blanc (ISO), couleurs d'entités comprises. Renvoie le CSS à ajouter.
     if(bw===undefined)bw=mepExportBW();
     // 2026-10-22-012 : les poignées d'axe (interface) ne sortent jamais
-    try{clone.querySelectorAll('.mepAxisHandle').forEach(e=>e.parentNode&&e.parentNode.removeChild(e));}catch(e){}
+    try{clone.querySelectorAll('.mepAxisHandle,.mepAxisSrc').forEach(e=>e.parentNode&&e.parentNode.removeChild(e));}catch(e){} // + halo des traits d'origine (2026-11-26)
     const st=clone.style,set=(k,v)=>{try{st.setProperty(k,v);}catch(e){st[k]=v;}};
     if(bw){
       try{st.removeProperty('--mepDimCol');}catch(e){delete st['--mepDimCol'];}
@@ -59,7 +59,7 @@
   const MEP_DXF_LAYERS=[['CONTOUR',7,'CONTINUOUS'],['TANGENTE',9,'CONTINUOUS'],['CACHE',3,'DASHED'],['AXE',1,'CENTER'],
     ['COTES',4,'CONTINUOUS'],['HACHURES',8,'CONTINUOUS'],['CADRE',7,'CONTINUOUS'],['CARTOUCHE',7,'CONTINUOUS'],
     ['TEXTE',7,'CONTINUOUS'],['ESQUISSE',5,'CONTINUOUS'],['FILETAGE',7,'CONTINUOUS']];
-  const MEP_DXF_SKIP=['mepPage','mepGrid','mepVB','mepVBSel','mepSnap','mepAxisPick','mepDraft','mepDimGhost','mepFace'];
+  const MEP_DXF_SKIP=['mepPage','mepGrid','mepVB','mepVBSel','mepSnap','mepAxisPick','mepAxisSrc','mepDraft','mepDimGhost','mepFace'];
   function mepDxfLayer(el){
     const c=el.classList||{contains:()=>false},has=k=>c.contains(k);
     if(has('mepHidden'))return 'CACHE';
@@ -506,6 +506,8 @@
       axisManual:(view,ann)=>mepAxisManualGeom(mepSheet(),view,ann),
       slotsOf:view=>mepSlotsOf(view),aslotsOf:view=>mepASlotsOf(view),gdtClick:(P,t)=>mepGdtClick(mepSheet(),P,t),gdtWorld:d=>mepGdtWorld(mepSheet(),d),gdtNext:()=>mepGdtNextLetter(),gdtBox:d=>mepGdtBoxes.get(d),sideDim:(root,d)=>mepSideDim(root,d,mepSheet()),drawAxisPrim:(mk,p,view)=>mepDrawAxisPrim(mk,p,view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
       axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),axisHide:(view,ak)=>mepAxisAutoHide(mepSheet(),view,ak),
+      axisSrc:view=>mepAxisSrcIdx(mepSheet(),view,mepAxisSrcWanted(mepSheet(),view)),axisSrcMatch:(view,s)=>mepAxisSrcMatch(mepSheet(),view,(mepGeoOf(view)||{}).els||[],s),
+      drawAxisSrc:(mk,view)=>mepDrawAxisSrc(mk,view,mepSheet()),selAxis:o=>{mepSt.selAxis=o||null;},
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},
       snapPt:(x,y,o)=>mepSnapPt(x,y,mepSheet(),o),
       snapModePt:(x,y,m)=>mepSnapModePt(mepSheet(),x,y,m),setSnapMode:m=>mepSetSnapMode(m),intCancel:()=>mepIntCancel(),chainStart:(d,e)=>mepChainStart(mepSheet(),d,e),chainRappelAt:(d,P)=>mepChainRappelAt(mepSheet(),d,P),chainEnd:()=>mepChainEnd(),chainClick:P=>mepChainClick(mepSheet(),P),chainHover:P=>mepChainHover(mepSheet(),P),dimLineOf:d=>mepDimLine(mepSheet(),d),angTextPos:d=>mepAngTextPos(mepSheet(),d),angGeom:d=>mepAngGeom(mepSheet(),d),dimMoveTo:(d,P,pk)=>mepDimMoveTo(mepSheet(),d,P,pk),snapMode:()=>mepSt.snapMode||null,dimClick:(P,c,s,a)=>mepDimClick(mepSheet(),P,!!c,!!s,!!a),snapInter:(a,b)=>mepSnapInter(a,b),snapExt:(v,q,e)=>mepSnapExtPrims(v,q,e),
