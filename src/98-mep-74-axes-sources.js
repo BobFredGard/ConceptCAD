@@ -3,7 +3,7 @@
   /* 2026-11-26 : « Mise en plan, traits d'axes → mettre en surbrillance légère les traits qui servent
      à leur réalisation ». Trait d'axe sélectionné (ou en cours de création : 1re droite d'un axe de
      symétrie, trous choisis pour un alignement ou un cercle de perçage) : les traits de la vue dont il
-     est tiré sont soulignés d'un halo bleu pâle, sous le trait (classe mepAxisSrc, jamais exportée).
+     est tiré sont soulignés d'un halo jaune orangé, sous le trait (classe mepAxisSrc, jamais exportée).
      Sources (tableau de descripteurs) :
      - {hole:{fid,pid,x,y,r,facing,dir2}} fonction Perçage — reconnue comme la cotation de perçage
        (mepHoleAt pour les cercles, mepHoleAtLine pour la paroi, le fond, le cône vus de côté) ;
@@ -33,6 +33,42 @@
     const refs=ann.kind==='hole'?[ann.ref]:(ann.refs||[]);
     return refs.map(r=>{try{return mepAxisHoleSrc(mepAxisRefGeom(sh,v,r));}catch(e){return null;}}).filter(Boolean);
   }
+  /* 2026-11-26 (suite, Fred : « il faudrait qu'il s'illumine au moment de la création », « Mais aussi
+     après », « Comme maintenant ») : avec l'outil Axes, les traits qui serviront s'allument AU SURVOL,
+     avant le clic (mepSt.axisHov), et ceux de l'axe qui vient d'être créé restent allumés tant que
+     l'outil reste ouvert (mepSt.axisNew, posé par mepAxisNewId à chaque création). Après, sélectionner
+     l'axe les rallume, comme avant. Couleur jaune orangé (« une autre couleur plus visible »). */
+  function mepAxisNewId(v){const id=mepUid('ax');mepSt.axisNew={vid:v.id,id};return id;}
+  // ce qu'un clic de l'outil Axes prendrait au point P de la planche : {vid, srcs} ou null (même ordre que mepAxisClick)
+  function mepAxisHovCand(sh,P){
+    const mode=mepSt.axisMode||'hole';
+    if(mode==='free')return null;
+    if(mode==='sym'){
+      const hit=mepHitViewEnt(sh,P.x,P.y);
+      return hit&&hit.e&&hit.e.t==='L'?{vid:hit.vid,srcs:[{el:hit.e}]}:null;
+    }
+    if(mode==='hole'){ // oblong droit, puis oblong en arc, d'un seul clic
+      const hit=mepHitViewEnt(sh,P.x,P.y);
+      const v=hit&&typeof hit.i==='number'&&hit.e?mepView(sh,hit.vid):null;
+      if(v&&!mepHoleAt(sh,hit.vid,hit.e,hit.i)){
+        const s=mepSlotOfEnt(v,hit.i);if(s)return{vid:v.id,srcs:[{slot:mepSlotMemo(s)}]};
+        const q=mepASlotOfEnt(v,hit.i);if(q)return{vid:v.id,srcs:[{aslot:mepASlotMemo(q)}]};
+      }
+    }
+    const ref=mepAxisHoleAt(sh,P.x,P.y);if(!ref)return null;
+    const v=mepView(sh,ref.vid);if(!v)return null;
+    const s=mepAxisHoleSrc(mepAxisRefGeom(sh,v,ref));
+    return s?{vid:v.id,srcs:[s]}:null;
+  }
+  // survol de l'outil Axes : true si ce qui est allumé change (redessin à faire)
+  function mepAxisHovUpdate(sh,P){
+    let c=null;try{c=mepAxisHovCand(sh,P);}catch(e){c=null;}
+    let key='';try{key=c?c.vid+'|'+JSON.stringify(c.srcs):'';}catch(e){}
+    const o=mepSt.axisHov;
+    if((o?o.key:'')===key)return false;
+    mepSt.axisHov=c?{vid:c.vid,srcs:c.srcs,key}:null;
+    return true;
+  }
   // ce qui est à souligner dans la vue v : axe sélectionné, puis la création en cours (outil Axes)
   function mepAxisSrcWanted(sh,v){
     const out=[],sa=mepSt.selAxis;
@@ -42,6 +78,10 @@
       else if(sa.ak){const p=mepAxisLineByKey(sh,v,sa.ak);if(p&&!p.ann&&p.src)out.push(...p.src);}
     }
     if(mepSt.tool==='axis'){
+      const nw=mepSt.axisNew; // axe qui vient d'être créé
+      if(nw&&nw.vid===v.id){const an=(v.axes||[]).find(a=>a&&a.id===nw.id);if(an)out.push(...mepAxisAnnSrc(sh,v,an));}
+      const hv=mepSt.axisHov; // ce que prendrait le clic
+      if(hv&&hv.vid===v.id&&Array.isArray(hv.srcs))out.push(...hv.srcs);
       const f=mepSt.axisSym;if(f&&f.vid===v.id&&f.e)out.push({el:f.e});
       (mepSt.axisPick||[]).forEach(r=>{
         if(!r||r.vid!==v.id)return;
@@ -100,20 +140,35 @@
       const rMax=Math.max(...rs),tolR=r=>Math.max(0.05,r*0.01),onR=w=>rs.some(r=>Math.abs(w-r)<=tolR(r));
       const P=t=>{const p=[R.o[0]+R.d[0]*t,R.o[1]+R.d[1]*t,R.o[2]+R.d[2]*t];return{x:mepDot(p,b.u),y:mepDot(p,b.v)};};
       const t0=Number.isFinite(R.t0)?R.t0:0,t1=Number.isFinite(R.t1)?R.t1:t0;
-      if(Math.abs(f)>0.999){ // de bout : cercles et arcs concentriques
+      // points d'un trait droit ou d'une polyligne (bord dessiné en petits segments)
+      const pts=e=>e.t==='L'?[[e.x1,e.y1],[e.x2,e.y2]]:(e.t==='P'&&Array.isArray(e.pts)&&e.pts.length>1?e.pts:null);
+      if(Math.abs(f)>0.999){ // de bout : cercles et arcs concentriques ; bord en segments posé sur un de ses cercles
         const c=P(t0);
-        els.forEach((e,i)=>{if((e.t==='C'||e.t==='A')&&Math.hypot(e.cx-c.x,e.cy-c.y)<=0.05&&onR(e.r))out.push(i);});
-      }else if(Math.abs(f)<0.02){ // de côté : génératrices, et arêtes circulaires vues par la tranche
-        const A=P(t0),B=P(t1),L=Math.hypot(B.x-A.x,B.y-A.y);if(!(L>1e-6))return out;
-        const ux=(B.x-A.x)/L,uy=(B.y-A.y)/L,tl=0.05;
-        const at=(x,y)=>({t:(x-A.x)*ux+(y-A.y)*uy,w:(x-A.x)*uy-(y-A.y)*ux});
         els.forEach((e,i)=>{
-          if(e.t!=='L')return;
-          const p=at(e.x1,e.y1),q=at(e.x2,e.y2),aw=Math.abs(p.w),bw=Math.abs(q.w);
-          if(Math.abs(p.w-q.w)<=0.02){ // parallèle à l'axe, à un de ses rayons, dans sa longueur
-            if(onR(aw)&&Math.max(p.t,q.t)>=-tl&&Math.min(p.t,q.t)<=L+tl&&Math.abs(p.t-q.t)>1e-6)out.push(i);
-          }else if(Math.abs(p.t-q.t)<=0.02&&p.t>=-tl&&p.t<=L+tl&&aw<=rMax+tl&&bw<=rMax+tl
-            &&(onR(aw)||onR(bw)||aw<=tl||bw<=tl))out.push(i); // perpendiculaire : un cercle de la révolution vu par la tranche
+          if(e.t==='C'||e.t==='A'){if(Math.hypot(e.cx-c.x,e.cy-c.y)<=0.05&&onR(e.r))out.push(i);return;}
+          const q=pts(e);if(!q)return;
+          const d0=Math.hypot(q[0][0]-c.x,q[0][1]-c.y),r0=rs.find(r=>Math.abs(d0-r)<=tolR(r));
+          if(r0!=null&&q.every(p=>Math.abs(Math.hypot(p[0]-c.x,p[1]-c.y)-r0)<=tolR(r0)))out.push(i);
+        });
+      }else if(Math.abs(f)<0.02){ // de côté : génératrices, arêtes circulaires vues par la tranche, courbes de sortie
+        const A=P(t0),B=P(t1),L=Math.hypot(B.x-A.x,B.y-A.y);if(!(L>1e-6))return out;
+        const ux=(B.x-A.x)/L,uy=(B.y-A.y)/L,tl=0.05,zone=Math.min(2*rMax,L/3)+tl; // révolution courte : jamais tout le milieu
+        const at=(x,y)=>({t:(x-A.x)*ux+(y-A.y)*uy,w:(x-A.x)*uy-(y-A.y)*ux});
+        // trait entièrement dans la bande du rayon, près d'un bout : courbe où la révolution sort de la pièce
+        // (trou qui débouche dans une face inclinée ou courbe) — pas au milieu, où passerait un trou en travers
+        const auBout=q=>{const T=q.map(p=>p.t);if(!q.every(p=>Math.abs(p.w)<=rMax+tl))return false;
+          const lo=Math.min(...T),hi=Math.max(...T);return (lo>=-tl&&hi<=zone)||(lo>=L-zone&&hi<=L+tl);};
+        els.forEach((e,i)=>{
+          const raw=pts(e);if(!raw)return;
+          const ps=raw.map(p=>at(p[0],p[1]));
+          if(e.t==='L'){
+            const p=ps[0],q=ps[1],aw=Math.abs(p.w),bw=Math.abs(q.w);
+            if(Math.abs(p.w-q.w)<=0.02){ // parallèle à l'axe, à un de ses rayons, dans sa longueur
+              if(onR(aw)&&Math.max(p.t,q.t)>=-tl&&Math.min(p.t,q.t)<=L+tl&&Math.abs(p.t-q.t)>1e-6){out.push(i);return;}
+            }else if(Math.abs(p.t-q.t)<=0.02&&p.t>=-tl&&p.t<=L+tl&&aw<=rMax+tl&&bw<=rMax+tl
+              &&(onR(aw)||onR(bw)||aw<=tl||bw<=tl)){out.push(i);return;} // perpendiculaire : un cercle de la révolution vu par la tranche
+          }
+          if(auBout(ps))out.push(i);
         });
       }
       return out;

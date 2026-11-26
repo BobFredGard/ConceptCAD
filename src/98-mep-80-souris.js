@@ -14,7 +14,7 @@
     mepSt.tool=next;
     if(next==='select')mepSt.entSel=[];
     mepSt.pick=null;mepSt.dim=null;mepSt.cutPts=[];mepSt.detC=null;mepSt.hovEnt=null;mepSt.skSel=new Set();mepSt.lot=null;mepSt.vcmd=null;
-    mepSt.axisPick=[];mepSt.axisFree=null;mepSt.ord=null;mepSt.ordPt=null;mepSt.snapMode=null;mepSt.snapHov=null;
+    mepSt.axisPick=[];mepSt.axisFree=null;mepSt.axisNew=null;mepSt.axisHov=null;mepSt.ord=null;mepSt.ordPt=null;mepSt.snapMode=null;mepSt.snapHov=null;
     mepSt.intPick=null;mepSt.dimLine=null;mepSt.chain=null;
     if(ordKeep){mepSt.ord=ordKeep;mepSt.selDim=ordKeep;mepStatus('Ordonnées : cliquez les points à AJOUTER au groupe sélectionné (Entrée ou Échap pour terminer).');}
     mepToolSync();
@@ -95,7 +95,7 @@
       if(hs.length<2){mepStatus('Alignement : sélectionnez au moins 2 trous.');return false;}
       if(!mepAxisCollinear(hs,tol)){mepStatus('Alignement : les centres ne sont pas alignés.');return false;}
       mepSt.axisPick=[];
-      mepEdit('axe aligné',()=>{v.axes.push({id:mepUid('ax'),kind:'align',refs:picks});});
+      mepEdit('axe aligné',()=>{v.axes.push({id:mepAxisNewId(v),kind:'align',refs:picks});});
       mepStatus('Axe commun créé sur '+hs.length+' trous.');
       return true;
     }
@@ -104,7 +104,7 @@
       const C=mepAxisFitCircle(hs);
       if(!C||mepAxisResidual(hs,C)>Math.max(0.1,tol*2)){mepStatus('Cercle de perçage : les centres ne sont pas sur un même cercle.');return false;}
       mepSt.axisPick=[];
-      mepEdit('cercle de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'pitch',refs:picks});});
+      mepEdit('cercle de perçage',()=>{v.axes.push({id:mepAxisNewId(v),kind:'pitch',refs:picks});});
       mepStatus('Cercle de perçage créé sur '+hs.length+' trous.');
       return true;
     }
@@ -118,7 +118,7 @@
     const B={x:(b.x-v.x)/v.scale,y:(b.y-v.y)/v.scale};
     if(Math.hypot(B.x-A.x,B.y-A.y)<0.2){mepStatus('Axe libre : points confondus.');return false;}
     mepSt.axisFree=null;
-    mepEdit('axe libre',()=>{v.axes.push({id:mepUid('ax'),kind:'free',a:A,b:B});});
+    mepEdit('axe libre',()=>{v.axes.push({id:mepAxisNewId(v),kind:'free',a:A,b:B});});
     mepStatus('Axe libre créé.');
     return true;
   }
@@ -254,7 +254,7 @@
       if(!G){mepStatus('Axe de symétrie : droites dégénérées.');return;}
       if(!Array.isArray(v.axes))v.axes=[];
       const ln=e=>({x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,k:e.k});
-      mepEdit('axe de symétrie',()=>{v.axes.push({id:mepUid('ax'),kind:'sym',l1:ln(f.e),l2:ln(hit.e)});});
+      mepEdit('axe de symétrie',()=>{v.axes.push({id:mepAxisNewId(v),kind:'sym',l1:ln(f.e),l2:ln(hit.e)});});
       mepStatus('Axe de symétrie créé — tirez ses extrémités pour l’allonger.');
       return;
     }
@@ -278,7 +278,7 @@
     const v=mepView(sh,ref.vid);if(!v)return;
     if(mode==='hole'){
       if(!Array.isArray(v.axes))v.axes=[];
-      mepEdit('axe de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'hole',ref});});
+      mepEdit('axe de perçage',()=>{v.axes.push({id:mepAxisNewId(v),kind:'hole',ref});});
       mepStatus(ref.fid?'Axe de trou créé.':'Axe créé'+(ref.ax?' sur la forme de révolution (suit le modèle).':' sur le cercle.'));
       return;
     }
@@ -839,7 +839,7 @@
           mepSt.axisFree.cur={x:snap.x,y:snap.y};
           mepRender();
         }
-      }
+      }else if(mepAxisHovUpdate(sh,P))mepRender(); // traits qui serviront au clic (98-mep-74)
       return;
     }
     // survol d'esquisse (cartouche en édition, ou esquisse de planche active) : élément visé surligné

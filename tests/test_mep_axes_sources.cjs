@@ -1,6 +1,6 @@
 // 2026-11-26 : PLAN — « Mise en plan, traits d'axes → mettre en surbrillance légère les traits qui servent
 // à leur réalisation ». Trait d'axe sélectionné (ou en cours de création) : ses traits d'origine sont
-// soulignés (classe mepAxisSrc), et eux seuls. Partie 1 sans noyau (vue DXF, valeurs à la main) ;
+// soulignés (classe mepAxisSrc), et eux seuls ; avec l'outil Axes, dès le survol et juste après la création. Partie 1 sans noyau (vue DXF, valeurs à la main) ;
 // partie 2 sur le vrai noyau : perçage (cercle de bout, parois de côté) et cylindre extrudé.
 const vm=require('vm');
 const {loadApp}=require('./appvm.cjs');
@@ -61,6 +61,20 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
       o.symPick=T.axisSrc(v).join();
       T.axisClick({x:100+10*2,y:100+5*2});
       o.symDone=T.axisSrc(v).join();o.nAxes=v.axes.length;
+      // 7b. survol (outil Axes, mode trou) : ce que prendrait le clic s'allume avant le clic, puis reste allumé
+      T.setAxisMode('hole');
+      o.hovNew=T.axisSrc(v).join(); // autre mode : l'axe précédent n'est plus allumé
+      T.axisHover({x:100-15*2-5*2,y:100-15*2});o.hov9=T.axisSrc(v).join();
+      T.axisHover({x:100,y:54});o.hovSlot=T.axisSrc(v).join(); // côté de l'oblong : tout l'oblong
+      T.axisHover({x:100+25*2,y:100+5*2});o.hovRien=T.axisSrc(v).join();
+      T.axisClick({x:100-15*2-5*2,y:100-15*2});
+      const nw=T.axisNew();o.newKind=nw&&(v.axes.find(a=>a.id===nw.id)||{}).kind;
+      T.axisHover({x:100+25*2,y:100+5*2});o.apresClic=T.axisSrc(v).join(); // souris ailleurs : l'axe créé reste allumé
+      T.axisHover({x:100+15*2+3*2,y:100+15*2});o.newEtHov=T.axisSrc(v).join(); // + le trou survolé
+      T.setAxisMode('free');T.axisHover({x:100-15*2-5*2,y:100-15*2});o.hovLibre=T.axisSrc(v).join();
+      mepSetTool('select');o.quitte=T.axisSrc(v).join();
+      o.apres=nw?sel(nw.id):''; // après : sélectionné plus tard, il se rallume
+      T.selAxis(null);
       // 8. création : trous choisis pour un alignement
       T.setAxisMode('align');
       T.axisClick({x:100+15*2+3*2,y:100+15*2});T.axisClick({x:100-15*2+3*2,y:100+15*2});
@@ -70,6 +84,20 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
       o.revSide=T.axisSrcMatch(v,{rev:{o:[0,0,0],d:[0,1,0],t0:-20,t1:20,r:10,rs:[10]}}).join();
       o.revEnd=T.axisSrcMatch(v,{rev:{o:[15,-15,0],d:[0,0,1],t0:0,t1:5,r:3,rs:[3]}}).join(); // y planche = −v : le cercle (15,15) de la vue
       o.revBout=T.axisSrcMatch(v,{rev:{o:[0,0,0],d:[0,1,0],t0:-30,t1:30,r:30,rs:[30]}}).join(); // arêtes vues par la tranche
+      // 9b. bords dessinés en petits segments (trou qui débouche dans une face courbe) — autre vue
+      const vB={id:'vB',kind:'base',dir:[0,0,1],u:[1,0,0],v:[0,1,0],x:300,y:100,scale:1,mode:'hide',tangent:false,flip:false,axes:[]};
+      sh.views.push(vB);
+      const cs=a=>[40+2.5*Math.cos(a),2.5*Math.sin(a)];
+      T.setViewGeo(vB,{src:'dxf',els:[
+        {t:'L',x1:-2.5,y1:-2,x2:-1.5,y2:-1},{t:'L',x1:-1.5,y1:-1,x2:0,y2:-0.5},{t:'L',x1:0,y1:-0.5,x2:1.5,y2:-1},{t:'L',x1:1.5,y1:-1,x2:2.5,y2:-2}, // 0-3 sortie au bout
+        {t:'L',x1:-1,y1:-11,x2:1,y2:-13}, // 4 trou en travers, au milieu
+        {t:'L',x1:-2.5,y1:-3,x2:-2.5,y2:-22}, // 5 génératrice
+        {t:'L',x1:cs(0)[0],y1:cs(0)[1],x2:cs(0.5)[0],y2:cs(0.5)[1]},{t:'L',x1:cs(0.5)[0],y1:cs(0.5)[1],x2:cs(1)[0],y2:cs(1)[1]}, // 6-7 cercle en segments
+        {t:'L',x1:40,y1:0,x2:43,y2:1}, // 8 depuis le centre
+        {t:'P',pts:[cs(2),cs(2.5),cs(3)]}]}); // 9 polyligne sur le cercle
+      o.segCote=T.axisSrcMatch(vB,{rev:{o:[0,0,0],d:[0,1,0],t0:0,t1:25,r:2.5,rs:[2.5]}}).join();
+      o.segBout=T.axisSrcMatch(vB,{rev:{o:[40,0,0],d:[0,0,1],t0:0,t1:5,r:2.5,rs:[2.5]}}).join();
+      sh.views.splice(sh.views.indexOf(vB),1);
       // 10. export (SVG, PDF, impression) : le halo ne sort jamais
       const gone=[],node={parentNode:{removeChild:n=>gone.push(n)}};
       const clone={style:{setProperty(){},removeProperty(){}},querySelectorAll:s=>String(s).split(',').indexOf('.mepAxisSrc')>=0?[node]:[]};
@@ -86,12 +114,24 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     A(r.none==='','aucun axe sélectionné : rien de souligné');
     A(r.slotAuto>0&&r.slot==='10,11,12,13','oblong automatique : ses 2 bouts et ses 2 côtés');
     A(r.symPick==='4','création d’un axe de symétrie : la 1re droite soulignée dès le 1er clic');
-    A(r.symDone===''&&r.nAxes===5,'2e droite : axe créé, plus rien en attente');
+    A(r.symDone==='4,5'&&r.nAxes===5,'2e droite : axe créé, ses 2 droites restent allumées');
+    A(r.hovNew==='','changement de mode : l’axe précédent s’éteint');
+    A(r.hov9==='9','survol d’un cercle (mode trou) : il s’allume avant le clic');
+    A(r.hovSlot==='10,11,12,13','survol d’un côté d’oblong : tout l’oblong s’allume');
+    A(r.hovRien==='','survol du vide : rien');
+    A(r.newKind==='hole','clic : axe de trou créé');
+    A(r.apresClic==='9','juste après la création, souris ailleurs : son cercle reste allumé');
+    A(r.newEtHov==='7,9','axe créé + trou survolé : les deux allumés');
+    A(r.hovLibre==='','axe libre : rien au survol');
+    A(r.quitte==='','outil quitté : plus rien d’allumé');
+    A(r.apres==='9','après : l’axe sélectionné plus tard rallume son cercle');
     A(r.pick===2&&r.alignPick==='7,8','création d’un alignement : les trous choisis soulignés');
     A(r.afterTool==='','outil quitté : plus rien de souligné');
     A(r.revSide==='4,5','révolution vue de côté : génératrices dans la longueur, rien d’autre');
     A(r.revEnd==='7','révolution vue de bout : son cercle seul');
     A(r.revBout.split(',').indexOf('0')>=0&&r.revBout.split(',').indexOf('2')>=0&&r.revBout.split(',').indexOf('4')<0,'révolution de côté : arêtes vues par la tranche aux 2 bouts, pas les droites hors rayon');
+    A(r.segCote==='0,1,2,3,5','de côté : sortie en petits segments au bout et génératrice ; pas un trou en travers au milieu');
+    A(r.segBout==='6,7,9','de bout : cercle dessiné en segments ou en polyligne ; pas un trait partant du centre');
     A(r.export===1,'export : le halo est retiré');
   }
   // ───────── partie 2 : vrai noyau
@@ -130,7 +170,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
       out.cote=pick(V.face,'mepAxis');
       // axe posé à la main d'un clic sur le cercle du trou (outil Axes), vue de dessus
       T.selAxis(null);T.setAxisMode('hole');
-      V.dessus.autoAxes=false;T.axisClick({x:100+54,y:100-30});
+      V.dessus.autoAxes=false;T.axisHover({x:100+54,y:100-30});out.survol=desc(V.dessus,T.axisSrc(V.dessus));
+      T.axisClick({x:100+54,y:100-30});T.axisHover({x:100+90,y:100-55});out.neuf=desc(V.dessus,T.axisSrc(V.dessus));
       const an=V.dessus.axes[V.dessus.axes.length-1];
       out.main=an&&an.ref&&an.ref.fid?(T.selAxis({vid:'vDessus',id:an.id,ak:'m'+an.id+'.0'}),desc(V.dessus,T.axisSrc(V.dessus))):null;
       // perçage vu de côté, référence Perçage (fid) : les parois sont retrouvées sur la fonction
@@ -148,6 +189,9 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     A(Array.isArray(r.croix)&&r.croix.length>=1&&r.croix.every(s=>/^C 50 -30 4$/.test(s)),'perçage vu de bout : croix sélectionnée → le cercle Ø8 du trou seul');
     const murs=a=>Array.isArray(a)&&a.length>=2&&a.every(s=>/^L (46|54) -?\d/.test(s)&&s.split(' ')[1]===s.split(' ')[3])&&a.some(s=>s.split(' ')[1]==='46')&&a.some(s=>s.split(' ')[1]==='54');
     A(murs(r.cote),'perçage vu de côté : trait d’axe automatique → les 2 parois (x 46 et 54) seules');
+    const cercle=a=>Array.isArray(a)&&a.length>=1&&a.every(s=>/^C 50 -30 4$/.test(s));
+    A(cercle(r.survol),'outil Axes, survol du trou : son cercle s’allume avant le clic');
+    A(cercle(r.neuf),'trou cliqué, souris ailleurs : le cercle de l’axe créé reste allumé');
     A(Array.isArray(r.main)&&r.main.length>=1&&r.main.every(s=>/^C 50 -30 4$/.test(s)),'axe posé à la main d’un clic sur le trou → le cercle du trou');
     A(murs(r.mainCote),'même perçage vu de côté (référence Perçage) → les 2 parois');
     A(Array.isArray(r.cylBout)&&r.cylBout.length>=1&&r.cylBout.every(s=>/^[CA] 5 -7 10$/.test(s)),'cylindre vu de bout : son cercle R10');

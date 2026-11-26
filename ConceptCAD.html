@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.0.10';
+const APP_VER='V1.0.11';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -92591,7 +92591,7 @@ function filmFrame(){
     .mepAxisCross{fill:none;stroke:var(--mepAxisCol,#111);stroke-width:var(--mepLwAxisX,.62);stroke-linecap:butt;pointer-events:none}
     .mepAxisSel{stroke:#0066ff!important;stroke-width:1.1!important}
     .mepAxisPick{fill:none;stroke:#ffd60a;stroke-width:1.1;pointer-events:none}
-    .mepAxisSrc{fill:none;stroke:#0a84ff;stroke-opacity:.3;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
+    .mepAxisSrc{fill:none;stroke:#ffa500;stroke-opacity:.6;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
   `;
   document.head.appendChild(css);
 
@@ -100549,11 +100549,13 @@ function filmFrame(){
     if(mepHoleAt(sh,hit.vid,hit.e,hit.i))return false;
     const s=mepSlotOfEnt(v,hit.i);if(!s)return false;
     if(!Array.isArray(v.axes))v.axes=[];
-    if(v.axes.some(a=>a&&a.kind==='slot'&&a.s&&mepSlotSameCenters(a.s,s,0.01))){
+    const deja=v.axes.find(a=>a&&a.kind==='slot'&&a.s&&mepSlotSameCenters(a.s,s,0.01));
+    if(deja){
+      mepSt.axisNew={vid:v.id,id:deja.id};mepRender(); // ses traits d'origine s'allument (98-mep-74)
       mepStatus('Cet oblong a déjà ses 2 centres et son axe.');
       return true;
     }
-    mepEdit('axe d’oblong',()=>{v.axes.push({id:mepUid('ax'),kind:'slot',s:mepSlotMemo(s)});});
+    mepEdit('axe d’oblong',()=>{v.axes.push({id:mepAxisNewId(v),kind:'slot',s:mepSlotMemo(s)});});
     mepStatus('Oblong : 2 centres et axe créés (ils suivent le modèle) — cotez depuis ces centres.');
     return true;
   }
@@ -100684,11 +100686,13 @@ function filmFrame(){
     if(mepHoleAt(sh,hit.vid,hit.e,hit.i))return false;
     const s=mepASlotOfEnt(v,hit.i);if(!s)return false;
     if(!Array.isArray(v.axes))v.axes=[];
-    if(v.axes.some(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01))){
+    const deja=v.axes.find(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01));
+    if(deja){
+      mepSt.axisNew={vid:v.id,id:deja.id};mepRender(); // ses traits d'origine s'allument (98-mep-74)
       mepStatus('Cet oblong en arc a déjà son axe et ses centres.');
       return true;
     }
-    mepEdit('axe d’oblong en arc',()=>{v.axes.push({id:mepUid('ax'),kind:'aslot',s:mepASlotMemo(s)});});
+    mepEdit('axe d’oblong en arc',()=>{v.axes.push({id:mepAxisNewId(v),kind:'aslot',s:mepASlotMemo(s)});});
     mepStatus('Oblong en arc : axe courbe, centre de l’arc et centres des bouts créés (ils suivent le modèle).');
     return true;
   }
@@ -101147,7 +101151,7 @@ function filmFrame(){
   /* 2026-11-26 : « Mise en plan, traits d'axes → mettre en surbrillance légère les traits qui servent
      à leur réalisation ». Trait d'axe sélectionné (ou en cours de création : 1re droite d'un axe de
      symétrie, trous choisis pour un alignement ou un cercle de perçage) : les traits de la vue dont il
-     est tiré sont soulignés d'un halo bleu pâle, sous le trait (classe mepAxisSrc, jamais exportée).
+     est tiré sont soulignés d'un halo jaune orangé, sous le trait (classe mepAxisSrc, jamais exportée).
      Sources (tableau de descripteurs) :
      - {hole:{fid,pid,x,y,r,facing,dir2}} fonction Perçage — reconnue comme la cotation de perçage
        (mepHoleAt pour les cercles, mepHoleAtLine pour la paroi, le fond, le cône vus de côté) ;
@@ -101177,6 +101181,42 @@ function filmFrame(){
     const refs=ann.kind==='hole'?[ann.ref]:(ann.refs||[]);
     return refs.map(r=>{try{return mepAxisHoleSrc(mepAxisRefGeom(sh,v,r));}catch(e){return null;}}).filter(Boolean);
   }
+  /* 2026-11-26 (suite, Fred : « il faudrait qu'il s'illumine au moment de la création », « Mais aussi
+     après », « Comme maintenant ») : avec l'outil Axes, les traits qui serviront s'allument AU SURVOL,
+     avant le clic (mepSt.axisHov), et ceux de l'axe qui vient d'être créé restent allumés tant que
+     l'outil reste ouvert (mepSt.axisNew, posé par mepAxisNewId à chaque création). Après, sélectionner
+     l'axe les rallume, comme avant. Couleur jaune orangé (« une autre couleur plus visible »). */
+  function mepAxisNewId(v){const id=mepUid('ax');mepSt.axisNew={vid:v.id,id};return id;}
+  // ce qu'un clic de l'outil Axes prendrait au point P de la planche : {vid, srcs} ou null (même ordre que mepAxisClick)
+  function mepAxisHovCand(sh,P){
+    const mode=mepSt.axisMode||'hole';
+    if(mode==='free')return null;
+    if(mode==='sym'){
+      const hit=mepHitViewEnt(sh,P.x,P.y);
+      return hit&&hit.e&&hit.e.t==='L'?{vid:hit.vid,srcs:[{el:hit.e}]}:null;
+    }
+    if(mode==='hole'){ // oblong droit, puis oblong en arc, d'un seul clic
+      const hit=mepHitViewEnt(sh,P.x,P.y);
+      const v=hit&&typeof hit.i==='number'&&hit.e?mepView(sh,hit.vid):null;
+      if(v&&!mepHoleAt(sh,hit.vid,hit.e,hit.i)){
+        const s=mepSlotOfEnt(v,hit.i);if(s)return{vid:v.id,srcs:[{slot:mepSlotMemo(s)}]};
+        const q=mepASlotOfEnt(v,hit.i);if(q)return{vid:v.id,srcs:[{aslot:mepASlotMemo(q)}]};
+      }
+    }
+    const ref=mepAxisHoleAt(sh,P.x,P.y);if(!ref)return null;
+    const v=mepView(sh,ref.vid);if(!v)return null;
+    const s=mepAxisHoleSrc(mepAxisRefGeom(sh,v,ref));
+    return s?{vid:v.id,srcs:[s]}:null;
+  }
+  // survol de l'outil Axes : true si ce qui est allumé change (redessin à faire)
+  function mepAxisHovUpdate(sh,P){
+    let c=null;try{c=mepAxisHovCand(sh,P);}catch(e){c=null;}
+    let key='';try{key=c?c.vid+'|'+JSON.stringify(c.srcs):'';}catch(e){}
+    const o=mepSt.axisHov;
+    if((o?o.key:'')===key)return false;
+    mepSt.axisHov=c?{vid:c.vid,srcs:c.srcs,key}:null;
+    return true;
+  }
   // ce qui est à souligner dans la vue v : axe sélectionné, puis la création en cours (outil Axes)
   function mepAxisSrcWanted(sh,v){
     const out=[],sa=mepSt.selAxis;
@@ -101186,6 +101226,10 @@ function filmFrame(){
       else if(sa.ak){const p=mepAxisLineByKey(sh,v,sa.ak);if(p&&!p.ann&&p.src)out.push(...p.src);}
     }
     if(mepSt.tool==='axis'){
+      const nw=mepSt.axisNew; // axe qui vient d'être créé
+      if(nw&&nw.vid===v.id){const an=(v.axes||[]).find(a=>a&&a.id===nw.id);if(an)out.push(...mepAxisAnnSrc(sh,v,an));}
+      const hv=mepSt.axisHov; // ce que prendrait le clic
+      if(hv&&hv.vid===v.id&&Array.isArray(hv.srcs))out.push(...hv.srcs);
       const f=mepSt.axisSym;if(f&&f.vid===v.id&&f.e)out.push({el:f.e});
       (mepSt.axisPick||[]).forEach(r=>{
         if(!r||r.vid!==v.id)return;
@@ -101244,20 +101288,35 @@ function filmFrame(){
       const rMax=Math.max(...rs),tolR=r=>Math.max(0.05,r*0.01),onR=w=>rs.some(r=>Math.abs(w-r)<=tolR(r));
       const P=t=>{const p=[R.o[0]+R.d[0]*t,R.o[1]+R.d[1]*t,R.o[2]+R.d[2]*t];return{x:mepDot(p,b.u),y:mepDot(p,b.v)};};
       const t0=Number.isFinite(R.t0)?R.t0:0,t1=Number.isFinite(R.t1)?R.t1:t0;
-      if(Math.abs(f)>0.999){ // de bout : cercles et arcs concentriques
+      // points d'un trait droit ou d'une polyligne (bord dessiné en petits segments)
+      const pts=e=>e.t==='L'?[[e.x1,e.y1],[e.x2,e.y2]]:(e.t==='P'&&Array.isArray(e.pts)&&e.pts.length>1?e.pts:null);
+      if(Math.abs(f)>0.999){ // de bout : cercles et arcs concentriques ; bord en segments posé sur un de ses cercles
         const c=P(t0);
-        els.forEach((e,i)=>{if((e.t==='C'||e.t==='A')&&Math.hypot(e.cx-c.x,e.cy-c.y)<=0.05&&onR(e.r))out.push(i);});
-      }else if(Math.abs(f)<0.02){ // de côté : génératrices, et arêtes circulaires vues par la tranche
-        const A=P(t0),B=P(t1),L=Math.hypot(B.x-A.x,B.y-A.y);if(!(L>1e-6))return out;
-        const ux=(B.x-A.x)/L,uy=(B.y-A.y)/L,tl=0.05;
-        const at=(x,y)=>({t:(x-A.x)*ux+(y-A.y)*uy,w:(x-A.x)*uy-(y-A.y)*ux});
         els.forEach((e,i)=>{
-          if(e.t!=='L')return;
-          const p=at(e.x1,e.y1),q=at(e.x2,e.y2),aw=Math.abs(p.w),bw=Math.abs(q.w);
-          if(Math.abs(p.w-q.w)<=0.02){ // parallèle à l'axe, à un de ses rayons, dans sa longueur
-            if(onR(aw)&&Math.max(p.t,q.t)>=-tl&&Math.min(p.t,q.t)<=L+tl&&Math.abs(p.t-q.t)>1e-6)out.push(i);
-          }else if(Math.abs(p.t-q.t)<=0.02&&p.t>=-tl&&p.t<=L+tl&&aw<=rMax+tl&&bw<=rMax+tl
-            &&(onR(aw)||onR(bw)||aw<=tl||bw<=tl))out.push(i); // perpendiculaire : un cercle de la révolution vu par la tranche
+          if(e.t==='C'||e.t==='A'){if(Math.hypot(e.cx-c.x,e.cy-c.y)<=0.05&&onR(e.r))out.push(i);return;}
+          const q=pts(e);if(!q)return;
+          const d0=Math.hypot(q[0][0]-c.x,q[0][1]-c.y),r0=rs.find(r=>Math.abs(d0-r)<=tolR(r));
+          if(r0!=null&&q.every(p=>Math.abs(Math.hypot(p[0]-c.x,p[1]-c.y)-r0)<=tolR(r0)))out.push(i);
+        });
+      }else if(Math.abs(f)<0.02){ // de côté : génératrices, arêtes circulaires vues par la tranche, courbes de sortie
+        const A=P(t0),B=P(t1),L=Math.hypot(B.x-A.x,B.y-A.y);if(!(L>1e-6))return out;
+        const ux=(B.x-A.x)/L,uy=(B.y-A.y)/L,tl=0.05,zone=Math.min(2*rMax,L/3)+tl; // révolution courte : jamais tout le milieu
+        const at=(x,y)=>({t:(x-A.x)*ux+(y-A.y)*uy,w:(x-A.x)*uy-(y-A.y)*ux});
+        // trait entièrement dans la bande du rayon, près d'un bout : courbe où la révolution sort de la pièce
+        // (trou qui débouche dans une face inclinée ou courbe) — pas au milieu, où passerait un trou en travers
+        const auBout=q=>{const T=q.map(p=>p.t);if(!q.every(p=>Math.abs(p.w)<=rMax+tl))return false;
+          const lo=Math.min(...T),hi=Math.max(...T);return (lo>=-tl&&hi<=zone)||(lo>=L-zone&&hi<=L+tl);};
+        els.forEach((e,i)=>{
+          const raw=pts(e);if(!raw)return;
+          const ps=raw.map(p=>at(p[0],p[1]));
+          if(e.t==='L'){
+            const p=ps[0],q=ps[1],aw=Math.abs(p.w),bw=Math.abs(q.w);
+            if(Math.abs(p.w-q.w)<=0.02){ // parallèle à l'axe, à un de ses rayons, dans sa longueur
+              if(onR(aw)&&Math.max(p.t,q.t)>=-tl&&Math.min(p.t,q.t)<=L+tl&&Math.abs(p.t-q.t)>1e-6){out.push(i);return;}
+            }else if(Math.abs(p.t-q.t)<=0.02&&p.t>=-tl&&p.t<=L+tl&&aw<=rMax+tl&&bw<=rMax+tl
+              &&(onR(aw)||onR(bw)||aw<=tl||bw<=tl)){out.push(i);return;} // perpendiculaire : un cercle de la révolution vu par la tranche
+          }
+          if(auBout(ps))out.push(i);
         });
       }
       return out;
@@ -101810,7 +101869,7 @@ function filmFrame(){
     mepSt.tool=next;
     if(next==='select')mepSt.entSel=[];
     mepSt.pick=null;mepSt.dim=null;mepSt.cutPts=[];mepSt.detC=null;mepSt.hovEnt=null;mepSt.skSel=new Set();mepSt.lot=null;mepSt.vcmd=null;
-    mepSt.axisPick=[];mepSt.axisFree=null;mepSt.ord=null;mepSt.ordPt=null;mepSt.snapMode=null;mepSt.snapHov=null;
+    mepSt.axisPick=[];mepSt.axisFree=null;mepSt.axisNew=null;mepSt.axisHov=null;mepSt.ord=null;mepSt.ordPt=null;mepSt.snapMode=null;mepSt.snapHov=null;
     mepSt.intPick=null;mepSt.dimLine=null;mepSt.chain=null;
     if(ordKeep){mepSt.ord=ordKeep;mepSt.selDim=ordKeep;mepStatus('Ordonnées : cliquez les points à AJOUTER au groupe sélectionné (Entrée ou Échap pour terminer).');}
     mepToolSync();
@@ -101891,7 +101950,7 @@ function filmFrame(){
       if(hs.length<2){mepStatus('Alignement : sélectionnez au moins 2 trous.');return false;}
       if(!mepAxisCollinear(hs,tol)){mepStatus('Alignement : les centres ne sont pas alignés.');return false;}
       mepSt.axisPick=[];
-      mepEdit('axe aligné',()=>{v.axes.push({id:mepUid('ax'),kind:'align',refs:picks});});
+      mepEdit('axe aligné',()=>{v.axes.push({id:mepAxisNewId(v),kind:'align',refs:picks});});
       mepStatus('Axe commun créé sur '+hs.length+' trous.');
       return true;
     }
@@ -101900,7 +101959,7 @@ function filmFrame(){
       const C=mepAxisFitCircle(hs);
       if(!C||mepAxisResidual(hs,C)>Math.max(0.1,tol*2)){mepStatus('Cercle de perçage : les centres ne sont pas sur un même cercle.');return false;}
       mepSt.axisPick=[];
-      mepEdit('cercle de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'pitch',refs:picks});});
+      mepEdit('cercle de perçage',()=>{v.axes.push({id:mepAxisNewId(v),kind:'pitch',refs:picks});});
       mepStatus('Cercle de perçage créé sur '+hs.length+' trous.');
       return true;
     }
@@ -101914,7 +101973,7 @@ function filmFrame(){
     const B={x:(b.x-v.x)/v.scale,y:(b.y-v.y)/v.scale};
     if(Math.hypot(B.x-A.x,B.y-A.y)<0.2){mepStatus('Axe libre : points confondus.');return false;}
     mepSt.axisFree=null;
-    mepEdit('axe libre',()=>{v.axes.push({id:mepUid('ax'),kind:'free',a:A,b:B});});
+    mepEdit('axe libre',()=>{v.axes.push({id:mepAxisNewId(v),kind:'free',a:A,b:B});});
     mepStatus('Axe libre créé.');
     return true;
   }
@@ -102050,7 +102109,7 @@ function filmFrame(){
       if(!G){mepStatus('Axe de symétrie : droites dégénérées.');return;}
       if(!Array.isArray(v.axes))v.axes=[];
       const ln=e=>({x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,k:e.k});
-      mepEdit('axe de symétrie',()=>{v.axes.push({id:mepUid('ax'),kind:'sym',l1:ln(f.e),l2:ln(hit.e)});});
+      mepEdit('axe de symétrie',()=>{v.axes.push({id:mepAxisNewId(v),kind:'sym',l1:ln(f.e),l2:ln(hit.e)});});
       mepStatus('Axe de symétrie créé — tirez ses extrémités pour l’allonger.');
       return;
     }
@@ -102074,7 +102133,7 @@ function filmFrame(){
     const v=mepView(sh,ref.vid);if(!v)return;
     if(mode==='hole'){
       if(!Array.isArray(v.axes))v.axes=[];
-      mepEdit('axe de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'hole',ref});});
+      mepEdit('axe de perçage',()=>{v.axes.push({id:mepAxisNewId(v),kind:'hole',ref});});
       mepStatus(ref.fid?'Axe de trou créé.':'Axe créé'+(ref.ax?' sur la forme de révolution (suit le modèle).':' sur le cercle.'));
       return;
     }
@@ -102635,7 +102694,7 @@ function filmFrame(){
           mepSt.axisFree.cur={x:snap.x,y:snap.y};
           mepRender();
         }
-      }
+      }else if(mepAxisHovUpdate(sh,P))mepRender(); // traits qui serviront au clic (98-mep-74)
       return;
     }
     // survol d'esquisse (cartouche en édition, ou esquisse de planche active) : élément visé surligné
@@ -105842,7 +105901,7 @@ function filmFrame(){
       slotsOf:view=>mepSlotsOf(view),aslotsOf:view=>mepASlotsOf(view),gdtClick:(P,t)=>mepGdtClick(mepSheet(),P,t),gdtWorld:d=>mepGdtWorld(mepSheet(),d),gdtNext:()=>mepGdtNextLetter(),gdtBox:d=>mepGdtBoxes.get(d),sideDim:(root,d)=>mepSideDim(root,d,mepSheet()),drawAxisPrim:(mk,p,view)=>mepDrawAxisPrim(mk,p,view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
       axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),axisHide:(view,ak)=>mepAxisAutoHide(mepSheet(),view,ak),
       axisSrc:view=>mepAxisSrcIdx(mepSheet(),view,mepAxisSrcWanted(mepSheet(),view)),axisSrcMatch:(view,s)=>mepAxisSrcMatch(mepSheet(),view,(mepGeoOf(view)||{}).els||[],s),
-      drawAxisSrc:(mk,view)=>mepDrawAxisSrc(mk,view,mepSheet()),selAxis:o=>{mepSt.selAxis=o||null;},
+      drawAxisSrc:(mk,view)=>mepDrawAxisSrc(mk,view,mepSheet()),selAxis:o=>{mepSt.selAxis=o||null;},axisHover:P=>mepAxisHovUpdate(mepSheet(),P),axisNew:()=>mepSt.axisNew||null,
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},
       snapPt:(x,y,o)=>mepSnapPt(x,y,mepSheet(),o),
       snapModePt:(x,y,m)=>mepSnapModePt(mepSheet(),x,y,m),setSnapMode:m=>mepSetSnapMode(m),intCancel:()=>mepIntCancel(),chainStart:(d,e)=>mepChainStart(mepSheet(),d,e),chainRappelAt:(d,P)=>mepChainRappelAt(mepSheet(),d,P),chainEnd:()=>mepChainEnd(),chainClick:P=>mepChainClick(mepSheet(),P),chainHover:P=>mepChainHover(mepSheet(),P),dimLineOf:d=>mepDimLine(mepSheet(),d),angTextPos:d=>mepAngTextPos(mepSheet(),d),angGeom:d=>mepAngGeom(mepSheet(),d),dimMoveTo:(d,P,pk)=>mepDimMoveTo(mepSheet(),d,P,pk),snapMode:()=>mepSt.snapMode||null,dimClick:(P,c,s,a)=>mepDimClick(mepSheet(),P,!!c,!!s,!!a),snapInter:(a,b)=>mepSnapInter(a,b),snapExt:(v,q,e)=>mepSnapExtPrims(v,q,e),

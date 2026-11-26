@@ -148,11 +148,13 @@
     if(mepHoleAt(sh,hit.vid,hit.e,hit.i))return false;
     const s=mepSlotOfEnt(v,hit.i);if(!s)return false;
     if(!Array.isArray(v.axes))v.axes=[];
-    if(v.axes.some(a=>a&&a.kind==='slot'&&a.s&&mepSlotSameCenters(a.s,s,0.01))){
+    const deja=v.axes.find(a=>a&&a.kind==='slot'&&a.s&&mepSlotSameCenters(a.s,s,0.01));
+    if(deja){
+      mepSt.axisNew={vid:v.id,id:deja.id};mepRender(); // ses traits d'origine s'allument (98-mep-74)
       mepStatus('Cet oblong a déjà ses 2 centres et son axe.');
       return true;
     }
-    mepEdit('axe d’oblong',()=>{v.axes.push({id:mepUid('ax'),kind:'slot',s:mepSlotMemo(s)});});
+    mepEdit('axe d’oblong',()=>{v.axes.push({id:mepAxisNewId(v),kind:'slot',s:mepSlotMemo(s)});});
     mepStatus('Oblong : 2 centres et axe créés (ils suivent le modèle) — cotez depuis ces centres.');
     return true;
   }
@@ -283,11 +285,13 @@
     if(mepHoleAt(sh,hit.vid,hit.e,hit.i))return false;
     const s=mepASlotOfEnt(v,hit.i);if(!s)return false;
     if(!Array.isArray(v.axes))v.axes=[];
-    if(v.axes.some(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01))){
+    const deja=v.axes.find(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01));
+    if(deja){
+      mepSt.axisNew={vid:v.id,id:deja.id};mepRender(); // ses traits d'origine s'allument (98-mep-74)
       mepStatus('Cet oblong en arc a déjà son axe et ses centres.');
       return true;
     }
-    mepEdit('axe d’oblong en arc',()=>{v.axes.push({id:mepUid('ax'),kind:'aslot',s:mepASlotMemo(s)});});
+    mepEdit('axe d’oblong en arc',()=>{v.axes.push({id:mepAxisNewId(v),kind:'aslot',s:mepASlotMemo(s)});});
     mepStatus('Oblong en arc : axe courbe, centre de l’arc et centres des bouts créés (ils suivent le modèle).');
     return true;
   }

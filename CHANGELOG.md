@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**795 versions**, de `2026-09-28b` à `V1.0.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**796 versions**, de `2026-09-28b` à `V1.0.11` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8859,3 +8859,16 @@ Demande de Fred : « Mise en plan, traits d'axes -> mettre en surbrillance lég�
 Les axes automatiques portent leur source dès leur calcul (`mepAxisAutoGeom`, `mepAxisCylPrims` : `p.src`) ; un axe posé à la main la tire de son annotation, seulement quand il est sélectionné (`mepAxisAnnSrc`). Résultat gardé par géométrie de vue tant que la sélection ne change pas. Pendant la création (outil Axes), la 1re droite d'un axe de symétrie et les trous déjà choisis pour un alignement ou un cercle de perçage sont soulignés de même. Le halo est retiré de l'export SVG, PDF, impression (`mepExportPrep`) et DXF (`MEP_DXF_SKIP`).
 
 **Test** : `test_mep_axes_sources` (nouveau, inscrit dans les tests rapides, 23 contrôles). Sans noyau, vue DXF : axe de symétrie → ses 2 droites, pas la 3e parallèle ; halo aux coordonnées de la planche ; cercle → ce cercle seul ; alignement → ses 2 cercles ; axe libre et rien de sélectionné → rien ; oblong automatique → ses 4 traits ; création : 1re droite d'un axe de symétrie dès le 1er clic, trous d'un alignement, rien après l'outil ; révolution de côté et de bout ; export sans halo. Sur le vrai noyau : bloc percé Ø8 (croix de bout → le cercle seul ; axe de côté → les 2 parois ; axe posé d'un clic sur le trou → le cercle ; même trou vu de côté → les parois) et cylindre extrudé (cercle R10 ; 2 génératrices et 2 bouts). Sur la version précédente : échec. Dans le navigateur, sur Support Pédale : croix du trou Ø8 H7 → son cercle seul ; axe vertical de la vue de droite → bord et arêtes du cylindre ; 1re droite d'un axe de symétrie soulignée ; Échap efface tout. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.11 - Mise en plan : les traits d'origine s'allument dès la création d'un axe, en jaune orangé
+
+Suite de V1.0.10. Fred : « Oui, mais il faudrait qu'il s'illumine au moment de la création », « Et il faut une autre couleur plus visible, jaune orangé », « Mais aussi après », « Comme maintenant ».
+
+**Avant** : avec l'outil Axes, rien ne s'allumait au survol, et un axe de trou (un seul clic) ne montrait jamais ses traits d'origine à sa création ; il fallait quitter l'outil et le sélectionner. Le halo bleu pâle se voyait peu. Le bord d'un trou dessiné en petits segments (trou qui débouche dans une face courbe, cercle venu d'un maillage) n'était pas reconnu.
+
+**Correctif** :
+- `src/98-mep-74-axes-sources.js` : `mepAxisHovCand` / `mepAxisHovUpdate` — au survol, l'outil Axes allume ce que prendrait le clic, dans le même ordre que `mepAxisClick` (oblong droit, oblong en arc, trou ou cercle, révolution ; droite en mode Symétrie ; rien en mode Libre). Redessin seulement quand cela change (≈ 4 ms par mouvement de souris sur Support Pédale). `mepAxisNewId` : chaque création (trou, oblong, oblong en arc, symétrie, alignement, cercle de perçage, libre — `src/98-mep-71-oblong.js`, `src/98-mep-80-souris.js`) note l'axe créé (`mepSt.axisNew`), dont les traits restent allumés tant que l'outil reste ouvert ; un oblong qui a déjà son axe rallume celui-ci. Changer de mode ou d'outil, ou Échap, éteint tout. Après, la sélection rallume les traits comme en V1.0.10 ;
+- révolution vue de bout : un bord en segments ou en polyligne posé sur un de ses cercles est reconnu ; vue de côté : un trait entièrement dans la bande du rayon, près d'un bout (zone de 2 rayons, au plus un tiers de la longueur), l'est aussi — courbe de sortie d'un trou dans une face courbe ; un trou en travers au milieu ne l'est pas ;
+- `src/98-mep-00-modele.js` : halo jaune orangé (`#ffa500`, opacité 0,6, toujours 7 px à l'écran).
+
+**Test** : `test_mep_axes_sources` +14 contrôles (37 en tout) : survol d'un cercle et d'un côté d'oblong avant le clic, rien dans le vide ni en mode Libre ; après le clic, souris ailleurs, le cercle de l'axe créé reste allumé, avec le trou survolé en plus ; 2e droite d'un axe de symétrie : ses 2 droites restent allumées ; changement de mode ou d'outil : tout s'éteint ; sélection après coup : rallumé ; bords en segments de côté et de bout ; sur le vrai noyau, survol puis clic sur un trou percé. Sur V1.0.10 : échec. Dans le navigateur, sur Support Pédale : survol du trou Ø8 H7 → son cercle en jaune orangé avant le clic, resté allumé après la création, souris ailleurs ; trou Ø5 débouchant dans une face courbe → tout son bord (avant : un seul petit trait) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
