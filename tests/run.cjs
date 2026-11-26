@@ -343,6 +343,7 @@ const SUITES = [
   "test_relations_aretes",
   "test_assemblage_historique",
   "test_composants_icones",
+  "test_vue_enregistree",
   "test_composants_inspection",
   "test_composants_normalises",
   "test_aimants",

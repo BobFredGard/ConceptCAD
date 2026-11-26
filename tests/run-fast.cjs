@@ -177,6 +177,7 @@ const SUITES = [
   'test_relations_aretes',
   'test_assemblage_historique',
   'test_composants_icones', // V1.0.6 : icônes des pièces normalisées, moins d'une seconde
+  'test_vue_enregistree', // V1.0.7 : vue 3D enregistrée dans le fichier, moins d'une seconde
   'test_materiaux',
   'test_environnement_piece',
   'test_rendu_patine',

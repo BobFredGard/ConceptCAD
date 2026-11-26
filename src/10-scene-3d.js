@@ -675,7 +675,65 @@ function viewDecorTo(S){
   mv(floorMesh);
   try{if(typeof vEnvS!=='undefined'&&vEnvS){if(vEnvS.sun){mv(vEnvS.sun);mv(vEnvS.sun.target);}mv(vEnvS.floor);}}catch(e){}
 }
+/* V1.0.7 : VUE 3D ENREGISTRÉE dans le fichier (« Quand je sauvegarde le modèle, j'aimerais qu'à la
+   prochaine ouverture, le modèle retrouve sa position sauvegardée ») — position de la caméra, point
+   visé et verticale, avec le composant affiché et le mode (Modéliser / Assembler) à l'enregistrement.
+   À l'ouverture, viewSaved attend : les recadrages automatiques (showAll, asmFit : chargement, image
+   de la pièce, rejeu exact, imports rejoués) remettent cette vue au lieu de recadrer, tant que la vue
+   n'a pas été bougée (souris, molette, cube de vue, esquisse : caméra changée depuis la dernière
+   remise) et que le même composant est affiché (pendant l'ouverture, elle attend que le composant
+   et le mode enregistrés soient revenus). « Recadrer » / « Tout afficher » (viewFitAll),
+   Nouveau, un import et un autre composant l'oublient. La vue ne compte pas comme une modification
+   (pas de ●). */
+let viewSaved=null;
+function viewCtxKey(){
+  try{return (typeof asm!=='undefined'&&asm)?[asm.active||'',(asm.path||[]).join('/'),typeof asmMode!=='undefined'?asmMode:''].join('|'):'';}
+  catch(e){return '';}
+}
+function viewCamGet(){
+  // vue à enregistrer ; esquisse ouverte : la vue 3D d'avant l'esquisse (celle qui reviendra)
+  try{
+    let p=camera.position,t=controls.target,u=camera.up;
+    if(typeof skEdit!=='undefined'&&skEdit&&_skPrevCam){p=_skPrevCam.pos;t=_skPrevCam.target;u=_skPrevCam.up;}
+    const a=v=>[v.x,v.y,v.z].map(x=>+(+x).toFixed(4));
+    const o={p:a(p),t:a(t),up:a(u),ctx:viewCtxKey()};
+    return viewCamRead(o)?o:null;
+  }catch(e){return null;}
+}
+function viewCamRead(c){
+  // vue lue dans un fichier : contrôlée (trois nombres finis, caméra distincte du point visé)
+  const ok=v=>Array.isArray(v)&&v.length===3&&v.every(x=>x!==null&&x!==''&&Number.isFinite(+x));
+  if(!c||typeof c!=='object'||!ok(c.p)||!ok(c.t))return null;
+  const p=c.p.map(Number),t=c.t.map(Number);
+  if(!(Math.hypot(p[0]-t[0],p[1]-t[1],p[2]-t[2])>1e-6))return null;
+  const up=ok(c.up)&&Math.hypot(+c.up[0],+c.up[1],+c.up[2])>1e-6?c.up.map(Number):null;
+  return {p,t,up,ctx:String(c.ctx==null?'':c.ctx)};
+}
+function viewCamLoin(V){
+  // caméra changée depuis la dernière remise de la vue enregistrée (cube de vue, esquisse…) : 2 % du recul
+  const d=Math.hypot(V.p[0]-V.t[0],V.p[1]-V.t[1],V.p[2]-V.t[2])||1;
+  const e=(v,a)=>Math.hypot(v.x-a[0],v.y-a[1],v.z-a[2]);
+  return !(e(camera.position,V.p)<=0.02*d&&e(controls.target,V.t)<=0.02*d);
+}
+function viewSavedTake(){
+  // recadrage automatique de l'ouverture : la vue enregistrée si elle vaut encore (sinon oubliée)
+  const V=viewSaved;if(!V)return false;
+  try{
+    if(viewUserMoved||(V.mis&&(V.ctx!==viewCtxKey()||viewCamLoin(V)))){viewSaved=null;return false;}
+    // pas encore remise : l'ouverture passe par d'autres états (mode Modéliser avant Assembler,
+    // composant pas encore activé) → recadrage ordinaire, la vue attend son composant
+    if(V.ctx!==viewCtxKey())return false;
+  }catch(e){viewSaved=null;return false;}
+  try{
+    camera.position.set(V.p[0],V.p[1],V.p[2]);controls.target.set(V.t[0],V.t[1],V.t[2]);
+    if(V.up)camera.up.set(V.up[0],V.up[1],V.up[2]).normalize();else viewUpReset();
+    camera.lookAt(controls.target);controls.update();
+    V.mis=true;return true;
+  }catch(e){viewSaved=null;return false;}
+}
+function viewFitAll(){viewSaved=null;showAll();} // « Recadrer », « Tout afficher » : toute la pièce, vue enregistrée oubliée
 function showAll(){
+  if(viewSavedTake())return; // V1.0.7 : vue enregistrée dans le fichier ouvert
   const box=new THREE.Box3();
   bodies.forEach(b=>{if(b.visible)box.expandByObject(b.mesh);});
   doc.sketches.forEach(s=>{const m=scene.getObjectByName('sk_'+s.id);if(m&&s.visible!==false)box.expandByObject(m);});
@@ -706,6 +764,7 @@ function viewFit(o){
   controls.update();
 }
 function setView(v){
+  viewSaved=null; // V1.0.7 : vue choisie → la vue enregistrée du fichier ne revient plus
   // esquisse ouverte : la vue d'esquisse s'oriente (le plan reste éditable)
   try{const SV={iso:[0.6,-0.6,0.6],top:[0,0,1],front:[0,-1,0],right:[1,0,0]};if(SV[v]&&sketchViewDir(SV[v]))return;}catch(e){}
   if(v==='iso'){viewFit([0.6,-0.6,0.6]);return;} // Iso = vue complète isométrique

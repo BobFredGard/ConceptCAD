@@ -216,6 +216,7 @@ function asmPivotPick(cg,name){
   try{asmDraw();renderTree();renderProps();}catch(e){}
 }
 function asmFit(){
+  if(viewSavedTake())return; // V1.0.7 : vue enregistrée dans le fichier ouvert (10-scene-3d)
   const S=asmSceneGet(),box=new THREE.Box3();
   S.getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});
   try{viewUpReset();}catch(e){}

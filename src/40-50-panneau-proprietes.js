@@ -426,7 +426,7 @@ function renderProps(){
     p.appendChild(bodyStyleField(sel.id));
     pBtns([
       ['🎯 Isoler',()=>isolate(b.id)],
-      ['✅ Tout afficher',showAll],
+      ['✅ Tout afficher',()=>viewFitAll()],
       ['🗑 Supprimer',()=>delBody(sel.id),'danger']]);
     return;
   }

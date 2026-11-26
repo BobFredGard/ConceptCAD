@@ -377,7 +377,8 @@ function mfmBuild(){
   // tous les « Tout afficher » de l'application (démarrage, ouverture d'un fichier…) cadrent
   // aussi selon la largeur de l'écran
   mfmShowAll0=showAll;
-  window.showAll=function(){mfmShowAll0.apply(this,arguments);mfmFit();};
+  // V1.0.7 : sauf quand la vue enregistrée dans le fichier vient d'être remise (viewSavedTake)
+  window.showAll=function(){const s=viewSaved;mfmShowAll0.apply(this,arguments);if(s&&viewSaved===s&&s.mis)return;mfmFit();};
   // la vue change de taille (plus de bandeau, rotation de l'écran) : le canevas suit
   const refit=()=>{try{fit();}catch(e){}};
   refit();setTimeout(refit,300);
