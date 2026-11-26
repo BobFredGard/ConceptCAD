@@ -154,6 +154,7 @@
       mepIntRefresh(v1,d.a);if(d.b)mepIntRefresh(d.vid2?mepView(sh,d.vid2):v1,d.b);
     }
     if(d.kind==='ord'){
+      mepIntRefresh(v1,d.o);(d.pts||[]).forEach(q=>mepIntRefresh(v1,q)); // points d'intersection (clic droit)
       const pr=d.axis==='y'?'h':'v';
       mepPtRefresh(sh,v1,d.o,pr);d.a=d.b=d.o;(d.pts||[]).forEach(q=>mepPtRefresh(sh,v1,q,pr));
       return;
@@ -1524,19 +1525,26 @@
     if(!bb)return -10;
     return axis==='y'?(v.x+bb.minx*v.scale)-10-oS.x:(v.y+bb.miny*v.scale)-10-oS.y;
   }
-  function mepOrdClick(sh,P,axis){
+  function mepOrdClick(sh,P,axis,ref){ // ref : Maj + clic, le point est une cote de référence (comme l'outil Cote)
     const cur=mepSt.ord?sh.dims.find(x=>x.id===mepSt.ord):null;
-    const S=mepSnapLocal(sh,P,{ctr:true}); // cercle ou arc visé : son centre
+    let S;
+    if(mepSt.snapMode){ // accrochage imposé au clic droit (98-mep-86) : ce point-là, sinon rien
+      const T=mepSnapModeClick(sh,P);if(!T)return;
+      const v=mepView(sh,T.vid);if(!v)return;
+      S={v,q:mepSnapModeQ(sh,T)};mepSt.snapHov=null;
+    }else S=mepSnapLocal(sh,P,{ctr:true}); // cercle ou arc visé : son centre
     if(!S){mepStatus('Ordonnées : cliquez dans une vue.');return;}
+    const acc=mepSt.snapMode?' — accrochage '+mepSnapModeLabel(mepSt.snapMode).toLowerCase()+', clic droit pour changer':' — clic droit : accrochage';
     if(!cur){
       const o=S.q,d={id:mepUid('d'),kind:'ord',axis,vid:S.v.id,vid2:null,o,a:o,b:o,pts:[],off:mepOrdDefaultOff(S.v,axis,o),ref:false,tol:null};
       mepEdit('cotation d’ordonnées',()=>{sh.dims.push(d);});
       mepSt.ord=d.id;mepSt.selDim=d.id;
-      mepStatus('Ordonnées '+axis.toUpperCase()+' : origine « 0 » posée — cliquez les points à coter (Entrée ou Échap pour terminer).');
+      mepStatus('Ordonnées '+axis.toUpperCase()+' : origine « 0 » posée — cliquez les points à coter (Maj + clic : cote de référence)'+acc+' (Entrée ou Échap pour terminer).');
     }else{
       if(S.v.id!==cur.vid){mepStatus('Ordonnées : les points doivent être dans la vue de l’origine.');return;}
-      mepEdit('point d’ordonnée',()=>{cur.pts.push(S.q);});
-      mepStatus('Ordonnées '+cur.axis.toUpperCase()+' : '+cur.pts.length+' point(s) — Entrée ou Échap pour terminer.');
+      if(ref)S.q.ref=true;
+      mepEdit(ref?'point d’ordonnée de référence':'point d’ordonnée',()=>{cur.pts.push(S.q);});
+      mepStatus('Ordonnées '+cur.axis.toUpperCase()+' : '+cur.pts.length+' point(s)'+(ref?', le dernier en cote de référence':'')+acc+' (Entrée ou Échap pour terminer).');
     }
     mepSideShow();mepRender();
   }
@@ -1556,6 +1564,27 @@
     mepSideShow();mepRender();
     return true;
   }
+  // une valeur du groupe en cote de référence, ou plus (l'origine « 0 » ne l'est jamais)
+  function mepOrdSetRef(sh,d,i,on){
+    const p=d&&d.pts&&d.pts[i];if(!p||!!p.ref===!!on)return false;
+    mepEdit(on?'cote d’ordonnée de référence':'cote d’ordonnée normale',()=>{if(on)p.ref=true;else delete p.ref;});
+    mepSt.selDim=d.id;mepSt.sel=null;mepSt.ordPt={id:d.id,i};
+    mepStatus(on?'Cote de référence : la valeur s’écrit entre parenthèses.':'Cote normale : sans parenthèses.');
+    mepSideShow();mepRender();
+    return true;
+  }
+  // clic droit sur une valeur d'un groupe d'ordonnées : la désigne et propose ce qui la concerne
+  function mepOrdCtx(sh,d,P,ev){
+    const i=mepOrdPtAt(sh,d,P);
+    mepSt.selDim=d.id;mepSt.sel=null;mepSt.entSel=[];mepSt.ordPt={id:d.id,i};
+    mepSideShow();mepRender();
+    if(!(i>=0)){mepCtxHide();mepStatus('Origine « 0 » : elle ne peut pas être une cote de référence.');return;}
+    const p=d.pts[i];
+    mepCtxMenu(ev.clientX,ev.clientY,'Cote d’ordonnée '+mepFmtNum(Math.abs(mepOrdValue(d,p)),mepDimPrec(d)),[
+      [(p.ref?'✓ ':'   ')+'Cote de référence (entre parenthèses)',()=>mepOrdSetRef(sh,d,i,!p.ref)],
+      ['   Supprimer ce point',()=>mepOrdDelPt(sh,d,i)]
+    ]);
+  }
   function mepOrdValue(d,p){
     // mm modèle depuis l'origine, signé : X vers la droite, Y vers le haut (v papier = vers le bas) ;
     // l'affichage en prend la valeur absolue
@@ -1571,15 +1600,23 @@
     if(hi!==null){const un=c=>String(c||'').replace(/\s*mepDimSel\b/g,'');L=Object.assign({},L,{class:un(L.class)});T=Object.assign({},T,{class:un(T.class)});}
     const Ls=Object.assign({},L,{class:L.class+' mepDimSel'}),Ts=Object.assign({},T,{class:T.class+' mepDimSel'});
     [d.o].concat(d.pts||[]).forEach((p,k)=>{
-      const on=hi!==null&&k-1===hi,L1=on?Ls:L,T1=on?Ts:T;
+      const on=hi!==null&&k-1===hi,L1=on?Ls:L;
+      // 2026-11-26 : « qu'une des cotes d'ordonnée soit une cote de référence » — p.ref : CETTE
+      // valeur entre parenthèses, en gris, comme une cote de référence (d.ref) ; jamais l'origine
+      const rf=k>0&&!!p.ref,T0=on?Ts:T,T1=rf?Object.assign({},T0,{class:T0.class+' mepDimRef'}):T0;
+      mepDrawSnapExt(draw,L1,v,p); // intersection hors des entités : leurs prolongements
       // valeur toujours POSITIVE (distance à l'origine) — points des deux côtés du « 0 » compris
       const P=mepToSheet(v,p.x,p.y),val=Math.abs(mepOrdValue(d,p));
-      const s=mepFmtNum(val<1e-9?0:val,mepDimPrec(d));
+      const s0=mepFmtNum(val<1e-9?0:val,mepDimPrec(d)),s=rf?'('+s0+')':s0;
       const pp=(k>0&&p.tol)?mepDimTextParts({kind:'len',tol:p.tol,prec:d.prec},val<1e-9?0:val):null; // tolérance de CE point
       const put=(x,y,anchor,tr)=>{
         if(!pp){const a={x,y,'text-anchor':anchor};if(tr)a.transform=tr;draw('text',Object.assign(a,T1)).textContent=s;return;}
-        mepDimDrawText(draw,T1,pp.main,pp.up,pp.lo,x,y,anchor,tr,pp.sym,pp.par,pp.post);
+        mepDimDrawText(draw,T1,rf?'('+pp.main+')':pp.main,pp.up,pp.lo,x,y,anchor,tr,pp.sym,pp.par,pp.post);
       };
+      // la valeur elle-même est attrapable (clic, clic droit), pas seulement sa ligne d'attache :
+      // segment le long du texte ajouté aux traits touchés de la cote (mepDimAt)
+      const hits=mepDimHits.get(d),tl=String(pp?(rf?'()':'')+pp.main+(pp.sym||'')+(pp.up||''):s).length*hh*0.6;
+      const hitTxt=(x1,y1,x2,y2)=>{if(hits)hits.push({x1,y1,x2,y2});};
       // cassure (2026-10-23) : rappel droit, coude oblique sur 3 mm, puis droit jusqu'à la ligne des valeurs
       const J=(k>0&&+p.jog)?+p.jog*v.scale:0;
       if(d.axis==='y'){
@@ -1588,14 +1625,15 @@
           draw('line',Object.assign({x1:P.x+sg*gap,y1:P.y,x2:b1,y2:P.y},L1));draw('line',Object.assign({x1:b1,y1:P.y,x2:b2,y2:y2},L1));
           draw('line',Object.assign({x1:b2,y1:y2,x2:line,y2:y2},L1));}
         else draw('line',Object.assign({x1:P.x+sg*gap,y1:P.y,x2:line,y2:P.y},L1));
-        put(line+sg*1,(J&&Math.abs(line-P.x)>8?y2:P.y)+hh*0.5,sg<0?'end':'start',null);
+        const yc=J&&Math.abs(line-P.x)>8?y2:P.y;
+        put(line+sg*1,yc+hh*0.5,sg<0?'end':'start',null);hitTxt(line+sg*1,yc,line+sg*(1+tl),yc);
       }else{
         const sg=line<P.y?-1:1,x2=P.x+J,ok=J&&Math.abs(line-P.y)>8,xt=(ok?x2:P.x)+hh*0.5,y=line+sg*1;
         if(ok){const b1=line-sg*7,b2=line-sg*4;
           draw('line',Object.assign({x1:P.x,y1:P.y+sg*gap,x2:P.x,y2:b1},L1));draw('line',Object.assign({x1:P.x,y1:b1,x2:x2,y2:b2},L1));
           draw('line',Object.assign({x1:x2,y1:b2,x2:x2,y2:line},L1));}
         else draw('line',Object.assign({x1:P.x,y1:P.y+sg*gap,x2:P.x,y2:line},L1));
-        put(xt,y,sg<0?'start':'end','rotate(-90 '+xt.toFixed(3)+' '+y.toFixed(3)+')');
+        put(xt,y,sg<0?'start':'end','rotate(-90 '+xt.toFixed(3)+' '+y.toFixed(3)+')');hitTxt(xt-hh*0.5,y,xt-hh*0.5,y+sg*tl);
       }
     });
   }

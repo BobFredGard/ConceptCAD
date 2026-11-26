@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**796 versions**, de `2026-09-28b` à `V1.0.11` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**797 versions**, de `2026-09-28b` à `V1.0.12` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8872,3 +8872,16 @@ Suite de V1.0.10. Fred : « Oui, mais il faudrait qu'il s'illumine au moment de 
 - `src/98-mep-00-modele.js` : halo jaune orangé (`#ffa500`, opacité 0,6, toujours 7 px à l'écran).
 
 **Test** : `test_mep_axes_sources` +14 contrôles (37 en tout) : survol d'un cercle et d'un côté d'oblong avant le clic, rien dans le vide ni en mode Libre ; après le clic, souris ailleurs, le cercle de l'axe créé reste allumé, avec le trou survolé en plus ; 2e droite d'un axe de symétrie : ses 2 droites restent allumées ; changement de mode ou d'outil : tout s'éteint ; sélection après coup : rallumé ; bords en segments de côté et de bout ; sur le vrai noyau, survol puis clic sur un trou percé. Sur V1.0.10 : échec. Dans le navigateur, sur Support Pédale : survol du trou Ø8 H7 → son cercle en jaune orangé avant le clic, resté allumé après la création, souris ailleurs ; trou Ø5 débouchant dans une face courbe → tout son bord (avant : un seul petit trait) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.12 - Mise en plan : clic droit et cote de référence dans les cotes d'ordonnées
+
+Fred : « Il manque aux cotes d'ordonnées la possibilité du clic droit qui existe pour la cotation normale », puis « Et aussi ajouter le moyen qu'une des cotes d'ordonnée soit une cote de référence ».
+
+**Avant** : avec l'outil Ordonnées X / Y, le clic droit n'ouvrait rien : pas d'accrochage imposé (extrémité, milieu, centre, point extrême, intersection), seulement le point automatique. Aucune valeur d'un groupe ne pouvait être une cote de référence. Le texte d'une valeur ne s'attrapait pas, seule sa ligne d'attache.
+
+**Correctif** :
+- `src/98-mep-80-souris.js` (mepOnContext) : dans l'outil Ordonnées, le clic droit ouvre le menu « Accrochage » de l'outil Cote ; `src/98-mep-86-accrochages.js` : mepSnapModeHover (survol commun aux outils Cote et Ordonnées : repère du point, prolongements d'une intersection), mepSetSnapMode (consignes propres aux ordonnées), mepDrawSnapHov ; `src/98-mep-70-cotes.js` mepOrdClick : le point imposé sert d'origine « 0 » et de points, le choix reste jusqu'à ce qu'on en change (comme les 2 points d'une cote) ; points d'intersection suivis (mepIntRefresh) et prolongements tracés avec le groupe ; Échap n'annule qu'une intersection en cours, le groupe continue ;
+- cote de référence d'UNE valeur (p.ref, entre parenthèses, en gris comme une cote de référence) : Maj + clic à la pose, clic droit sur une valeur (mepOrdCtx : « Cote de référence », « Supprimer ce point »), case « Cote de référence » du panneau quand la valeur est désignée (`src/98-mep-90-proprietes.js`, mepOrdSetRef) ; jamais l'origine ;
+- mepDrawOrd : le texte de chaque valeur s'ajoute aux traits attrapables du groupe (clic pour désigner, clic droit).
+
+**Test** : `test_mep_ordonnees_accrochage` (nouveau, inscrit dans run et run-fast, 36 contrôles) : mêmes 7 choix que l'outil Cote, intersection dans le vide pour l'origine (survol, repère, prolongements, suivi quand une arête bouge), centre et point extrême X pour les points, retour à Automatique, Échap / Entrée ; Maj + clic, clic droit sur le texte d'une valeur (et non son trait), case du panneau, enregistrement. Sur V1.0.11 : échec. Dans le navigateur, sur Support Pédale : menu « Accrochage » au clic droit de l'outil Ordonnées X, repère d'extrémité au survol ; ordonnées Y avec Maj + clic → « (10.55) », clic droit sur la valeur 56 → « Cote de référence » → « (56) », case du panneau cochée ; aucune erreur. CACHE_VER et FORMES_VER inchangés.

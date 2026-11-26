@@ -66,6 +66,9 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
   - un trou coupé par une autre fonction reste reconnu ;
   - l'outil Perçage cote le trou dans toutes les vues : vu de bout, de côté ou en biais, en coupe comme avec les traits cachés.
 - **Ordonnées X / Y** (avec cassure), notes à flèche.
+  - **Clic droit** pendant la pose : mêmes accrochages imposés que l'outil Cote (extrémité, milieu, centre, point extrême X / Y, intersection même prolongée), pour l'origine « 0 » comme pour les points ; le choix reste jusqu'à ce qu'on en change, Échap n'annule qu'une intersection en cours (V1.0.12).
+  - **Cote de référence** pour une seule valeur, écrite entre parenthèses : Maj + clic à la pose, clic droit sur la valeur (« Cote de référence », « Supprimer ce point »), ou la case du panneau quand la valeur est désignée. L'origine « 0 » ne l'est jamais (V1.0.12).
+  - Le texte d'une valeur s'attrape comme sa ligne d'attache : clic pour la désigner, clic droit pour son menu.
 - **Sens d'une cote au curseur** : horizontale, verticale ou alignée selon la position de la souris ; entre deux points presque à la même hauteur, la cote reste horizontale (alignée au clic droit).
 - **Précision des cotes** au choix : 0, 0.1, 0.01 ou 0.001, cote par cote ou par défaut pour tout le plan.
 - **Hauteur du texte** des cotes, avec flèches et tolérances proportionnelles (écarts au niveau de la valeur, quel que soit le sens de la cote) ; épaisseur des lignes d'attache et des axes de trous ; **Sauvegarder par défaut** / **Appliquer les défauts**.

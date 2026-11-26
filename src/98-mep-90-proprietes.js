@@ -968,7 +968,13 @@
           mk('Supprimer ce point',()=>mepOrdDelPt(sh,d,op),'Retire la valeur désignée du groupe (Suppr)','danger');
           // tolérance de CETTE valeur seulement (2026-10-22-017)
           const tolBox=document.createElement('div');
-          mepTolEditor((lab,el)=>{const rr=document.createElement('div');rr.className='row';const L=document.createElement('label');L.textContent=lab;rr.appendChild(L);if(el)rr.appendChild(el);tolBox.appendChild(rr);return rr;},d.pts[op]);
+          const tRow=(lab,el)=>{const rr=document.createElement('div');rr.className='row';const L=document.createElement('label');L.textContent=lab;rr.appendChild(L);if(el)rr.appendChild(el);tolBox.appendChild(rr);return rr;};
+          mepTolEditor(tRow,d.pts[op]);
+          // cote de référence pour CETTE valeur (2026-11-26) : entre parenthèses, comme une cote normale
+          const cbR=document.createElement('input');cbR.type='checkbox';cbR.checked=!!d.pts[op].ref;
+          cbR.title='Valeur entre parenthèses, donnée pour information (aussi : clic droit sur la valeur, Maj + clic à la pose)';
+          cbR.onchange=()=>mepOrdSetRef(sh,d,op,cbR.checked);
+          tRow('Cote de référence',cbR);
           root.appendChild(n);root.appendChild(tolBox);n.__done=1;
         }else if(op===-1)n.textContent+='\nOrigine « 0 » désignée : supprimez le groupe pour la retirer.';
       }

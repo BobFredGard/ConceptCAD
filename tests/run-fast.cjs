@@ -103,6 +103,7 @@ const SUITES = [
   'test_esquisse_intersection',
   'test_cote_points',
   'test_mep_accrochages',
+  'test_mep_ordonnees_accrochage',
   'test_mep_chaine',
   'test_esquisse_oblong',
   'test_esquisse_oblong_arc',

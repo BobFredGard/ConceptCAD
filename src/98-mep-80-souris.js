@@ -533,7 +533,7 @@
     }
     if(tool==='axis'){mepAxisClick(sh,P);return;}
     if(tool==='gdt'||tool==='datum'||tool==='rough'){mepGdtClick(sh,P,tool);return;}
-    if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x');return;}
+    if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x',ev.shiftKey);return;} // Maj : cote de référence
     if(tool==='note'){
       if(mepSt.dim&&mepSt.dim.kind==='note'){ // 2ᵉ clic : place le texte, puis le saisit
         mepDimCommitDraft(sh,P);
@@ -808,16 +808,7 @@
       let need=false;
       if(mepSt.tool==='dim'&&mepSt.chain){mepChainHover(sh,P);return;}
       if(mepSt.tool==='dim'&&mepSt.snapMode&&!(mepSt.dim&&mepSt.dim.b)){
-        // accrochage imposé : repère du point visé, pas de surbrillance d'entité
-        // (Intersection : on survole des ENTITÉS, le point s'affiche dès la 2ᵉ)
-        const isInt=mepSt.snapMode==='int';
-        const ih=isInt?mepIntPickHit(sh,P):null;
-        const S=isInt?mepIntPoint(sh,mepSt.intPick,ih,P):mepSnapModePt(sh,P.x,P.y,mepSt.snapMode),o=mepSt.snapHov;
-        if(!!S!==!!o||(S&&(Math.abs(S.x-o.x)>1e-6||Math.abs(S.y-o.y)>1e-6)))need=true;
-        mepSt.snapHov=S;
-        const hov=ih?{vid:ih.vid,i:ih.i,sig:mepEntSig(ih.e)}:null;
-        if(!mepSameHovEnt(hov,mepSt.hovEnt)){mepSt.hovEnt=hov;need=true;}
-        if(need)mepRender();
+        if(mepSnapModeHover(sh,P))mepRender(); // accrochage imposé : repère du point visé (98-mep-86)
         return;
       }
       if(mepSt.snapHov){mepSt.snapHov=null;need=true;}
@@ -830,6 +821,10 @@
       }
       if(need)mepRender();
       return;
+    }
+    if(mepOrdTool()){ // ordonnées en accrochage imposé (clic droit, comme l'outil Cote) : repère du point visé
+      if(mepSt.snapMode){if(mepSnapModeHover(sh,P))mepRender();return;}
+      if(mepSt.snapHov||mepSt.hovEnt){mepSt.snapHov=null;mepSt.hovEnt=null;mepRender();}
     }
     if(mepSt.tool==='axis'){
       if(mepSt.axisFree&&mepSt.axisFree.a){
@@ -1018,10 +1013,10 @@
     if(k==='Escape'&&mepCtxEl&&mepCtxEl.style.display!=='none'){
       mepCtxHide();ev.preventDefault();ev.stopPropagation();return;
     }
+    if(k==='Escape'&&mepSt.intPick){mepIntCancel();ev.preventDefault();ev.stopPropagation();return;} // seulement l'intersection en cours (Cote, Ordonnées)
     if((k==='Escape'||k==='Enter')&&mepSt.ord){mepSt.ord=null;mepSetTool('select');mepStatus('Cotation d’ordonnées terminée.');ev.preventDefault();ev.stopPropagation();return;}
     if(k==='Escape'&&mepSt.blAdd){mepSt.blAdd=false;mepStatus('＋ Bulle terminé.');mepSideShow();ev.preventDefault();ev.stopPropagation();return;} // V0.8.2
     if(k==='Escape'){
-      if(mepSt.intPick){mepIntCancel();ev.preventDefault();ev.stopPropagation();return;} // seulement l'intersection en cours
       if(mepSt.chain){mepChainEnd();ev.preventDefault();ev.stopPropagation();return;} // fin de chaîne, l'outil Cote reste actif
       if(mepSt.alignDims){mepSt.alignDims=null;mepStatus('Alignement annulé.');ev.preventDefault();ev.stopPropagation();return;}
       if(mepSt.vcmd){mepVcmdCancel();ev.preventDefault();ev.stopPropagation();return;}
@@ -1526,6 +1521,7 @@
     if(mepSt.vcmd){mepVcmdCancel();return;}
     if(mepSt.pick&&MEP_SK_TOOLS.indexOf(mepSt.pick.kind)>=0){mepSt.pick=null;mepRender();mepStatus('Tracé terminé.');return;}
     const sh=mepSheet();if(!sh)return;
+    if(mepOrdTool()){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;} // ordonnées : accrochage imposé, comme l'outil Cote (98-mep-86)
     const canCtx=d=>d&&(d.kind==='dia'||d.kind==='rad'||d.kind==='len'||d.kind==='dist');
     const snapCtx=mepSt.tool==='dim'&&!(mepSt.dim&&mepSt.dim.kind==='dist'&&mepSt.dim._pp);
     if(mepSt.dim&&canCtx(mepSt.dim)){
@@ -1534,6 +1530,7 @@
     }
     if(snapCtx&&mepSt.chain){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;} // chaîne : accrochage seul
     const P=mepPt(ev),d=mepSt.dim?null:mepDimAt(sh,P.x,P.y);
+    if(d&&d.kind==='ord'&&!snapCtx&&!mepSt.dim){mepOrdCtx(sh,d,P,ev);return;} // valeur d'ordonnée : cote de référence, suppression (98-mep-70)
     if(!mepSt.dim&&!snapCtx&&!canCtx(d)&&mepLocCtx(sh,P,ev))return; // coupe locale : menu de la forme
     if(snapCtx&&!canCtx(d)){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;}
     if(canCtx(d)){
