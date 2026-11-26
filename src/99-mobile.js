@@ -233,18 +233,11 @@ function mfmSynth(type,x,y,btn){
   const o={bubbles:true,cancelable:true,clientX:x,clientY:y,button:btn,buttons:type==='pointerdown'?(btn===2?2:1):0,pointerId:9001,pointerType:'mouse',isPrimary:true};
   c.dispatchEvent(type==='contextmenu'?new MouseEvent('contextmenu',o):new PointerEvent(type,o));
 }
-function mfmPan(dx,dy){
-  // déplacement écran : caméra ET cible glissent ensemble, 1 px = 1 px au plan de la cible
+function mfmPan(dx,dy,P){
+  // déplacement écran : caméra ET cible glissent ensemble ; V1.0.8 : le point pincé P suit les doigts
+  // (même calcul que le clic droit, viewPanBy), avant : 1 px = 1 px au plan de la cible
   if(!camera||!controls)return;
-  const c=renderer.domElement,H=c.clientHeight||600;
-  let s;
-  if(camera.isOrthographicCamera)s=(camera.top-camera.bottom)/(camera.zoom||1)/H;
-  else s=2*camera.position.distanceTo(controls.target)*Math.tan((camera.fov||50)*Math.PI/360)/H;
-  camera.updateMatrixWorld();
-  const R=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0),U=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);
-  const d=R.multiplyScalar(-dx*s).add(U.multiplyScalar(dy*s));
-  camera.position.add(d);controls.target.add(d);
-  viewUserMoved=true;
+  viewPanBy(dx,dy,P?viewDepthOf(P):null);
 }
 function mfmTouchWire(){
   const c=renderer.domElement;
@@ -275,7 +268,7 @@ function mfmTouchWire(){
       if(_fo){_fo=null;orbitMarkShow(null);}
       const [a,b]=[...mfmT.pts.values()];
       const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
-      let P=null;try{P=viewHitAt(cx,cy)||viewTargetPlaneAt(cx,cy);}catch(err){}
+      let P=null;try{P=viewAimAt(cx,cy);}catch(err){} // pièce sous les doigts, sinon la pièce voisine (V1.0.8)
       mfmT.pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,cx,cy,P:P||controls.target.clone()};
     }
   },true);
@@ -289,7 +282,7 @@ function mfmTouchWire(){
       const [a,b]=[...mfmT.pts.values()],pn=mfmT.pinch;
       const d=Math.hypot(a.x-b.x,a.y-b.y)||1,cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
       if(typeof skEdit!=='undefined'&&skEdit){pn.d=d;pn.cx=cx;pn.cy=cy;return;} // esquisse : caméra pilotée par l'esquisse
-      try{mfmPan(cx-pn.cx,cy-pn.cy);}catch(err){}
+      try{mfmPan(cx-pn.cx,cy-pn.cy,pn.P);}catch(err){}
       try{if(orbitZoomApply(Math.log(pn.d/d),pn.P))viewUserMoved=true;}catch(err){}
       pn.d=d;pn.cx=cx;pn.cy=cy;
       return;

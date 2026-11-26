@@ -344,6 +344,7 @@ const SUITES = [
   "test_assemblage_historique",
   "test_composants_icones",
   "test_vue_enregistree",
+  "test_zoom_deplacement",
   "test_composants_inspection",
   "test_composants_normalises",
   "test_aimants",
