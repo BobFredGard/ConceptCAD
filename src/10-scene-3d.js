@@ -252,7 +252,8 @@ function refreshMirror(){
    ne fait ensuite que recopier la position et regarder la cible.
    Contrainte : azimut autour du Z de la vue, élévation bornée avant les pôles, Z en haut.
    Libre : rotation autour des axes ÉCRAN (haut et droite de la caméra), camera.up suit.
-   Inertie : 20 % du reste par image (ORBIT_ROT_DAMP, V0.10.0 ; OrbitControls : 8 % pour le pan et le zoom).
+   Inertie : 20 % du reste par image (ORBIT_ROT_DAMP, V0.10.0 ; OrbitControls : 8 % pour le pan et le zoom) ;
+   V1.0.9 : à 60 images/s, comptée en temps (ORBIT_ROT_TAU) — même arrêt rapide sur une pièce lourde.
    V1.0.8 : le zoom (orbitZoomWheel) et le déplacement (viewPanBy) ne passent plus par OrbitControls non plus ;
    il ne garde que la rotation autour de la cible de Ctrl / Maj + clic droit glissé. */
 function orbitApplyButtons(){
@@ -542,7 +543,11 @@ function orbitRotate(dx,dy,P){
 // inertie : le reste du glissement s'écoule à chaque image. V0.10.0 : 20 % par image (était 8 %,
 // l'amortissement d'OrbitControls) — la pièce suit la souris de plus près, avec une inertie plus courte ;
 // l'atelier RENDU, lui, suit la souris sans inertie. Le pan et le zoom gardent 8 %.
+// V1.0.9 (Fred : « Oui, la rotation aussi ») : ces 20 % valent à 60 images/s ; la part est désormais
+// comptée en TEMPS (ORBIT_ROT_TAU ≈ 75 ms), comme le zoom en V1.0.8. Sur une pièce lourde (5 images/s),
+// la pièce s'arrête en 2 images au lieu de tourner seule 3 à 4 s après le lâcher.
 const ORBIT_ROT_DAMP=0.2;
+const ORBIT_ROT_TAU=-1000/60/Math.log(1-ORBIT_ROT_DAMP);
 let _otT=0; // heure de l'image précédente (orbitTick)
 function orbitTick(){
   const now=performance.now(),dt=_otT?Math.min(1000,Math.max(0,now-_otT)):1000/60;_otT=now;
@@ -557,7 +562,7 @@ function orbitTick(){
   }
   if(!_fo||(!_fo.vx&&!_fo.vy))return;
   try{if(typeof skEdit!=='undefined'&&skEdit){_fo.vx=_fo.vy=0;return;}}catch(e){}
-  const f=(controls&&controls.enableDamping)?ORBIT_ROT_DAMP:1;
+  const f=(controls&&controls.enableDamping)?viewDampF(dt,ORBIT_ROT_TAU):1;
   orbitRotate(_fo.vx*f,_fo.vy*f,_fo.P);
   _fo.vx*=1-f;_fo.vy*=1-f;
   if(Math.abs(_fo.vx)<0.01&&Math.abs(_fo.vy)<0.01){_fo.vx=_fo.vy=0;if(!_fo.down){_fo=null;orbitMarkShow(null);}}
@@ -1153,12 +1158,14 @@ function skOrbSnapFace(){ // lâchée presque de face : la vue se recale DANS le
   if(!skEdit||!skPersp()||Math.abs(skOrb.D[2])<SK_SNAP_FACE)return;
   skOrbSetFrame([0,0,skOrb.D[2]<0?-1:1],[skOrb.U[0],skOrb.U[1],0]);
 }
+let _skoT=0; // heure de l'image précédente (skOrbTick)
 function skOrbTick(){
-  // inertie de l'orbite d'esquisse : comme orbitTick (ORBIT_ROT_DAMP du reste par image)
+  // inertie de l'orbite d'esquisse : comme orbitTick (V1.0.9 : part comptée en temps, ORBIT_ROT_TAU)
+  const now=performance.now(),dt=_skoT?Math.min(1000,Math.max(0,now-_skoT)):1000/60;_skoT=now;
   const o=(typeof skOrbDrag!=='undefined')?skOrbDrag:null;if(!o)return;
   if(!skEdit){skOrbDrag=null;return;}
   if(o.vx||o.vy){
-    const f=(controls&&controls.enableDamping)?ORBIT_ROT_DAMP:1;
+    const f=(controls&&controls.enableDamping)?viewDampF(dt,ORBIT_ROT_TAU):1;
     skOrbDragBy(o.vx*f,o.vy*f);o.vx*=1-f;o.vy*=1-f;
     if(Math.abs(o.vx)<0.01&&Math.abs(o.vy)<0.01)o.vx=o.vy=0;
   }

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**793 versions**, de `2026-09-28b` à `V1.0.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**794 versions**, de `2026-09-28b` à `V1.0.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8833,3 +8833,13 @@ Demande de Fred : « Comportement du zoom et du déplacement dans la vue 3D. Des
 La rotation n'a pas changé.
 
 **Test** : `test_zoom_deplacement` (nouveau, inscrit dans les tests rapides, moins d'une seconde, 31 contrôles, vrai three et vrai lancer de rayons sur un cube) : sur la pièce, point visé sous le curseur, 15 % par cran, butée à 0,5 mm ; dans le vide avec la cible 5 fois plus loin que la pièce, point visé à la profondeur de la pièce voisine, 15 % par cran sur 10 crans, la pièce toujours devant ; repli sur le centre des pièces puis sur le plan de la cible ; amorti à 60 et à 5 images/s ; plafond du zoom en attente ; déplacement au pixel près sur la pièce, dans le vide et à Ctrl + molette, sans glissement après le lâcher ; pas de déplacement avec Ctrl ou Maj + clic droit, au clic court, en esquisse, vue bloquée, bouton lâché hors de la fenêtre ; OrbitControls refait sans déplacement. Anciens comportements rejoués (plan de la cible, vitesse de la cible, 30 % par image) : échec. Dans le navigateur, sur Support Pédale : un cran dans le vide divisait par deux la distance à la pièce et le second la traversait ; désormais 15 % par cran. Le point saisi au clic droit reste sous le curseur au pixel près (l'ancien déplacement allait 4,7 fois trop vite dans cette situation), rien ne bouge après le lâcher, Ctrl + molette idem ; 3 crans de molette finis en 0,36 s à 1 image par seconde (avant : pas finis au bout de 5 s). CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.9 - CAO / FAO : la rotation s'arrête aussi tout de suite sur une pièce lourde
+
+Suite de V1.0.8. Fred : « Oui, la rotation aussi ».
+
+**Avant** : l'inertie de la rotation (clic gauche ou clic-molette glissé) appliquait 20 % du glissement restant **à chaque image**. Quand l'affichage est lent (pièce lourde), la pièce continuait à tourner seule plusieurs secondes après le lâcher : à 1 image par seconde, 83 % seulement du mouvement était fait au bout de 4 s.
+
+**Correctif** (`src/10-scene-3d.js`) : `orbitTick` et `skOrbTick` (orbite de la vue d'esquisse) comptent cette part **en millisecondes** (`ORBIT_ROT_TAU` ≈ 75 ms, tiré de `ORBIT_ROT_DAMP`). À 60 images/s, la rotation garde exactement la même douceur (20 % à la première image). Sur une pièce lourde, elle s'arrête dès l'image suivante. L'angle total d'un glisser et la vitesse ne changent pas.
+
+**Test** : `test_zoom_deplacement` +5 contrôles (36 en tout) : 20 % à la première image à 60 images/s ; 99,5 % du glissement appliqué en 2 images à 5 images/s ; même angle final aux deux cadences ; ancien amorti rejoué (20 % par image) : 36 % seulement en 0,4 s, échec. Dans le navigateur, sur Support Pédale, à 1 image par seconde : rotation finie dès l'image suivant le lâcher (ancien réglage : 83 % au bout de 4 s). CACHE_VER et FORMES_VER inchangés.

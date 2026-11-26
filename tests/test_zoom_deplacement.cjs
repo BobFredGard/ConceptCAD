@@ -4,6 +4,7 @@
 // viewPanBy / viewPanDown / viewPanMove (le point saisi au clic droit reste sous le curseur, rien ne
 // glisse après le lâcher), orbitTick (amorti du zoom compté en millisecondes, VIEW_ZOOM_TAU) et
 // orbitZoomWheel (zoom en attente plafonné, VIEW_ZOOM_PEND_MAX).
+// V1.0.9 (Fred : « Oui, la rotation aussi ») : inertie de la rotation comptée en temps (ORBIT_ROT_TAU).
 // Vrai three du logiciel, vraie caméra, vrai lancer de rayons sur un cube de 40 mm ; la souris et
 // les images sont rejouées à la main (heure de performance.now pilotée par le test).
 'use strict';
@@ -136,13 +137,30 @@ const r=vm.runInContext(String.raw`(()=>{
   fige('esquisse ouverte',()=>{skEdit={id:'s'};down(500,300,2);move(560,330,2);up(560,330,2);skEdit=null;});
   fige('vue bloquée (manipulateur, film)',()=>{controls.enabled=false;down(500,300,2);move(560,330,2);up(560,330,2);controls.enabled=true;});
   fige('bouton lâché hors de la fenêtre',()=>{down(500,300,2);move(500,300,0);move(560,330,0);});
+  // ── 5. V1.0.9 : rotation — inertie comptée en temps (« Oui, la rotation aussi ») ──
+  // clic gauche glissé de 100 px vers la droite, lâché, puis des images : azimut autour du point saisi
+  const Pv=new THREE.Vector3(0,-20,0),az=()=>Math.atan2(camera.position.y-Pv.y,camera.position.x-Pv.x);
+  const TOT=100*2*Math.PI/H; // angle total d'un glisser de 100 px (vitesse inchangée)
+  const tourne=()=>{place(0);_fo=null;const a0=az();down(500,300,0);for(let i=1;i<=5;i++)move(500+20*i,300,1);up(600,300,0);return a0;};
+  const part=a0=>{let d=az()-a0;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return Math.abs(d)/TOT;};
+  let a0=tourne();frame(1000/60);
+  ok(Math.abs(part(a0)-0.2)<0.005,'27 : rotation à 60 images/s : 20 % du glissement à la première image, comme avant ('+(part(a0)*100).toFixed(1)+' %)');
+  for(let i=0;i<300&&_fo;i++)frame(1000/60);const fin60=part(a0);
+  a0=tourne();frame(200);frame(200);const r5=part(a0);
+  ok(r5>0.99,'28 : rotation à 5 images/s : arrêtée en 2 images, 0,4 s ('+(r5*100).toFixed(1)+' % du glissement appliqué)');
+  for(let i=0;i<300&&_fo;i++)frame(200);
+  ok(Math.abs(part(a0)-fin60)<1e-3&&Math.abs(fin60-1)<1e-3,'29 : même angle final à 60 et à 5 images/s ('+fin60.toFixed(4)+' / '+part(a0).toFixed(4)+' du glisser)');
+  ok(_fo===null,'30 : rotation finie : plus rien en cours');
+  viewDampF=function(){return 0.2;}; // ancien amorti : 20 % par image quelle que soit la cadence
+  a0=tourne();frame(200);frame(200);viewDampF=dampF;const r5a=part(a0);_fo=null;
+  ok(!(r5a>0.99),'31 : ancien comportement rejoué (20 % par image) : à 5 images/s, '+(r5a*100).toFixed(0)+' % seulement en 0,4 s, la pièce tournait encore seule — attendu : échec de l essai 28');
   // téléphone (mfmPan) et sans profondeur : comme avant, 1 px = 1 px au plan de la cible
   place(0);const O=new THREE.Vector3();viewPanBy(30,-20);const o1=proj(O);
-  ok(Math.abs(o1[0]-530)<1e-6&&Math.abs(o1[1]-280)<1e-6,'25 : sans profondeur donnée : le plan de la cible suit (comme avant)');
+  ok(Math.abs(o1[0]-530)<1e-6&&Math.abs(o1[1]-280)<1e-6,'32 : sans profondeur donnée : le plan de la cible suit (comme avant)');
   // OrbitControls refait (haut de la vue en FAO) : son déplacement reste coupé
   controls=new THREE.OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);
   viewControlsRebuild();
-  ok(controls.enablePan===false&&controls.enableZoom===false,'26 : OrbitControls refait : son déplacement et son zoom restent coupés');
+  ok(controls.enablePan===false&&controls.enableZoom===false,'33 : OrbitControls refait : son déplacement et son zoom restent coupés');
   return out;
 })()`,ctx,{filename:'test_zoom_deplacement'});
 r.forEach(([c,m])=>A(c,m));

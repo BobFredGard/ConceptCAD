@@ -8,7 +8,7 @@
 |---|---|---|
 | Clic gauche | sélection (et la fonction qui a créé la face) | dessin, sélection |
 | `Ctrl+clic` | mesure seule, partout (CAO, FAO, assemblage, fonction ouverte), sans rien sélectionner ; aussi depuis un plan du repère (XY, XZ, YZ) vers une face ; à partir de 3 faces, sélection pour `Suppr` | multi-sélection |
-| Glisser gauche | rotation autour du point visé | dessin, déplacement d'entités, sélection au cadre |
+| Glisser gauche | rotation autour du point visé ; sur une pièce lourde aussi, elle s'arrête dès qu'on lâche (V1.0.9) | dessin, déplacement d'entités, sélection au cadre |
 | Clic-molette glissé | rotation | rotation autour du dessin |
 | `Ctrl` + molette enfoncée, clic droit glissé | déplacement : le point saisi reste sous le curseur, rien ne glisse après le lâcher (V1.0.8) | déplacement |
 | Clic droit court | menu contextuel (matériau de rendu, masquer, isoler…) | menu contextuel / annuler l'action |
