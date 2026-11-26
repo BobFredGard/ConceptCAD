@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.0.13';
+const APP_VER='V1.0.14';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -90205,6 +90205,9 @@ function mfFiTable(){
   F('Cotes/Perçage','Cote de perçage','Note tout ce qu’il faut savoir sur un trou : diamètre, lamage, fraisure, taraudage.',['Cliquez le trou'],CHOLE(32,48,9),CHOLE(32,48,9)+LEAD(38,41,50,24,'M6 prof. 12'));
   const H3=()=>ficR(14,30,72,32,'#111827',1.7)+CHOLE(30,46,5)+CHOLE(50,46,5)+CHOLE(70,46,5);
   F('Cotes/Perçages auto','Perçages automatiques','Cote d’un coup tous les trous de la vue ou de la planche. « 3× » s’ils sont identiques.',[],H3(),H3()+LEAD(33,42,42,20,'3× Ø8'));
+  const EQP=()=>ficR(26,16,48,28,'#111827',1.7)+AX(50,10,50,72)+COTE(26,74,68,'40');
+  const EQC=y=>[26,50,74].map(x=>ficL(x,y-5,x,y+3,GR,.8)+ficDot(x,y,1.5,GR)).join('')+ficL(26,y,74,y,GR,.9)+ficT(38,y-2.4,'=',7,GR)+ficT(62,y-2.4,'=',7,GR);
+  F('Cotes/Égalités','Cotes d’égalité','Montre qu’une forme est symétrique : 2 cotes à points marquées « = » de part et d’autre de l’axe, sous chaque cote coupée en son milieu par un axe.',[],EQP(),EQP()+EQC(54));
   F('Cotes/Note','Note à flèche','Écrit un texte avec une flèche qui pointe un endroit précis.',['Cliquez la pointe','Placez et écrivez le texte'],ficR(22,36,44,26,'#111827',1.7),ficR(22,36,44,26,'#111827',1.7)+LEAD(42,36,50,18,'Ébavurer'));
   const OX=(y)=>ficR(20,28,60,32,'#111827',1.7)+[20,44,80].map((x,i)=>ficL(x,28,x,y,GR,.7)+ficT(x,y-1.5,['0','24','60'][i],6.6,GR)).join('');
   F('Cotes/Ordonnées X','Ordonnées en X','Donne toutes les positions depuis un même zéro, le long de X. Les valeurs restent alignées.',['Cliquez le zéro','Cliquez les points','Entrée pour finir'],ficR(20,28,60,32,'#111827',1.7)+NUM(20,28,'0'),OX(14));
@@ -91158,6 +91161,7 @@ const MF_IC={
   pNote:'<path d="M4 20l7-7"/><path d="M4 20l1.2-4.2M4 20l4.2-1.2"/><path d="M11 13h10"/><path d="M12 9h8M12 5.5h6"/>',
   pOrdX:'<path d="M5 20V9M11 20V6M18 20V11"/><path d="M3 20h18"/><path d="M4 6.5h2M10 3.5h2M17 8.5h2"/>',
   pOrdY:'<path d="M4 5h11M4 11h15M4 18h9"/><path d="M4 3v18"/><path d="M17.5 4v2M21 10v2M15.5 17v2"/>',
+  pEq:'<path d="M3 17h18M3 13v7.5M21 13v7.5"/><path d="M12 2.5v19" stroke-dasharray="4 1.6 1 1.6"/><circle cx="3" cy="17" r="1.4"/><circle cx="12" cy="17" r="1.4"/><circle cx="21" cy="17" r="1.4"/><path d="M5.5 8.5h4M5.5 11.5h4M14.5 8.5h4M14.5 11.5h4"/>',
   pHoles:'<circle cx="6" cy="17" r="3"/><circle cx="14" cy="17" r="3"/><path d="M16.2 14.8L20 11h2"/><path d="M3 5h8M3 8.5h6"/><path d="M14 5h3"/>',
   pAxHole:'<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 9.5v5M12 17.5v4M2.5 12h4M9.5 12h5M17.5 12h4"/>',
   pAxPitch:'<circle cx="12" cy="12" r="8" stroke-dasharray="4 1.6 1 1.6"/><circle cx="12" cy="4" r="1.8"/><circle cx="18.9" cy="16" r="1.8"/><circle cx="5.1" cy="16" r="1.8"/>',
@@ -91269,6 +91273,7 @@ function mfRibbon(){
   grp('Cotes',[['pDim','Cote',mepT('dim'),'Outil cote unique : Ø, longueur, distance, angle'],
     ['pHole','Perçage',mepT('hole'),'Cotation perçage : Ø, lamage, fraisure, taraudage'],
     ['pHoles','Perçages auto',()=>{try{mepSetActive(true);mepAutoHoles();}catch(e){}},'Coter toutes les fonctions Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche'],
+    ['pEq','Égalités',()=>{try{mepSetActive(true);mepEqAuto();}catch(e){}},'Cotes d’égalité « = » : chaque cote coupée en son milieu par un axe de symétrie reçoit 2 cotes à points marquées « = » (bord → axe → bord) — cote sélectionnée, sinon vue sélectionnée, sinon toute la planche'],
     ['pNote','Note',mepT('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',mepT('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
     ['pOrdY','Ordonnées Y',mepT('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
@@ -100405,7 +100410,11 @@ function filmFrame(){
     // point d'intersection dans le vide : arêtes / arcs prolongés jusqu'au point
     mepDrawSnapExt(draw,LX,w.v1,d.a);if(d.b)mepDrawSnapExt(draw,LX,w.v2||w.v1,d.b);
     // ligne de cote fléchée
-    if(d.arr==='out'){
+    if(d.term==='dot'){ // cote d'égalité « = » (98-mep-88) : un point au lieu de chaque flèche
+      draw('line',Object.assign({x1:a1.x,y1:a1.y,x2:b1.x,y2:b1.y},L));
+      const r=mepEqDotR(),F={class:L.class+' mepGdtFill'};
+      draw('circle',Object.assign({cx:a1.x,cy:a1.y,r},F));draw('circle',Object.assign({cx:b1.x,cy:b1.y,r},F));
+    }else if(d.arr==='out'){
       const ext=Math.max(2,MEP_DIM_STYLE.arrowLen);
       draw('line',Object.assign({x1:a1.x-g.ux*ext,y1:a1.y-g.uy*ext,
         x2:a1.x,y2:a1.y,'marker-end':AR},L));
@@ -102994,7 +103003,7 @@ function filmFrame(){
         mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
       }
       if(mepSt.selDim){
-        mepEdit('suppression cote',()=>{const id=mepSt.selDim;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id);mepSt.selDim=null;}); // avec ses tolérances accrochées
+        mepEdit('suppression cote',()=>{const id=mepSt.selDim,eq=(sh.dims.find(d=>d.id===id)||{}).eq;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id&&!(eq&&d.eq===eq));mepSt.selDim=null;}); // avec ses tolérances accrochées ; cote « = » : avec sa voisine
         mepSideShow();
         ev.preventDefault();ev.stopPropagation();
         return;
@@ -103428,11 +103437,17 @@ function filmFrame(){
         add('Ø à une flèche (comme R)',!!d.dia1,()=>mepDimSetDiaOne(d,true,!!draft));
       }
     }
-    if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)){
+    if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)&&!d.eq){
       const o=d.orient||'a';
       add('Alignée (A)',o==='a',()=>mepDimSetOrient(d,'a',!!draft));
       add('Horizontale (X)',o==='h',()=>mepDimSetOrient(d,'h',!!draft));
       add('Verticale (Y)',o==='v',()=>mepDimSetOrient(d,'v',!!draft));
+    }
+    // cotes d'égalité « = » de part et d'autre de l'axe (98-mep-88)
+    if(d&&!draft&&(d.kind==='len'||d.kind==='dist')){
+      const sh=mepSheet();
+      if(d.eq)add('Retirer les cotes « = »',false,()=>mepEqRemove(sh,d));
+      else if(!sh.dims.some(x=>x.eqOf===d.id)&&mepEqFind(sh,d))add('Cotes d’égalité « = » de part et d’autre de l’axe',false,()=>mepEqAuto(d));
     }
     if(snap){
       // accrochage imposé des points de la cote (2026-10-28)
@@ -103742,6 +103757,7 @@ function filmFrame(){
           const to=(+pk.txtOff0||0)+(P.x-S.x)*g.ux+(P.y-S.y)*g.uy;
           d.txtOff=mepDimTxtOffSnap(sh,d,to,g);
         }
+        mepEqSync(sh,d); // cote « = » : sa voisine suit (98-mep-88)
         return true;
       }
       if(!(pk&&pk.labelHit)){
@@ -103752,6 +103768,7 @@ function filmFrame(){
           if(L<1e-9)return false;
           d.off=(P.x-w2.a.x)*(-dy/L)+(P.y-w2.a.y)*(dx/L);
         }
+        mepEqSync(sh,d);
       }
       if(pk&&pk.labelHit){
         const g=mepDimLine(sh,d,w2);
@@ -104428,6 +104445,158 @@ function filmFrame(){
     mepStatus('Chaîne de cotes terminée'+(C.n?' : '+C.n+' cote'+(C.n>1?'s':'')+' alignée'+(C.n>1?'s':''):'')+'.');
     mepRender();
     return true;
+  }
+
+/* ═══════════════ 98-mep-88-egalites.js — mep 88 egalites ═══════════════ */
+// Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : cotes d'égalité « = ».
+  /* ═══════════════ U4. cotes d'égalité « = » ═══════════════ */
+  /* 2026-11-26 : « Quand on a des cotes avec un axe de symétrie évident, généralement on rajoute 2 cotes
+     alignées avec des points à la place des flèches et un "=" à la place du chiffre. Peux-tu me proposer
+     un outil automatique ? » — bouton « Égalités » (groupe Cotes) : chaque cote linéaire coupée en son
+     milieu par un trait d'axe parallèle à ses rappels reçoit 2 cotes en chaîne (bord → axe → bord),
+     terminées par des points, valeur « = ». Cote sélectionnée seulement, sinon vue sélectionnée, sinon
+     toute la planche ; une cote qui a déjà ses égalités est laissée telle quelle. Aussi au clic droit
+     d'une cote. Les 2 moitiés (d.eq commun, d.eqOf = cote d'origine, d.term='dot', d.txt='=') se
+     déplacent et partent ensemble ; le point du milieu suit l'axe (repère axp), les bords suivent la pièce.
+     Placement : entre la pièce et la cote s'il y a la place, sinon au-delà, sur une ligne libre. */
+  const MEP_EQ_STEP=7; // mm papier entre deux lignes de cote parallèles
+  // origine d'un rappel (mm papier) : le point coté, ou le coin d'arête d'où part le rappel
+  function mepEqBase(s,e,gap){
+    const dx=e.x-s.x,dy=e.y-s.y,L=Math.hypot(dx,dy);
+    return L>1e-9?{x:s.x-dx/L*gap,y:s.y-dy/L*gap}:{x:s.x,y:s.y};
+  }
+  // trait d'axe qui coupe la cote d en son milieu, parallèle à ses rappels — null sinon
+  function mepEqFind(sh,d){
+    if(!sh||!d||(d.kind!=='len'&&d.kind!=='dist')||!d.b||d.eq||(d.vid2&&d.vid2!==d.vid))return null;
+    const v=mepView(sh,d.vid);if(!v)return null;
+    const w=mepDimWorld(sh,d),g=w&&mepDimLine(sh,d,w);if(!g)return null;
+    const A=mepEqBase(g.sa,g.ea,g.gap),B=mepEqBase(g.sb,g.eb,g.gap);
+    const ux=g.ux,uy=g.uy,tA=A.x*ux+A.y*uy,tB=B.x*ux+B.y*uy,L=Math.abs(tB-tA);
+    if(L<1e-6)return null;
+    const tm=(tA+tB)/2,tol=Math.max(0.01*v.scale,L*1e-4); // 0,01 mm sur la pièce
+    let best=null,bk=Infinity;
+    let axes=[];try{axes=mepAxisLines(sh,v);}catch(e){}
+    axes.forEach(p=>{
+      if(!p||p.t!=='L')return;
+      const x1=v.x+p.x1*v.scale,y1=v.y+p.y1*v.scale,ex=(p.x2-p.x1)*v.scale,ey=(p.y2-p.y1)*v.scale,le=Math.hypot(ex,ey);
+      if(le<1e-9||Math.abs((ex*ux+ey*uy)/le)>2e-3)return; // parallèle aux rappels (≈ 0,1°)
+      const k=Math.abs(x1*ux+y1*uy-tm);if(k>tol)return;
+      const sc=k-le*1e-6; // le plus juste, puis le plus long
+      if(sc<bk){bk=sc;best={p,x1,y1,ex,ey,le};}
+    });
+    if(!best)return null;
+    // point du milieu : croisement de l'axe et de la droite des 2 origines
+    const dx=B.x-A.x,dy=B.y-A.y,nx=-best.ey/best.le,ny=best.ex/best.le,den=dx*nx+dy*ny;
+    if(Math.abs(den)<1e-12)return null;
+    const t=((best.x1-A.x)*nx+(best.y1-A.y)*ny)/den;
+    return{v,g,A,B,M:{x:A.x+dx*t,y:A.y+dy*t},ax:best.p};
+  }
+  // point d'une moitié (mm papier → modèle), avec le repère du point d'origine q : il suit la pièce
+  function mepEqPt(sh,v,P,q){
+    const m=mepFromSheet(v,P.x,P.y),o={x:m.x,y:m.y};
+    const h=q&&q.hint?JSON.parse(JSON.stringify(q.hint)):null;
+    if(!h)return o;
+    const fOn=(x1,y1,x2,y2)=>{const lx=x2-x1,ly=y2-y1,L2=lx*lx+ly*ly;return L2>1e-12?((o.x-x1)*lx+(o.y-y1)*ly)/L2:0;};
+    if(h.t==='eln'&&h.l)h.f=fOn(h.l.x1,h.l.y1,h.l.x2,h.l.y2); // le point a glissé jusqu'au coin : sa place sur l'arête
+    if(h.t==='axp'){const e=mepAxisLineByKey(sh,v,h.ak);if(e)h.f=fOn(e.bx1!=null?e.bx1:e.x1,e.by1!=null?e.by1:e.y1,e.bx2!=null?e.bx2:e.x2,e.by2!=null?e.by2:e.y2);}
+    o.hint=h;
+    return o;
+  }
+  // ligne de cote libre pour la chaîne : point (mm papier) par où elle passe
+  function mepEqLinePt(sh,d,F,extra){
+    const g=F.g,vx=g.vx,vy=g.vy,ux=g.ux,uy=g.uy;
+    const hv=P=>P.x*vx+P.y*vy,hu=P=>P.x*ux+P.y*uy;
+    const cL=hv(g.a1),sg=(cL-(hv(F.A)+hv(F.B))/2)<0?-1:1;
+    const part=sg>0?Math.max(hv(F.A),hv(F.B)):Math.min(hv(F.A),hv(F.B)); // bord de la pièce côté cote
+    const D0=(cL-part)*sg;
+    const u0=Math.min(hu(F.A),hu(F.B))-1,u1=Math.max(hu(F.A),hu(F.B))+1;
+    const busy=c=>sh.dims.concat(extra||[]).some(e=>{
+      if(e===d||(e.kind!=='len'&&e.kind!=='dist'))return false;
+      let ge=null;try{ge=mepDimLine(sh,e);}catch(err){}
+      if(!ge||Math.abs(ge.ux*ux+ge.uy*uy)<0.999)return false;
+      if(Math.abs(hv(ge.a1)-c)>=MEP_EQ_STEP*0.85)return false; // « = » écrit au-dessus de la ligne : jamais sur une cote voisine
+      const e0=Math.min(hu(ge.a1),hu(ge.b1)),e1=Math.max(hu(ge.a1),hu(ge.b1));
+      return e1>u0&&e0<u1;
+    });
+    const cand=[];
+    if(D0-MEP_EQ_STEP>=MEP_EQ_STEP*0.7)cand.push(cL-sg*MEP_EQ_STEP); // entre la pièce et la cote
+    for(let k=1;k<=8;k++)cand.push(cL+sg*MEP_EQ_STEP*k); // au-delà de la cote
+    const c=cand.find(x=>!busy(x));
+    const cc=c==null?cL+sg*MEP_EQ_STEP*9:c,s=cc-hv(F.A);
+    return{x:F.A.x+vx*s,y:F.A.y+vy*s};
+  }
+  // les 2 moitiés « = » de la cote d (non ajoutées à la planche)
+  function mepEqMake(sh,d,F,extra){
+    const v=F.v,o=d.orient||'a',grp=mepUid('eq');
+    // longueur d'une arête : le 2ᵉ bout n'a pas de repère, il prend celui de l'arête
+    const qb=d.kind==='len'&&d.b&&!d.b.hint&&d.a&&d.a.hint&&d.a.hint.t==='seg'?d.a:d.b;
+    const ak=F.ax.ak;
+    const mid=()=>{
+      const m=mepFromSheet(v,F.M.x,F.M.y),q={x:m.x,y:m.y};
+      if(ak!=null)q.hint={t:'axp',ak,f:0};
+      return ak!=null?mepEqPt(sh,v,F.M,q):q;
+    };
+    const Lp=mepEqLinePt(sh,d,F,extra);
+    const half=(a,b)=>{
+      const h={id:mepUid('d'),kind:'dist',vid:d.vid,vid2:null,a,b,orient:o,off:0,tol:null,ref:false,txt:'=',term:'dot',eq:grp,eqOf:d.id};
+      const w=mepDimWorld(sh,h);if(!w)return null;
+      h.off=mepDimOffsetFromPts(w.a.x,w.a.y,w.b.x,w.b.y,o,Lp);
+      return h;
+    };
+    const h1=half(mepEqPt(sh,v,F.A,d.a),mid()),h2=half(mid(),mepEqPt(sh,v,F.B,qb));
+    return h1&&h2?[h1,h2]:null;
+  }
+  /* commande : cote donnée (clic droit), sinon cote sélectionnée, sinon vue sélectionnée, sinon toute la planche */
+  function mepEqAuto(only){
+    const sh=mepSheet();if(!sh)return 0;
+    let list,one=!!only;
+    if(only)list=[only];
+    else if(mepSt.selDim){const d=sh.dims.find(x=>x.id===mepSt.selDim);list=d?[d]:[];one=true;}
+    else if(mepSt.sel)list=sh.dims.filter(d=>d.vid===mepSt.sel);
+    else list=sh.dims.slice();
+    const has=new Set(sh.dims.filter(d=>d.eqOf).map(d=>d.eqOf));
+    const add=[];let n=0,dup=0;
+    list.forEach(d=>{
+      if(!d||d.eq)return;
+      let F=null;try{F=mepEqFind(sh,d);}catch(e){}
+      if(!F)return;
+      if(has.has(d.id)){dup++;return;}
+      const hs=mepEqMake(sh,d,F,add);
+      if(hs){add.push(...hs);n++;}
+    });
+    if(!n){
+      mepStatus(dup?'Égalités : déjà posées.'
+        :one?'Égalités : cette cote n’est pas coupée en son milieu par un trait d’axe parallèle à ses rappels — tracez d’abord l’axe de symétrie (Axes → Symétrie).'
+        :'Égalités : aucune cote symétrique par rapport à un trait d’axe'+(mepSt.sel?' dans cette vue':'')+' — tracez d’abord l’axe de symétrie (Axes → Symétrie).');
+      return 0;
+    }
+    mepEdit('cotes d’égalité',()=>{add.forEach(h=>sh.dims.push(h));});
+    try{mepSideShow();}catch(e){}
+    mepStatus(n>1?n+' cotes symétriques : '+(2*n)+' cotes « = » posées — glissez-en une, sa voisine suit.'
+      :'2 cotes « = » posées de part et d’autre de l’axe — glissez-en une, sa voisine suit.');
+    return n;
+  }
+  // une moitié déplacée : sa voisine se remet sur la même ligne de cote
+  function mepEqSync(sh,d){
+    if(!sh||!d||!d.eq)return;
+    const g=mepDimLine(sh,d);if(!g)return;
+    sh.dims.forEach(p=>{
+      if(p===d||p.eq!==d.eq)return;
+      const w=mepDimWorld(sh,p);if(!w)return;
+      p.off=mepDimOffsetFromPts(w.a.x,w.a.y,w.b.x,w.b.y,p.orient||'a',g.a1);
+    });
+  }
+  function mepEqRemove(sh,d){
+    if(!sh||!d||!d.eq)return false;
+    mepEdit('retrait des cotes d’égalité',()=>{sh.dims=sh.dims.filter(x=>x.eq!==d.eq);mepSt.selDim=null;});
+    try{mepSideShow();}catch(e){}
+    mepStatus('Cotes « = » retirées.');
+    return true;
+  }
+  // rayon du point qui remplace la flèche (mm papier) : ≈ 2/3 de la demi-largeur d’une flèche
+  function mepEqDotR(){
+    let lw=0.55;try{lw=+mepLwGet().dim||lw;}catch(e){}
+    return Math.max(0.35,0.65*mepArrowGeom().h*lw);
   }
 
 /* ═══════════════ 98-mep-90-proprietes.js — mep 90 proprietes ═══════════════ */
@@ -105952,6 +106121,7 @@ function filmFrame(){
   window.mepWmPlace=mepWmPlace; // V0.76.0 : filigranes (ruban PLAN)
   window.mepWmSplitT=mepWmSplit;window.mepWmSizeT=mepWmSize; // tests
   window.mepAutoHoles=mepAutoHoles;
+  window.mepEqAuto=d=>mepEqAuto(d); // cotes d’égalité « = » (98-mep-88)
   window.mepTbEdit=on=>{try{mepTbEdit(on===undefined?!mepSt.tbEdit:!!on);}catch(e){}};
   window.mepDxfBuild=()=>mepDxfBuild(); // texte DXF + entités (sans téléchargement)
   window.mepReprojectAll=()=>mepReproject(null);
@@ -106022,7 +106192,7 @@ function filmFrame(){
       holeText:mepHoleFeatureText,holeTol:d=>mepHoleTol(d),
       holeCallout:mepHoleCallout,holeAt:mepHoleAt,holeAtLine:mepHoleAtLine,holeDraft:mepHoleDraft,autoHoles:mepAutoHoles,
       fmt:mepFmtNum,
-      geo:view=>mepGeoOf(view),dropHidden:els=>mepDropHiddenUnder(els),geoClear:()=>mepGeoCache.clear(),locCurve:p=>mepLocCurve(p),clipSegPoly:(a,b,c,d,P,k)=>mepClipSegPoly(a,b,c,d,P,k),dxfView:(txt,name)=>{const r=mepDxfParse(txt);const v=mepAddView({kind:'dxf',vk:'',label:'',dxf:mepDxfData(r,name||'t',1),mode:'wire'});v._dims=mepDxfDims(mepSheet(),v,r);return v;},dimMeasure:d=>mepDimMeasure(mepSheet(),d),ptRefresh:(v,q,pr)=>mepPtRefresh(mepSheet(),v,q,pr),dimPts:d=>mepDimPtsRefresh(mepSheet(),d),ordClick:(P,ax,ref)=>mepOrdClick(mepSheet(),P,ax,ref),ordSetRef:(d,i,on)=>mepOrdSetRef(mepSheet(),d,i,on),pt:P=>mepPt(P),ordEnd:()=>{mepSt.ord=null;},ctxAt:ev=>{try{if(mepCtxEl&&Array.isArray(mepCtxEl.children))mepCtxEl.children.length=0;}catch(e){}const E=Object.assign({preventDefault(){},clientX:10,clientY:10},ev||{});if(E.P){const r=mepSvgEl.getBoundingClientRect(),vb=mepSvgViewBox(),s=Math.min((r.width||1)/vb.width,(r.height||1)/vb.height)||1;E.clientX=r.left+((r.width||0)-vb.width*s)/2+(E.P.x-vb.x)*s;E.clientY=r.top+((r.height||0)-vb.height*s)/2+(E.P.y-vb.y)*s;}mepOnContext(E);return mepCtxEl&&mepCtxEl.style.display!=='none'?Array.from(mepCtxEl.children).map(c=>String(c.textContent).trim()):[];},ctxPick:lab=>{const b=mepCtxEl&&Array.from(mepCtxEl.children).find(c=>String(c.textContent).replace(/^✓/,'').trim()===lab);if(b&&b.onclick){b.onclick();return true;}return false;},key:k=>mepOnKey({key:k,target:{tagName:'DIV'},preventDefault(){},stopPropagation(){}}),drawSnapHov:mk=>mepDrawSnapHov(mk),snapHover:P=>{const sh=mepSheet();if(mepSnapModeHover(sh,P))mepRender();return mepSt.snapHov;},ordPick:(d,i)=>{mepSt.selDim=d?d.id:null;mepSt.ordPt=d?{id:d.id,i}:null;},selDim:id=>{mepSt.selDim=id;},holeTolText:(t,tol,on)=>mepTolMarks(mepHoleTolText(t,tol,on)),holeDias:t=>mepHoleDias(t).map(x=>x.line),dimText:d=>mepDimText(d,mepDimMeasure(mepSheet(),d)),ordPtAt:(d,P)=>mepOrdPtAt(mepSheet(),d,P),ordDelPt:(d,i)=>mepOrdDelPt(mepSheet(),d,i),ordValue:(d,p)=>mepOrdValue(d,p),drawDim:(mk,d)=>mepDrawDim(mk,d,mepSheet()),dimPressDbl:(P,ev)=>mepDimPressDbl(mepSheet(),P,ev||{}),dimAlignTo:(ref,ids)=>mepDimAlignTo(mepSheet(),ref,ids),perspCam:v=>mepPerspCam(v),threadEls:(v,c)=>mepThreadEls(v,c),oblShear:(sh,v)=>mepOblShear(sh,v),
+      geo:view=>mepGeoOf(view),dropHidden:els=>mepDropHiddenUnder(els),geoClear:()=>mepGeoCache.clear(),locCurve:p=>mepLocCurve(p),clipSegPoly:(a,b,c,d,P,k)=>mepClipSegPoly(a,b,c,d,P,k),dxfView:(txt,name)=>{const r=mepDxfParse(txt);const v=mepAddView({kind:'dxf',vk:'',label:'',dxf:mepDxfData(r,name||'t',1),mode:'wire'});v._dims=mepDxfDims(mepSheet(),v,r);return v;},dimMeasure:d=>mepDimMeasure(mepSheet(),d),ptRefresh:(v,q,pr)=>mepPtRefresh(mepSheet(),v,q,pr),dimPts:d=>mepDimPtsRefresh(mepSheet(),d),ordClick:(P,ax,ref)=>mepOrdClick(mepSheet(),P,ax,ref),ordSetRef:(d,i,on)=>mepOrdSetRef(mepSheet(),d,i,on),pt:P=>mepPt(P),ordEnd:()=>{mepSt.ord=null;},ctxAt:ev=>{try{if(mepCtxEl&&Array.isArray(mepCtxEl.children))mepCtxEl.children.length=0;}catch(e){}const E=Object.assign({preventDefault(){},clientX:10,clientY:10},ev||{});if(E.P){const r=mepSvgEl.getBoundingClientRect(),vb=mepSvgViewBox(),s=Math.min((r.width||1)/vb.width,(r.height||1)/vb.height)||1;E.clientX=r.left+((r.width||0)-vb.width*s)/2+(E.P.x-vb.x)*s;E.clientY=r.top+((r.height||0)-vb.height*s)/2+(E.P.y-vb.y)*s;}mepOnContext(E);return mepCtxEl&&mepCtxEl.style.display!=='none'?Array.from(mepCtxEl.children).map(c=>String(c.textContent).trim()):[];},ctxPick:lab=>{const b=mepCtxEl&&Array.from(mepCtxEl.children).find(c=>String(c.textContent).replace(/^✓/,'').trim()===lab);if(b&&b.onclick){b.onclick();return true;}return false;},key:k=>mepOnKey({key:k,target:{tagName:'DIV'},preventDefault(){},stopPropagation(){}}),drawSnapHov:mk=>mepDrawSnapHov(mk),snapHover:P=>{const sh=mepSheet();if(mepSnapModeHover(sh,P))mepRender();return mepSt.snapHov;},ordPick:(d,i)=>{mepSt.selDim=d?d.id:null;mepSt.ordPt=d?{id:d.id,i}:null;},selDim:id=>{mepSt.selDim=id;},holeTolText:(t,tol,on)=>mepTolMarks(mepHoleTolText(t,tol,on)),holeDias:t=>mepHoleDias(t).map(x=>x.line),dimText:d=>mepDimText(d,mepDimMeasure(mepSheet(),d)),ordPtAt:(d,P)=>mepOrdPtAt(mepSheet(),d,P),ordDelPt:(d,i)=>mepOrdDelPt(mepSheet(),d,i),ordValue:(d,p)=>mepOrdValue(d,p),drawDim:(mk,d)=>mepDrawDim(mk,d,mepSheet()),dimPressDbl:(P,ev)=>mepDimPressDbl(mepSheet(),P,ev||{}),dimAlignTo:(ref,ids)=>mepDimAlignTo(mepSheet(),ref,ids),eqFind:d=>mepEqFind(mepSheet(),d),perspCam:v=>mepPerspCam(v),threadEls:(v,c)=>mepThreadEls(v,c),oblShear:(sh,v)=>mepOblShear(sh,v),
       imgRect:(view,img)=>mepImg3dRect(view,img),
       shadeTri:(view,A,B,C,col,op)=>mepShadeTri(view,A,B,C,col,op),
       shadeFaces:view=>mepShadedFaces(view),

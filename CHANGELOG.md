@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**798 versions**, de `2026-09-28b` à `V1.0.13` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**799 versions**, de `2026-09-28b` à `V1.0.14` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8897,3 +8897,16 @@ Fred : « Les Tolérances géométriques devraient avoir leur flèche perpendicu
 - `src/98-mep-80-souris.js` mepDimAt : un clic n'importe où dans la boîte d'un cadre de tolérance ou d'une lettre de référence la saisit (pas l'état de surface, dont la boîte contient la ligne de repère) ; le cadre s'écarte aussi loin qu'on veut, la flèche reste perpendiculaire.
 
 **Test** : `test_mep_tolerances_fleche` (nouveau, inscrit dans run et run-fast, 12 contrôles) : arête verticale, horizontale, cercle, droite à 45°, pointe dans le vide, saisie dans la dernière case à zoom 8, cadre écarté loin de la vue puis passé de l'autre côté de l'arête, référence sur le haut d'un cercle. Sur V1.0.12 : 8 échecs. Dans le navigateur, sur Support Pédale : cadre posé sur l'arête gauche d'une vue (flèche horizontale avec coude), puis glissé par sa case du symbole loin sous la vue et hors d'elle : flèche toujours horizontale sur l'arête ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.14 - Mise en plan : cotes d'égalité « = » automatiques de part et d'autre d'un axe de symétrie
+
+Fred : « Quand on a des cotes avec un axe de symétrie évident, généralement on rajoute 2 cotes alignées avec des points à la place des flèches et un "=" à la place du chiffre. Peux-tu me proposer un outil automatique? »
+
+**Avant** : pour montrer qu'une forme est symétrique, il fallait poser 2 cotes à la main (bord → axe, axe → bord), remplacer leur texte par « = » une par une, et les flèches restaient des flèches.
+
+**Nouveau** :
+- `src/98-mep-88-egalites.js` (nouveau) : mepEqFind (cote linéaire coupée en son milieu, à 0,01 mm près sur la pièce, par un trait d'axe de la vue parallèle à ses rappels), mepEqMake (2 cotes en chaîne bord → axe → bord : bords pris là où partent les rappels de la cote, avec son repère pour suivre la pièce ; point du milieu sur l'axe, repère axp pour suivre l'axe ; même orientation que la cote), mepEqLinePt (ligne posée entre la pièce et la cote s'il y a la place, sinon au-delà, sur la première ligne libre : 7 mm entre lignes, aucune cote parallèle qui la chevauche à moins de 6 mm), mepEqAuto (cote donnée, sinon cote sélectionnée, sinon vue sélectionnée, sinon toute la planche ; une cote qui a déjà ses égalités est laissée), mepEqSync (glisser l'une déplace l'autre), mepEqRemove ; bouton « Égalités » dans le groupe Cotes du ruban, avec son icône et sa fiche (`src/97-interface-moderne.js`, `src/97-interface-fiches-dessins.js`) ;
+- `src/98-mep-70-cotes.js` : d.term='dot' — un point plein au lieu de chaque flèche (≈ 2/3 de la demi-largeur d'une flèche), aussi en SVG, PDF et DXF ; valeur « = » (d.txt) ;
+- `src/98-mep-80-souris.js` : clic droit d'une cote symétrique « Cotes d'égalité « = » de part et d'autre de l'axe » ; sur une cote « = » : « Retirer les cotes « = » » (pas de changement d'orientation, qui les désalignerait) ; Suppr enlève les deux ; `src/98-mep-85-cote-unique.js` mepDimMoveTo : la voisine suit.
+
+**Test** : `test_mep_egalites` (nouveau, inscrit dans run et run-fast, 24 contrôles) : pièce en U et 2 axes, cotes 60, 20, longueur d'arête et verticale 30 reconnues, 0 → 40 non ; clic droit, points pleins sans flèche, « = », 10 + 10, ligne entre la pièce et la cote ou au-delà quand l'entre-deux est pris ; bouton sur toute la planche (3 cotes, 6 « = »), pas de double au 2ᵉ appui ; glisser, clic droit sur une moitié, pièce modifiée (9 + 11), enregistrement, Suppr. Sur V1.0.13 : échec. Dans le navigateur, sur Support Pédale : sans axe au milieu, le bouton ne pose rien et le dit ; axe ajouté au milieu de la cote 32 → bouton → 16 « = » 16 entre la pièce et la 32, points pleins ; une moitié glissée, l'autre suit ; clic droit « Retirer les cotes « = » » ; export DXF avec les points et les « = » ; aucune erreur. CACHE_VER et FORMES_VER inchangés.

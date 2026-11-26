@@ -1066,7 +1066,7 @@
         mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
       }
       if(mepSt.selDim){
-        mepEdit('suppression cote',()=>{const id=mepSt.selDim;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id);mepSt.selDim=null;}); // avec ses tolérances accrochées
+        mepEdit('suppression cote',()=>{const id=mepSt.selDim,eq=(sh.dims.find(d=>d.id===id)||{}).eq;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id&&!(eq&&d.eq===eq));mepSt.selDim=null;}); // avec ses tolérances accrochées ; cote « = » : avec sa voisine
         mepSideShow();
         ev.preventDefault();ev.stopPropagation();
         return;
@@ -1500,11 +1500,17 @@
         add('Ø à une flèche (comme R)',!!d.dia1,()=>mepDimSetDiaOne(d,true,!!draft));
       }
     }
-    if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)){
+    if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)&&!d.eq){
       const o=d.orient||'a';
       add('Alignée (A)',o==='a',()=>mepDimSetOrient(d,'a',!!draft));
       add('Horizontale (X)',o==='h',()=>mepDimSetOrient(d,'h',!!draft));
       add('Verticale (Y)',o==='v',()=>mepDimSetOrient(d,'v',!!draft));
+    }
+    // cotes d'égalité « = » de part et d'autre de l'axe (98-mep-88)
+    if(d&&!draft&&(d.kind==='len'||d.kind==='dist')){
+      const sh=mepSheet();
+      if(d.eq)add('Retirer les cotes « = »',false,()=>mepEqRemove(sh,d));
+      else if(!sh.dims.some(x=>x.eqOf===d.id)&&mepEqFind(sh,d))add('Cotes d’égalité « = » de part et d’autre de l’axe',false,()=>mepEqAuto(d));
     }
     if(snap){
       // accrochage imposé des points de la cote (2026-10-28)

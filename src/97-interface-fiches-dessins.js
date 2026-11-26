@@ -250,6 +250,9 @@ function mfFiTable(){
   F('Cotes/Perçage','Cote de perçage','Note tout ce qu’il faut savoir sur un trou : diamètre, lamage, fraisure, taraudage.',['Cliquez le trou'],CHOLE(32,48,9),CHOLE(32,48,9)+LEAD(38,41,50,24,'M6 prof. 12'));
   const H3=()=>ficR(14,30,72,32,'#111827',1.7)+CHOLE(30,46,5)+CHOLE(50,46,5)+CHOLE(70,46,5);
   F('Cotes/Perçages auto','Perçages automatiques','Cote d’un coup tous les trous de la vue ou de la planche. « 3× » s’ils sont identiques.',[],H3(),H3()+LEAD(33,42,42,20,'3× Ø8'));
+  const EQP=()=>ficR(26,16,48,28,'#111827',1.7)+AX(50,10,50,72)+COTE(26,74,68,'40');
+  const EQC=y=>[26,50,74].map(x=>ficL(x,y-5,x,y+3,GR,.8)+ficDot(x,y,1.5,GR)).join('')+ficL(26,y,74,y,GR,.9)+ficT(38,y-2.4,'=',7,GR)+ficT(62,y-2.4,'=',7,GR);
+  F('Cotes/Égalités','Cotes d’égalité','Montre qu’une forme est symétrique : 2 cotes à points marquées « = » de part et d’autre de l’axe, sous chaque cote coupée en son milieu par un axe.',[],EQP(),EQP()+EQC(54));
   F('Cotes/Note','Note à flèche','Écrit un texte avec une flèche qui pointe un endroit précis.',['Cliquez la pointe','Placez et écrivez le texte'],ficR(22,36,44,26,'#111827',1.7),ficR(22,36,44,26,'#111827',1.7)+LEAD(42,36,50,18,'Ébavurer'));
   const OX=(y)=>ficR(20,28,60,32,'#111827',1.7)+[20,44,80].map((x,i)=>ficL(x,28,x,y,GR,.7)+ficT(x,y-1.5,['0','24','60'][i],6.6,GR)).join('');
   F('Cotes/Ordonnées X','Ordonnées en X','Donne toutes les positions depuis un même zéro, le long de X. Les valeurs restent alignées.',['Cliquez le zéro','Cliquez les points','Entrée pour finir'],ficR(20,28,60,32,'#111827',1.7)+NUM(20,28,'0'),OX(14));

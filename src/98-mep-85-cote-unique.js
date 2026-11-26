@@ -202,6 +202,7 @@
           const to=(+pk.txtOff0||0)+(P.x-S.x)*g.ux+(P.y-S.y)*g.uy;
           d.txtOff=mepDimTxtOffSnap(sh,d,to,g);
         }
+        mepEqSync(sh,d); // cote « = » : sa voisine suit (98-mep-88)
         return true;
       }
       if(!(pk&&pk.labelHit)){
@@ -212,6 +213,7 @@
           if(L<1e-9)return false;
           d.off=(P.x-w2.a.x)*(-dy/L)+(P.y-w2.a.y)*(dx/L);
         }
+        mepEqSync(sh,d);
       }
       if(pk&&pk.labelHit){
         const g=mepDimLine(sh,d,w2);

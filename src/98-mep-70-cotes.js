@@ -1838,7 +1838,11 @@
     // point d'intersection dans le vide : arêtes / arcs prolongés jusqu'au point
     mepDrawSnapExt(draw,LX,w.v1,d.a);if(d.b)mepDrawSnapExt(draw,LX,w.v2||w.v1,d.b);
     // ligne de cote fléchée
-    if(d.arr==='out'){
+    if(d.term==='dot'){ // cote d'égalité « = » (98-mep-88) : un point au lieu de chaque flèche
+      draw('line',Object.assign({x1:a1.x,y1:a1.y,x2:b1.x,y2:b1.y},L));
+      const r=mepEqDotR(),F={class:L.class+' mepGdtFill'};
+      draw('circle',Object.assign({cx:a1.x,cy:a1.y,r},F));draw('circle',Object.assign({cx:b1.x,cy:b1.y,r},F));
+    }else if(d.arr==='out'){
       const ext=Math.max(2,MEP_DIM_STYLE.arrowLen);
       draw('line',Object.assign({x1:a1.x-g.ux*ext,y1:a1.y-g.uy*ext,
         x2:a1.x,y2:a1.y,'marker-end':AR},L));
