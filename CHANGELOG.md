@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**802 versions**, de `2026-09-28b` à `V1.0.17` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**803 versions**, de `2026-09-28b` à `V1.0.18` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8948,3 +8948,13 @@ Fred, à la proposition d'allonger le délai de la longue suite : « Yes, do it 
 **Correctif** : `tests/pool.cjs` : `SUR_P` donne 75 min à cette suite (toujours réservée aux cœurs P). Une série de 120 modifications à la suite : pas découpable en morceaux.
 
 **Test** : `npm run ci` vert (204/204). Aucun changement dans l'application. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.18 - Tests : la longue suite `test_barquette_120` fait 20 modifications au lieu de 120 (38 min → 4 min)
+
+Fred : « Que fait exactement le long test? Est-il vraiment pertinent de le faire aussi long et complqué? » ; puis « Oui, raccourcis »
+
+**Avant** : `test_barquette_120` changeait 120 fois de suite la largeur de la Barquette (~38-39 min seule), pour la panne de V0.66.2 (solide perdu à la 107e modification, mémoire qui monte). C'était de loin la suite la plus longue (la suivante : 11 min) : chaque `ci:full`, donc chaque « livre », l'attendait.
+
+**Correctif** : 20 modifications par défaut (`BARQ_NB=120` pour la série complète), seuil de mémoire occupée resserré de 60 à 55 Mo ; `tests/pool.cjs` : toujours sur cœur P, délai ramené de 75 à 30 min.
+
+**Test** : les deux anciennes pannes remises à la main sur une copie de la suite (pile qui descend de 80 Ko par modification, copie d'`Append_1` jamais libérée) : avec 20 modifications, 1,6 Mo de pile perdue (seuil 1 Ko) et 70,6 Mo occupés (seuil 55) → 2 échecs ; sans elles : tout passe, 44,6 Mo, 249 s. `npm run ci` vert (204/204). Aucun changement dans l'application. CACHE_VER et FORMES_VER inchangés.

@@ -40,9 +40,9 @@ const PARTIES = {
 // Suites très longues qui ne tournent QUE sur un cœur P, avec un délai à elles (ms) : sur un cœur E,
 // test_barquette_120 (~950 s sur P) dépassait les 20 min et bloquait chaque cpt depuis le 09/11.
 // 26/11 : ~38-39 min seule (V1.0.0 comme V1.0.16), plus de 40 min dans ci:full chargé → « livre »
-// arrêté ; délai porté à 75 min (Fred : « Yes, do it »). Une série de 120 modifications à la suite :
-// pas découpable en morceaux (PARTIES).
-const SUR_P = { test_barquette_120: 75 * 60 * 1000 };
+// arrêté ; délai porté à 75 min (Fred : « Yes, do it »). V1.0.18 : 20 modifications suffisent (voir
+// l'en-tête de la suite), ~4,5 min seule ; toujours sur cœur P, délai de 30 min.
+const SUR_P = { test_barquette_120: 30 * 60 * 1000 };
 const DUREES = path.join(__dirname, '.durees.json');
 const sec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
 

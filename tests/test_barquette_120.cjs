@@ -2,6 +2,10 @@
 // largeur_barquette, quelle que soit la valeur, et ne le rendait qu'au rechargement (voir test_pile_noyau).
 // Ici la série complète, sur la vraie pièce : 120 valeurs différentes, jamais de perte, pile immobile, et le
 // même volume au retour à la valeur de départ. Long (6 s par modification) : suite complète seulement.
+// 26/11 (V1.0.18) : 20 modifications au lieu de 120 (38 min → 4,5 min ; Fred : « Oui, raccourcis »). Les
+// deux anciennes pannes se voient bien avant la 107e : remises à la main (pile qui descend de 80 Ko par
+// modification, copie d'Append_1 jamais libérée), 20 modifications donnent 1,6 Mo de pile perdue (seuil
+// 1 Ko) et 70,6 Mo occupés (44,6 sans la panne, seuil 55). La série complète : BARQ_NB=120.
 const vm=require('vm'),path=require('path');
 const {loadApp}=require('./appvm.cjs');
 const lireProjet=require('./lire-projet.cjs');
@@ -20,7 +24,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   const volume=()=>vm.runInContext("occShapeVolume(occLive.shape)",ctx);
   const poser=async v=>{sandbox.__val=String(v);
     await vm.runInContext("(async()=>{parSetParam(doc.params.find(x=>x.name==='largeur_barquette'),__val);await parAfterChange(true);})()",ctx);};
-  const NB=+process.env.BARQ_NB||120;
+  const NB=+process.env.BARQ_NB||20;
   console.log('=== Barquette : '+NB+' modifications de suite ===');
   const v0=+vm.runInContext("doc.params.find(x=>x.name==='largeur_barquette').expr",ctx);
   const vol0=volume(),pile0=real.stackSave();
@@ -41,7 +45,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   const len=real.HEAP8.length,l=[];
   for(;;){const p=real.___libc_malloc(24);if(!p)break;l.push(p);if(real.HEAP8.length!==len)break;}
   const n=l.length-1,bloc=l[n-1]-l[n-2],occupe=(len-n*bloc)/1048576;
-  A(occupe<60,'mémoire occupée après la série, caches vidés : '+occupe.toFixed(1)+' Mo (118 avant, 48 attendus)');
+  A(occupe<55,'mémoire occupée après la série, caches vidés : '+occupe.toFixed(1)+' Mo (45 à 48 attendus ; ancienne fuite : 70 après 20 modifications, 118 après 120)');
   A(len/1048576<=184,'tas du noyau : '+(len/1048576).toFixed(0)+' Mo (154 attendus, 221 avant)');
   console.log(ko?'ÉCHEC : '+ko:'*** TOUT PASSE ***');
   process.exit(ko?1:0);

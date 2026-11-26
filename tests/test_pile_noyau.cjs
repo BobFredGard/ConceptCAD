@@ -1,7 +1,7 @@
 // PILE DU NOYAU : une erreur C++ rattrapée côté JavaScript laisse le pointeur de pile du noyau là où
 // elle l'a trouvé. 8 Mo de pile, puis débordement silencieux sur ses données : plus aucun solide
 // jusqu'au rechargement. Mesuré sur Barquette avant correction : 80 Ko perdus par modification, solide
-// perdu à la 107e. test_barquette_120 fait la série complète ; ici, le mécanisme, en quelques secondes.
+// perdu à la 107e. test_barquette_120 fait une série sur la vraie pièce (20 depuis V1.0.18) ; ici, le mécanisme, en quelques secondes.
 const vm=require('vm'),path=require('path');
 const {loadApp}=require('./appvm.cjs');
 const lireProjet=require('./lire-projet.cjs');
