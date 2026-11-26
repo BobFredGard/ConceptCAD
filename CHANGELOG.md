@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**790 versions**, de `2026-09-28b` à `V1.0.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**791 versions**, de `2026-09-28b` à `V1.0.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8794,3 +8794,13 @@ Question de Fred : « Elles sont alignées verticalement et horizontalement avec
 **Correctif** (`src/98-mep-30-planches-cartouche.js`, `src/98-mep-80-souris.js`) : pendant le glisser d'une bulle, son centre se cale à la même hauteur et/ou sur la même verticale que le centre d'une autre bulle de la planche, à moins de 6 pixels à l'écran (`mepBalloonSnap`, `mepBalloonCenter`) ; à écart égal, la bulle la plus proche porte le repère. Repère bleu en pointillé du centre de cette bulle au centre de la bulle glissée (`mepDrawBalloonGuides`, groupe d'aide : jamais exporté ni imprimé), effacé au lâcher. Maj enfoncée : placement libre (comme la ligne de coupe). Message de sélection d'une bulle mis à jour.
 
 **Test** : `test_composants_plan_bulles` +5 contrôles (calage en X, en Y, les deux, rien au-delà de la tolérance, jamais sur elle-même). Dans le navigateur, sur une copie de MERLIN-39-000 : bulle 3 glissée près de la verticale de la bulle 1 → même X au centième près, repère affiché ; Maj → libre ; lâchée → calée, repère effacé. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.6 - Assemblage : chaque pièce normalisée a son dessin dans la timeline et l'arborescence
+
+Demande de Fred : « Dans la timeline de l'assemblage, si le composant entré est un composant normalisé, l'icône devrait être identique au composant : 1 vis -> dessin de la vis etc... ».
+
+**Avant** : dans la barre d'historique de l'assemblage, chaque insertion avait le même cube 📦, que la pièce soit une vis, une goupille ou une pièce dessinée ; l'arborescence et l'en-tête du panneau d'une occurrence aussi.
+
+**Correctif** (`src/48-composants-icones.js`, nouveau) : `stdIcKind` reconnaît la famille d'après la fiche `doc.std` (réglages enregistrés, sinon la clé : fichiers anciens compris) et `stdIcSvg` la dessine (SVG 24 × 24, axe vertical vu un peu de dessus, dégradés propres à chaque dessin) : vis CHC et FHC (ISO, ANSI), bouchon à collerette et bouchon conique, goupille cylindrique, conique et élastique, clavettes A / B / C, joint torique et quadrilobe, racleur, rondelle plate et Grower, douille autotaraudeuse, roue, couronne et crémaillère, aimants (nord rouge, sud vert, comme dans la vue). `asmCompIcon` : ce dessin pour une pièce normalisée, 🔩 pour une famille sans dessin, le cube pour une pièce ordinaire. Mêmes dessins partout : étape d'insertion de la timeline (`src/48-assemblage-historique.js`, un peu plus grand dans la barre), arborescence (occurrence et groupe ×N, `src/42-arbre-modele.js`), en-tête du panneau d'une occurrence (`src/47-assemblage-interface.js`), onglets de la fenêtre « Composants normalisés » (`stdCatIcon`).
+
+**Test** : `test_composants_icones` (nouveau, inscrit dans les tests rapides, moins d'une seconde) : les 39 types des onglets donnent le bon dessin, avec et sans réglages enregistrés ; paire d'engrenages ; 26 dessins bien formés, dégradés définis dans le dessin, identifiants jamais répétés ; timeline (CHC ×3, goupille, pièce ordinaire = cube, relation = aimant) ; arborescence (groupe des 3 vis dessiné). Ancien comportement rejoué : échec. Dans le navigateur, sur `Exemples/Test Visserie.conceptcad` (goupilles et FHC M8 dessinées) et sur une copie de MERLIN-39-000 avec une pièce de chaque famille : dessins dans la timeline, étape choisie, arborescence, onglets de la fenêtre. CACHE_VER et FORMES_VER inchangés.

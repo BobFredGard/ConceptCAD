@@ -1279,7 +1279,7 @@ function stdDlg(edit,cat){
     // le formulaire est refait à chaque changement : le champ où l'on tabule garde le curseur
     const focusK=form.contains(document.activeElement)?document.activeElement.dataset.k:null;
     tabs.innerHTML='';
-    STD_CATS.forEach(c=>{const b=document.createElement('button');b.textContent=c.lab;if(c.k===C.k)b.className='on';
+    STD_CATS.forEach(c=>{const b=document.createElement('button');b.innerHTML=stdCatIcon(c.k)+' '+asmEsc(c.lab);if(c.k===C.k)b.className='on'; // V1.0.6 : même dessin que dans l'arbre et la timeline
       b.onclick=()=>{stdUi.cat=c.k;save();draw();};tabs.appendChild(b);});
     form.innerHTML='';
     C.fields.forEach(f=>{

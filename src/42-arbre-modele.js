@@ -390,7 +390,7 @@ function treeComps(L,P){
       (o.st==='warn'?'<span class="tbadge w" title="'+asmEsc(o.msg)+'">⚠</span>':'');
     L.push({drop:treeDropComp(inst.comp),lvl:lv,cls:'tnode tocc'+(self?' tactive':'')+(direct&&asmMode==='asm'&&asmLotHas(id)?' sel':'')+(o.visible===false?' hidden':''),
       style:(!mine&&!self)?{opacity:'0.55'}:{},
-      html:tri+'<span>'+(self?'✏️':'📦')+'</span><span class="nm">'+asmEsc(o.name)+sub+'</span>'+badges+
+      html:tri+'<span>'+(self?'✏️':asmCompIcon(c))+'</span><span class="nm">'+asmEsc(o.name)+sub+'</span>'+badges+
         '<span class="eye" title="Afficher / masquer">'+(o.visible===false?EYE_OFF:'👁')+'</span>',
       title:direct?'Clic = sélectionner · Ctrl+clic = ajouter au lot · Shift+clic = plage · Suppr = supprimer le lot · double-clic = modéliser · ▶ = contenu · clic droit = menu':'Double-clic = modéliser ce composant · ▶ = contenu',
       on:{
@@ -441,7 +441,7 @@ function treeComps(L,P){
       const nf=g.occ.filter(o=>o.fixed).length,nj=g.occ.filter(o=>o.align).length,nh=g.occ.filter(o=>o.visible===false).length;
       const gt=()=>{if(force)return;if(treeGrpOpen.has(gk))treeGrpOpen.delete(gk);else treeGrpOpen.add(gk);renderTree();};
       L.push({lvl:lv,cls:'tnode tgrp'+(nh===g.occ.length?' hidden':''),
-        html:'<span class="tri" title="Afficher / masquer les occurrences">'+(gopen?'▼':'▶')+'</span><span>📦</span><span class="nm">'+asmEsc(gc.name)+
+        html:'<span class="tri" title="Afficher / masquer les occurrences">'+(gopen?'▼':'▶')+'</span><span>'+asmCompIcon(gc)+'</span><span class="nm">'+asmEsc(gc.name)+
           ' <span style="color:var(--muted)">×'+g.occ.length+'</span>'+(nf?' <span title="'+nf+' fixée(s)">📌'+(nf<g.occ.length?nf:'')+'</span>':'')+
           (nj?' <span title="'+nj+' liée(s) / alignée(s)">⚙'+(nj<g.occ.length?nj:'')+'</span>':'')+'</span>'+
           '<span class="eye" title="Afficher / masquer toutes les occurrences">'+(nh===g.occ.length?EYE_OFF:'👁')+'</span>',

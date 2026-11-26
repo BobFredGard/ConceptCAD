@@ -548,7 +548,7 @@ function asmRenderProps(p){
     return;
   }
   const cc=asmComp(o.comp)||{};
-  H('📦 '+o.name);
+  H(' '+o.name).insertAdjacentHTML('afterbegin',asmCompIcon(cc)); // V1.0.6 : dessin de la pièce normalisée (48-composants-icones)
   Note('Composant « '+cc.name+' » · '+asmCompOccs(o.comp).length+' occurrence(s)'+(cc.occ&&cc.occ.length?' · '+cc.occ.length+' sous-composant(s)':''));
   if(cc.link)Note('🔗 Lié à '+(cc.link.rel||cc.link.name)+(asmLinkDirty(cc)?' · ✎ modifié ici (écrit à l’enregistrement)':'')+(cc.link.st==='warn'?' · ⚠ '+cc.link.msg:''));
   else if(cc.of)Note('🔗 Fait partie d’un composant lié.');
