@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.0.4';
+const APP_VER='V1.0.5';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -92198,6 +92198,7 @@ function filmFrame(){
     .mepSkFree{stroke:var(--mepSkFreeCol,#0a84ff)}
     .mepDraft{stroke:#ffd60a;stroke-width:.7;stroke-dasharray:3 2;fill:none}
     .mepSnap{fill:none;stroke:#ffd60a;stroke-width:.9}
+    .mepBlGuide{fill:none;stroke:#2f7ff0;stroke-width:.3;stroke-dasharray:1.2 .8}
     .mepArrowM{fill:var(--mepDimCol,#111)}
     .mepArrowSel{fill:#ff3b30}
     .mepArrowK{fill:var(--mepInk,#151515)}
@@ -95442,6 +95443,33 @@ function filmFrame(){
     L.forEach(q=>{q.B=fromS(q.s);});
     return L;
   }
+  /* V1.0.5 : bulle glissée calée sur le CENTRE d'une autre bulle — même hauteur et/ou même verticale
+     (« Elles sont alignées verticalement et horizontalement avec les autres bulles par le centre du
+     cercle ? » → « Oui, ajoute-le ») ; tol en mm papier. → {x, y, gx, gy} : centre calé, et le
+     centre de la bulle sur laquelle il s'est aligné en X (gx) / en Y (gy), pour les repères */
+  function mepBalloonCenter(sh,b){
+    const v=mepView(sh,b.view);if(!v)return null;
+    const l=mepLocal(v,b.p),A=mepToSheet(v,l[0],l[1]);
+    return{x:A.x+(+b.dx||0),y:A.y+(+b.dy||0)};
+  }
+  function mepBalloonSnap(sh,id,x,y,tol){
+    let bx=null,by=null;
+    (Array.isArray(sh.balloons)?sh.balloons:[]).forEach(o=>{
+      if(!o||o.id===id)return;
+      const C=mepBalloonCenter(sh,o);if(!C)return;
+      const ex=Math.abs(C.x-x),ey=Math.abs(C.y-y);
+      // à écart égal, la bulle la plus proche porte le repère
+      if(ex<=tol){const s=ex+1e-3*ey;if(!bx||s<bx.s)bx={s,C};}
+      if(ey<=tol){const s=ey+1e-3*ex;if(!by||s<by.s)by={s,C};}
+    });
+    return{x:bx?bx.C.x:x,y:by?by.C.y:y,gx:bx?bx.C:null,gy:by?by.C:null};
+  }
+  // repères d'alignement pendant le glisser (groupe d'aide : jamais exportés ni imprimés)
+  function mepDrawBalloonGuides(mk){
+    const pk=mepSt.pick,G=pk&&pk.kind==='blDrag'?pk.guides:null;if(!G)return;
+    if(G.gx)mk('line',{x1:G.gx.x,y1:G.gx.y,x2:G.x,y2:G.y,class:'mepBlGuide'},mepGHlp);
+    if(G.gy)mk('line',{x1:G.gy.x,y1:G.gy.y,x2:G.x,y2:G.y,class:'mepBlGuide'},mepGHlp);
+  }
   function mepBalloonAt(sh,x,y){
     // bulle dont le cercle contient le point (la dernière dessinée d'abord)
     const B=Array.isArray(sh.balloons)?sh.balloons:[];
@@ -97498,6 +97526,7 @@ function filmFrame(){
       try{mepDrawDim(mk,d,sh);}catch(e){}
     });
     try{mepDrawBalloons(mk,sh);}catch(e){} // bulles de nomenclature (V0.6.7)
+    try{mepDrawBalloonGuides(mk);}catch(e){} // V1.0.5 : repères d'alignement d'une bulle glissée
     /* cote en cours de placement : aperçu vivant (suit la souris) */
     if(mepSt.dim&&mepSt.dim.__ghost!==false&&!(mepSt.dim.kind==='dist'&&!mepSt.dim.b)){
       try{mepDrawDim(mk,mepSt.dim,sh);}catch(e){}
@@ -101631,7 +101660,7 @@ function filmFrame(){
        if(bl){const v=mepView(sh,bl.view),l=mepLocal(v,bl.p),A=mepToSheet(v,l[0],l[1]);
          mepSt.selBl=bl.id;mepSt.sel=null;mepSt.selDim=null;mepSt.selAxis=null;
          mepSt.pick={kind:'blDrag',id:bl.id,ox:P.x-(A.x+(+bl.dx||0)),oy:P.y-(A.y+(+bl.dy||0)),ax:A.x,ay:A.y,px0:P.px,py0:P.py,moved:false,undoPushed:false};
-         mepStatus('Bulle : glissez pour la placer, Suppr pour la retirer.');
+         mepStatus('Bulle : glissez pour la placer — elle se cale sur le centre des autres bulles (Maj : libre) ; Suppr pour la retirer.');
          mepSideShow();mepRender();return;}
        if(mepSt.selBl){mepSt.selBl=null;}}
       // titre de vue ? → glisser le long de l'axe de la vue
@@ -101906,7 +101935,13 @@ function filmFrame(){
         if(b){
           if(!pk.dragStarted){if(Math.hypot(P.px-pk.px0,P.py-pk.py0)<3)return;pk.dragStarted=true;}
           if(!pk.undoPushed){try{docPushUndo('Plan : bulle');}catch(e){}pk.undoPushed=true;}
-          b.dx=+(P.x-pk.ox-pk.ax).toFixed(2);b.dy=+(P.y-pk.oy-pk.ay).toFixed(2);pk.moved=true;
+          // V1.0.5 : centre calé sur celui d'une autre bulle (même hauteur / même verticale), 6 px
+          // à l'écran ; Maj : libre (comme la ligne de coupe)
+          let cx=P.x-pk.ox,cy=P.y-pk.oy;pk.guides=null;
+          if(!ev.shiftKey){const S=mepBalloonSnap(sh,b.id,cx,cy,6*mepPxToMm());
+            if(S.gx||S.gy){cx=S.x;cy=S.y;pk.guides={x:cx,y:cy,gx:S.gx,gy:S.gy};}}
+          b.dx=pk.guides&&pk.guides.gx?cx-pk.ax:+(cx-pk.ax).toFixed(2);
+          b.dy=pk.guides&&pk.guides.gy?cy-pk.ay:+(cy-pk.ay).toFixed(2);pk.moved=true;
           mepRender();
         }
         return;
@@ -105246,7 +105281,7 @@ function filmFrame(){
   // points d'entrée réservés aux tests automatisés (jamais activés dans l'app)
   if(window.__MEP_TEST_HOOKS__){
     window.__mepTest={
-      scaleLabel:sh=>mepSheetScaleLabel(sh),scaleText:s=>mepScaleText(s),scaleParse:t=>mepScaleParse(t),bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:(sh,vid)=>mepBalloonsAuto(sh,vid),viewName:v=>mepViewName(v),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
+      scaleLabel:sh=>mepSheetScaleLabel(sh),scaleText:s=>mepScaleText(s),scaleParse:t=>mepScaleParse(t),bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:(sh,vid)=>mepBalloonsAuto(sh,vid),viewName:v=>mepViewName(v),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),balloonSnap:(id,x,y,t)=>mepBalloonSnap(mepSheet(),id,x,y,t),balloonCenter:b=>mepBalloonCenter(mepSheet(),b),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
       drawRevs:(mk,sh,pd,ty)=>mepDrawRevs(mk,sh,pd,ty),drawBom:(mk,sh,pd,ty)=>mepDrawBom(mk,sh,pd,ty),bomCols:(sh,all)=>mepBomCols(sh,null,all),sideView:(root,v)=>mepSideView(root,v,mepSheet()),sideHome:root=>mepSideHome(root,mepSheet()),holeFam:f=>mepHoleFam(f),cutAddBreak:(sh,v)=>mepCutAddBreak(sh,v),cutBreakAt:(sh,v,m,sG,c,r)=>mepCutBreakAt(sh,v,m,sG,c,r),cutFollow:sh=>mepCutFollowAll(sh),cutAutoRefs:(sh,v)=>mepCutAutoRefs(sh,v),cutDelBreak:(sh,v)=>mepCutDelBreak(sh,v),cutDelBreakAt:(sh,v,j,sG)=>mepCutDelBreakAt(sh,v,j,sG),cutBreakClick:(sh,v,m,sG)=>mepCutBreakClick(sh,v,m,sG),cutModel:v=>mepCutModel(v),prefsCollect:()=>mepPrefsCollect(),prefsApply:p=>mepPrefsApply(p),pageDim:sh=>mepPageDim(sh),
       titleTexts:sh=>{const t=[];const mk=(tag)=>{const o={textContent:''};if(tag==='text')t.push(o);return o;};mepDrawTitle(mk,sh,mepPage().pd,100);mepDrawRevs(mk,sh,mepPage().pd,100);mepDrawBom(mk,sh,mepPage().pd,100);return t.map(o=>o.textContent);},
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),

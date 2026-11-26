@@ -21,6 +21,7 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
 
 - **Face, projection, ISO, caméra, auxiliaire, coupe et détail**, par corps ou en assemblage (une hachure par pièce, bulles automatiques).
   - **Bulles sur la vue de son choix** : cliquer une vue « Assemblage » puis « Bulles automatiques » dans son panneau (« Effacer » retire les siennes) ; dans le panneau de la planche, la liste « Vue des bulles » fait le même choix quand il y a plusieurs vues Assemblage. Une bulle par ligne de la nomenclature : celles d'avant sont remplacées.
+  - **Bulle glissée calée** sur le centre d'une autre bulle (même hauteur ou même verticale), avec un repère bleu en pointillé pendant le déplacement ; Maj enfoncée : placement libre.
   - **Assemblage** : à l'ouverture d'une planche vide, une seule vue de face de tout l'assemblage, avec tous ses composants (V0.94.8). Une pièce seule reçoit toujours face, dessus et côté.
 - **Orientation de la vue principale** : Face, Arrière, Côté gauche, Côté droit, Dessus, Dessous ; les projections suivent.
 - **Échelle d'une vue** : de 5:1 à 1:10, dont 3:4, 1:6 et 1:8 ; **Autre…** pour taper l'échelle de son choix (2:3, 1/7, 0,75). Le cartouche l'écrit en fraction (3:4, et non 1:1.33) (V0.95.7).

@@ -268,6 +268,7 @@
       try{mepDrawDim(mk,d,sh);}catch(e){}
     });
     try{mepDrawBalloons(mk,sh);}catch(e){} // bulles de nomenclature (V0.6.7)
+    try{mepDrawBalloonGuides(mk);}catch(e){} // V1.0.5 : repères d'alignement d'une bulle glissée
     /* cote en cours de placement : aperçu vivant (suit la souris) */
     if(mepSt.dim&&mepSt.dim.__ghost!==false&&!(mepSt.dim.kind==='dist'&&!mepSt.dim.b)){
       try{mepDrawDim(mk,mepSt.dim,sh);}catch(e){}

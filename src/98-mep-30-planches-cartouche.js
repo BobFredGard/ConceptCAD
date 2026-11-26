@@ -407,6 +407,33 @@
     L.forEach(q=>{q.B=fromS(q.s);});
     return L;
   }
+  /* V1.0.5 : bulle glissée calée sur le CENTRE d'une autre bulle — même hauteur et/ou même verticale
+     (« Elles sont alignées verticalement et horizontalement avec les autres bulles par le centre du
+     cercle ? » → « Oui, ajoute-le ») ; tol en mm papier. → {x, y, gx, gy} : centre calé, et le
+     centre de la bulle sur laquelle il s'est aligné en X (gx) / en Y (gy), pour les repères */
+  function mepBalloonCenter(sh,b){
+    const v=mepView(sh,b.view);if(!v)return null;
+    const l=mepLocal(v,b.p),A=mepToSheet(v,l[0],l[1]);
+    return{x:A.x+(+b.dx||0),y:A.y+(+b.dy||0)};
+  }
+  function mepBalloonSnap(sh,id,x,y,tol){
+    let bx=null,by=null;
+    (Array.isArray(sh.balloons)?sh.balloons:[]).forEach(o=>{
+      if(!o||o.id===id)return;
+      const C=mepBalloonCenter(sh,o);if(!C)return;
+      const ex=Math.abs(C.x-x),ey=Math.abs(C.y-y);
+      // à écart égal, la bulle la plus proche porte le repère
+      if(ex<=tol){const s=ex+1e-3*ey;if(!bx||s<bx.s)bx={s,C};}
+      if(ey<=tol){const s=ey+1e-3*ex;if(!by||s<by.s)by={s,C};}
+    });
+    return{x:bx?bx.C.x:x,y:by?by.C.y:y,gx:bx?bx.C:null,gy:by?by.C:null};
+  }
+  // repères d'alignement pendant le glisser (groupe d'aide : jamais exportés ni imprimés)
+  function mepDrawBalloonGuides(mk){
+    const pk=mepSt.pick,G=pk&&pk.kind==='blDrag'?pk.guides:null;if(!G)return;
+    if(G.gx)mk('line',{x1:G.gx.x,y1:G.gx.y,x2:G.x,y2:G.y,class:'mepBlGuide'},mepGHlp);
+    if(G.gy)mk('line',{x1:G.gy.x,y1:G.gy.y,x2:G.x,y2:G.y,class:'mepBlGuide'},mepGHlp);
+  }
   function mepBalloonAt(sh,x,y){
     // bulle dont le cercle contient le point (la dernière dessinée d'abord)
     const B=Array.isArray(sh.balloons)?sh.balloons:[];

@@ -399,7 +399,7 @@
        if(bl){const v=mepView(sh,bl.view),l=mepLocal(v,bl.p),A=mepToSheet(v,l[0],l[1]);
          mepSt.selBl=bl.id;mepSt.sel=null;mepSt.selDim=null;mepSt.selAxis=null;
          mepSt.pick={kind:'blDrag',id:bl.id,ox:P.x-(A.x+(+bl.dx||0)),oy:P.y-(A.y+(+bl.dy||0)),ax:A.x,ay:A.y,px0:P.px,py0:P.py,moved:false,undoPushed:false};
-         mepStatus('Bulle : glissez pour la placer, Suppr pour la retirer.');
+         mepStatus('Bulle : glissez pour la placer — elle se cale sur le centre des autres bulles (Maj : libre) ; Suppr pour la retirer.');
          mepSideShow();mepRender();return;}
        if(mepSt.selBl){mepSt.selBl=null;}}
       // titre de vue ? → glisser le long de l'axe de la vue
@@ -674,7 +674,13 @@
         if(b){
           if(!pk.dragStarted){if(Math.hypot(P.px-pk.px0,P.py-pk.py0)<3)return;pk.dragStarted=true;}
           if(!pk.undoPushed){try{docPushUndo('Plan : bulle');}catch(e){}pk.undoPushed=true;}
-          b.dx=+(P.x-pk.ox-pk.ax).toFixed(2);b.dy=+(P.y-pk.oy-pk.ay).toFixed(2);pk.moved=true;
+          // V1.0.5 : centre calé sur celui d'une autre bulle (même hauteur / même verticale), 6 px
+          // à l'écran ; Maj : libre (comme la ligne de coupe)
+          let cx=P.x-pk.ox,cy=P.y-pk.oy;pk.guides=null;
+          if(!ev.shiftKey){const S=mepBalloonSnap(sh,b.id,cx,cy,6*mepPxToMm());
+            if(S.gx||S.gy){cx=S.x;cy=S.y;pk.guides={x:cx,y:cy,gx:S.gx,gy:S.gy};}}
+          b.dx=pk.guides&&pk.guides.gx?cx-pk.ax:+(cx-pk.ax).toFixed(2);
+          b.dy=pk.guides&&pk.guides.gy?cy-pk.ay:+(cy-pk.ay).toFixed(2);pk.moved=true;
           mepRender();
         }
         return;

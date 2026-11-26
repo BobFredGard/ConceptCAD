@@ -129,6 +129,7 @@
     .mepSkFree{stroke:var(--mepSkFreeCol,#0a84ff)}
     .mepDraft{stroke:#ffd60a;stroke-width:.7;stroke-dasharray:3 2;fill:none}
     .mepSnap{fill:none;stroke:#ffd60a;stroke-width:.9}
+    .mepBlGuide{fill:none;stroke:#2f7ff0;stroke-width:.3;stroke-dasharray:1.2 .8}
     .mepArrowM{fill:var(--mepDimCol,#111)}
     .mepArrowSel{fill:#ff3b30}
     .mepArrowK{fill:var(--mepInk,#151515)}
