@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**786 versions**, de `2026-09-28b` à `V1.0.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**787 versions**, de `2026-09-28b` à `V1.0.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8752,3 +8752,13 @@ Demande de Fred (« J'ajoute les 2 tests Contour aux tests rapides pour la proch
 **Correctif** : les deux suites ajoutées à `tests/run-fast.cjs`, à côté de `test_fao_contour_niveaux`. `npm run ci` les lance désormais dès que le Contour FAO est touché. Aucun changement dans l'application.
 
 **Test** : `node build.js --check` ; `npm run ci` vert ; les 2 suites lancées seules, conformes ; retouche d'essai de `faoContourTrimAir` (annulée ensuite) : `node tests/run-cible.cjs --liste` choisit bien `test_fao_contour_niveaux`, `test_fao_contour` et `test_fao_contour_vide`. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.2 - Enregistrement : plus de bascule sur « Enregistrer sous », plus de version d'avant remise en silence
+
+Constat de Fred : « des fois, la pièce ne veut pas s'enregistrer, il faut faire enregistrer-sous ».
+
+**Cause** : deux enregistrements pouvaient se chevaucher (Ctrl+S appuyé deux fois ou touche maintenue pendant qu'une grosse pièce s'enregistre, bouton + raccourci). La relecture du premier tombait sur le fichier écrit par le second, le croyait abîmé, remettait l'ancienne version sur le disque et ouvrait « Enregistrer sous ». Le second annonçait « Enregistré » et éteignait le ● alors que le disque avait la version d'avant. Reproduit dans le navigateur sur `Exemples/Axe.conceptcad` : « Enregistrement impossible (relecture : 334461 octets au lieu de 334460 — version précédente remise) », fenêtre « Enregistrer sous » ouverte, modification absente du fichier. Autre cause possible du même symptôme : un fichier bloqué un instant par un autre logiciel (synchronisation Dropbox, antivirus, serveur), que l'appli Windows n'arrivait pas à remplacer.
+
+**Correctif** (`src/97-fichiers-projets.js`) : les enregistrements (Enregistrer, Enregistrer sous, Enregistrer ici) passent l'un après l'autre (`mffSerie`) ; celui qui a attendu ne réécrit pas une pièce que le précédent vient d'enregistrer sans changement. La répétition du clavier (Ctrl+S maintenu) ne relance plus d'enregistrement. « Enregistrement de … » s'affiche dès le début. Écriture qui échoue : trois nouveaux essais (0,15 s, 0,4 s, 0,9 s) avant d'abandonner, l'original restant intact entre deux essais (`mffEcrire`) ; permission refusée : aucun essai de plus.
+
+**Test** : `test_enregistrement_sur` +6 contrôles (deux Ctrl+S qui se chevauchent sur un disque lent : la pièce modifiée est sur le disque, ni erreur ni « Enregistrer sous », une seule écriture ; trois demandes d'affilée ; fichier bloqué deux fois puis enregistré ; permission refusée sans nouvel essai). Dans le navigateur (vrai fichier, `Exemples/Axe.conceptcad`) : deux Ctrl+S à 20 ms, disque lent, Ctrl+S maintenu (1 seul enregistrement) — tout enregistré, aucune erreur ; l'ancien comportement rejoué dans la même page échoue comme décrit. `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.

@@ -3,6 +3,8 @@
 // contenu, copie de la version précédente à côté du fichier (dossier de projets) et dans le
 // navigateur, écriture qui échoue → original intact, relecture fausse → version précédente remise,
 // fichier hors du dossier (pas de .bak sur le disque), ouverture de la copie, Ctrl+S complet.
+// V1.0.2 : enregistrements qui se chevauchent (l'un après l'autre, plus de version d'avant remise),
+// fichier bloqué un instant par un autre logiciel (nouvel essai), permission refusée (aucun essai de plus).
 const {loadApp}=require('./appvm.cjs');
 const vm=require('vm');
 (async()=>{
@@ -13,6 +15,7 @@ const vm=require('vm');
     // ── système de fichiers en mémoire ──
     const FS={},IDB={};let mode='ok';
     idbSet=async(k,v)=>{IDB[k]=v;};idbGet=async k=>IDB[k];
+    MFF_ESSAIS=[1,1,1]; // V1.0.2 : nouveaux essais d'écriture sans attendre dans le banc
     const mkFile=path=>({kind:'file',name:path.split('/').pop(),_p:path,
       async getFile(){if(!(path in FS))throw new Error('NotFound');const t=FS[path];return {name:path.split('/').pop(),size:t.length,lastModified:1000,text:async()=>t};},
       async createWritable(){let buf='',aborted=false;return {
@@ -85,6 +88,40 @@ const vm=require('vm');
     FS['ailleurs/Neuf.conceptcad']='';delete IDB['mff:bak:Neuf.conceptcad'];let al='';alert=m=>{al=m;};
     okO=await mffOpenHandle(mkFile('ailleurs/Neuf.conceptcad'));
     att(!okO&&/Aucune copie/.test(al)&&doc.params[0].value===12,'19 : fichier vide sans copie : message clair, modèle intact');
+    // ── 11. V1.0.2 : deux Ctrl+S qui se chevauchent (grosse pièce, disque lent) ──
+    // Avant : la relecture du premier lisait le fichier du second, remettait l'ancienne version et
+    // ouvrait « Enregistrer sous » ; le second annonçait « Enregistré » sur la version d'avant.
+    const lent=ms=>new Promise(res=>setTimeout(res,ms));
+    let nEcr=0;
+    const mkLent=p=>Object.assign(mkFile(p),{
+      async getFile(){await lent(40);const t=FS[p];return {name:p.split('/').pop(),size:t.length,lastModified:1,text:async()=>t};},
+      async createWritable(){let buf='';return {write:async t=>{buf=t;},close:async()=>{await lent(30);FS[p]=buf;nEcr++;},abort:async()=>{}};}});
+    const MSG=[];const fe=faceEl;let feTxt='';
+    Object.defineProperty(fe,'textContent',{configurable:true,get(){return feTxt;},set(v){feTxt=String(v);MSG.push(feTxt);}});
+    FS['lent/Plaque.conceptcad']=await bundleSerialise();
+    const hl=mkLent('lent/Plaque.conceptcad');mffHandle=hl;mffName='Plaque';mffMark();
+    doc.params[0].expr='20';doc.params[0].value=20;
+    const sA=mffSave();await lent(20);const sB=mffSave();
+    const rr=await Promise.all([sA,sB]);
+    const lu=JSON.parse(FS['lent/Plaque.conceptcad']);
+    att(rr[0]===true&&rr[1]===true&&lu.doc.params&&lu.doc.params[0].value===20&&!MSG.some(m=>/impossible|Enregistrer sous/.test(m)),
+      '20 : deux Ctrl+S qui se chevauchent : la pièce modifiée (e = 20) est sur le disque, ni erreur ni « Enregistrer sous » ('+MSG.filter(m=>/impossible/.test(m)).join(' | ').slice(0,120)+')');
+    att(nEcr===1&&!mffModified(),'21 : le second attend le premier et ne réécrit pas une pièce inchangée ('+nEcr+' écriture(s))');
+    att(MSG.some(m=>/^Enregistrement de Plaque\\.conceptcad…$/.test(m)),'22 : « Enregistrement de … » affiché dès le début (pas de second Ctrl+S faute de signe)');
+    // trois demandes d'affilée (bouton + raccourci, ou Ctrl+S tapé deux fois) : une seule écriture
+    doc.params[0].expr='22';doc.params[0].value=22;nEcr=0;
+    const r3=await Promise.all([mffSave(),mffSave(),mffSave()]);
+    att(r3.every(x=>x===true)&&nEcr===1&&JSON.parse(FS['lent/Plaque.conceptcad']).doc.params[0].value===22,'23 : trois demandes d’affilée : une écriture, la dernière version sur le disque ('+nEcr+')');
+    // ── 12. V1.0.2 : fichier bloqué un instant par un autre logiciel (Dropbox, antivirus) ──
+    FS['ailleurs/Bloque.conceptcad']=v1;const hb=mkFile('ailleurs/Bloque.conceptcad');let bloque=2;
+    const cw=hb.createWritable;hb.createWritable=async function(){const w=await cw.call(this);const c=w.close;w.close=async()=>{if(bloque>0){bloque--;throw new Error('Accès refusé. (os error 5)');}return c();};return w;};
+    err='';try{await mffWriteSafe(hb,v2);}catch(e){err=e.message;}
+    att(!err&&bloque===0&&FS['ailleurs/Bloque.conceptcad']===v2,'24 : fichier bloqué deux fois de suite : nouvel essai, enregistré ('+(err||'ok')+')');
+    FS['ailleurs/Perm.conceptcad']=v1;const hp=mkFile('ailleurs/Perm.conceptcad');let nPerm=0;
+    hp.createWritable=async()=>{nPerm++;throw Object.assign(new Error('refus'),{name:'NotAllowedError'});};
+    err='';try{await mffWriteSafe(hp,v2);}catch(e){err=e.message;}
+    att(/refus/.test(err)&&nPerm===1&&FS['ailleurs/Perm.conceptcad']===v1,'25 : permission refusée : pas de nouvel essai, original intact ('+nPerm+' essai)');
+    delete fe.textContent;
     return {ATT,OK};
   `;
   const o=await vm.runInContext('(async function(){'+R+'})()',ctx);
