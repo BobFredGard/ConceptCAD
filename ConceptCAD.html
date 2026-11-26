@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.0.2';
+const APP_VER='V1.0.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -99378,7 +99378,7 @@ function filmFrame(){
       :mepDimTextParts(d,value);
     const main=p.sym?p.main+' '+p.sym:p.main;
     const ht=d.kind==='hole'&&!d.txt?mepHoleTol(d):null;
-    if(ht)return mepTolMarks(mepHoleTolText(main,ht));
+    if(ht)return mepTolMarks(mepHoleTolText(main,ht,mepHoleTolOn(d)));
     if(p.par)return main+' ('+p.up+' / '+p.lo+')'+(p.post?' '+p.post:'');
     return p.up||p.lo?main+' '+p.up+' / '+p.lo:main;
   }
@@ -99528,9 +99528,22 @@ function filmFrame(){
   /* 2026-10-22-017 : tolérance d'une cotation de perçage — posée juste après le 1er « Ø… » de
      l'étiquette (le Ø du trou ; pour un taraudage, la ligne du foret), écarts en petit corps
      (balises \u0001…\u0002 → tspan réduit) : « Ø8 H7 (+0,015 / 0) ↧12 ». */
-  function mepHoleTolText(txt,tol){
+  /* V1.0.3 : la tolérance peut aller sur un AUTRE Ø de l'étiquette (« … soit après le Ø7, soit
+     après le Ø15 », lamage, avant-trou, fraisure…) — on = rang du Ø (0 = le 1er, par défaut) ;
+     un rang qui n'existe plus (lamage retiré de la fonction) revient au 1er Ø. */
+  function mepHoleDias(txt){
+    const s=String(txt||''),re=/Ø\s?([0-9]+(?:[.,][0-9]+)?)/g,out=[];let m;
+    while((m=re.exec(s))){
+      const a=s.lastIndexOf('\n',m.index)+1,b=s.indexOf('\n',m.index);
+      out.push({m,line:s.slice(a,b<0?s.length:b).replace(/^\d+×\s*/,'').trim()});
+    }
+    return out;
+  }
+  function mepHoleTolOn(d){return d&&d.tol?Math.max(0,+d.tolOn||0):0;}
+  function mepHoleTolText(txt,tol,on){
     if(!tol||!tol.m)return txt;
-    const m=/Ø\s?([0-9]+(?:[.,][0-9]+)?)/.exec(String(txt||''));if(!m)return txt;
+    const L=mepHoleDias(txt);if(!L.length)return txt;
+    const m=(L[+on||0]||L[0]).m;
     const nom=parseFloat(m[1].replace(',','.'));if(!(nom>0))return txt;
     const p=mepDimTextParts({kind:'dia',tol},nom);let add='';
     if(tol.m==='pm'&&tol.s>0)add='\u0001'+p.sym+'\u0002';
@@ -99745,7 +99758,7 @@ function filmFrame(){
         }
       }
       const ht=d.kind==='hole'&&!d.txt?mepHoleTol(d):null;
-      if(ht)txt=mepHoleTolText(txt,ht);
+      if(ht)txt=mepHoleTolText(txt,ht,mepHoleTolOn(d));
       const e=mepEntByHint(w.v1,d.a.hint);
       let cx=w.a.x,cy=w.a.y,rr=0;
       if(e&&(e.t==='C'||e.t==='A')){
@@ -104492,6 +104505,19 @@ function filmFrame(){
       mepSideShow();
     };
     row('Tolérance',sel);
+    // V1.0.3 : cotation de perçage à plusieurs Ø (lamage, avant-trou, fraisure, alésé…) — choix
+    // du Ø qui porte la tolérance posée à la main (l'automatique reste sur l'alésage)
+    if(d.kind==='hole'&&d.tol&&!d.txt){
+      const L=mepHoleDias(d.holeText||'');
+      if(L.length>1){
+        const on=document.createElement('select');
+        L.forEach((x,k)=>{const o=document.createElement('option');o.value=String(k);o.textContent=x.line;on.appendChild(o);});
+        on.value=String(L[mepHoleTolOn(d)]?mepHoleTolOn(d):0);
+        on.onchange=()=>{mepEdit('tolérance sur',()=>{if(+on.value>0)d.tolOn=+on.value;else delete d.tolOn;});mepSideShow();};
+        on.title='Ø de l’étiquette après lequel s’écrit la tolérance';
+        row('Sur',on);
+      }
+    }
     if(d.tol&&d.tol.m==='pm'){
       const s=document.createElement('input');s.type='number';s.step='0.01';s.value=d.tol.s;
       s.onchange=()=>{mepEdit('±',()=>{d.tol.s=+s.value||0;});};if(typeof parFxBind==='function')parFxBind(s,d.tol,'s');
@@ -105181,7 +105207,7 @@ function filmFrame(){
       holeText:mepHoleFeatureText,holeTol:d=>mepHoleTol(d),
       holeCallout:mepHoleCallout,holeAt:mepHoleAt,holeAtLine:mepHoleAtLine,holeDraft:mepHoleDraft,autoHoles:mepAutoHoles,
       fmt:mepFmtNum,
-      geo:view=>mepGeoOf(view),dropHidden:els=>mepDropHiddenUnder(els),geoClear:()=>mepGeoCache.clear(),locCurve:p=>mepLocCurve(p),clipSegPoly:(a,b,c,d,P,k)=>mepClipSegPoly(a,b,c,d,P,k),dxfView:(txt,name)=>{const r=mepDxfParse(txt);const v=mepAddView({kind:'dxf',vk:'',label:'',dxf:mepDxfData(r,name||'t',1),mode:'wire'});v._dims=mepDxfDims(mepSheet(),v,r);return v;},dimMeasure:d=>mepDimMeasure(mepSheet(),d),ptRefresh:(v,q,pr)=>mepPtRefresh(mepSheet(),v,q,pr),dimPts:d=>mepDimPtsRefresh(mepSheet(),d),ordClick:(P,ax)=>mepOrdClick(mepSheet(),P,ax),ordEnd:()=>{mepSt.ord=null;},ordPick:(d,i)=>{mepSt.selDim=d?d.id:null;mepSt.ordPt=d?{id:d.id,i}:null;},selDim:id=>{mepSt.selDim=id;},holeTolText:(t,tol)=>mepTolMarks(mepHoleTolText(t,tol)),dimText:d=>mepDimText(d,mepDimMeasure(mepSheet(),d)),ordPtAt:(d,P)=>mepOrdPtAt(mepSheet(),d,P),ordDelPt:(d,i)=>mepOrdDelPt(mepSheet(),d,i),ordValue:(d,p)=>mepOrdValue(d,p),drawDim:(mk,d)=>mepDrawDim(mk,d,mepSheet()),dimPressDbl:(P,ev)=>mepDimPressDbl(mepSheet(),P,ev||{}),dimAlignTo:(ref,ids)=>mepDimAlignTo(mepSheet(),ref,ids),perspCam:v=>mepPerspCam(v),threadEls:(v,c)=>mepThreadEls(v,c),oblShear:(sh,v)=>mepOblShear(sh,v),
+      geo:view=>mepGeoOf(view),dropHidden:els=>mepDropHiddenUnder(els),geoClear:()=>mepGeoCache.clear(),locCurve:p=>mepLocCurve(p),clipSegPoly:(a,b,c,d,P,k)=>mepClipSegPoly(a,b,c,d,P,k),dxfView:(txt,name)=>{const r=mepDxfParse(txt);const v=mepAddView({kind:'dxf',vk:'',label:'',dxf:mepDxfData(r,name||'t',1),mode:'wire'});v._dims=mepDxfDims(mepSheet(),v,r);return v;},dimMeasure:d=>mepDimMeasure(mepSheet(),d),ptRefresh:(v,q,pr)=>mepPtRefresh(mepSheet(),v,q,pr),dimPts:d=>mepDimPtsRefresh(mepSheet(),d),ordClick:(P,ax)=>mepOrdClick(mepSheet(),P,ax),ordEnd:()=>{mepSt.ord=null;},ordPick:(d,i)=>{mepSt.selDim=d?d.id:null;mepSt.ordPt=d?{id:d.id,i}:null;},selDim:id=>{mepSt.selDim=id;},holeTolText:(t,tol,on)=>mepTolMarks(mepHoleTolText(t,tol,on)),holeDias:t=>mepHoleDias(t).map(x=>x.line),dimText:d=>mepDimText(d,mepDimMeasure(mepSheet(),d)),ordPtAt:(d,P)=>mepOrdPtAt(mepSheet(),d,P),ordDelPt:(d,i)=>mepOrdDelPt(mepSheet(),d,i),ordValue:(d,p)=>mepOrdValue(d,p),drawDim:(mk,d)=>mepDrawDim(mk,d,mepSheet()),dimPressDbl:(P,ev)=>mepDimPressDbl(mepSheet(),P,ev||{}),dimAlignTo:(ref,ids)=>mepDimAlignTo(mepSheet(),ref,ids),perspCam:v=>mepPerspCam(v),threadEls:(v,c)=>mepThreadEls(v,c),oblShear:(sh,v)=>mepOblShear(sh,v),
       imgRect:(view,img)=>mepImg3dRect(view,img),
       shadeTri:(view,A,B,C,col,op)=>mepShadeTri(view,A,B,C,col,op),
       shadeFaces:view=>mepShadedFaces(view),

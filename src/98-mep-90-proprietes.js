@@ -832,6 +832,19 @@
       mepSideShow();
     };
     row('Tolérance',sel);
+    // V1.0.3 : cotation de perçage à plusieurs Ø (lamage, avant-trou, fraisure, alésé…) — choix
+    // du Ø qui porte la tolérance posée à la main (l'automatique reste sur l'alésage)
+    if(d.kind==='hole'&&d.tol&&!d.txt){
+      const L=mepHoleDias(d.holeText||'');
+      if(L.length>1){
+        const on=document.createElement('select');
+        L.forEach((x,k)=>{const o=document.createElement('option');o.value=String(k);o.textContent=x.line;on.appendChild(o);});
+        on.value=String(L[mepHoleTolOn(d)]?mepHoleTolOn(d):0);
+        on.onchange=()=>{mepEdit('tolérance sur',()=>{if(+on.value>0)d.tolOn=+on.value;else delete d.tolOn;});mepSideShow();};
+        on.title='Ø de l’étiquette après lequel s’écrit la tolérance';
+        row('Sur',on);
+      }
+    }
     if(d.tol&&d.tol.m==='pm'){
       const s=document.createElement('input');s.type='number';s.step='0.01';s.value=d.tol.s;
       s.onchange=()=>{mepEdit('±',()=>{d.tol.s=+s.value||0;});};if(typeof parFxBind==='function')parFxBind(s,d.tol,'s');

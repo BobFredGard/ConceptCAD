@@ -99,6 +99,25 @@ const out=vm.runInContext(`(function(){
   sh.dims.length=0;
   'ABCDEFGH'.split('').forEach(l=>sh.dims.push({id:'z'+l,kind:'datum',vid:v.id,a:{x:0,y:0},b:{x:0,y:-10},l}));
   A(T.gdtNext()==='J','après H vient J (pas de I)');
+  // 9. V1.0.3 : cotation de perçage à lamage — tolérance après le Ø7 (défaut) ou après le Ø15
+  // (« soit après le Ø7, soit après le Ø15 »), liste « Sur » dans le panneau
+  sh.dims.length=0;
+  const dH={id:'h1',kind:'hole',vid:v.id,a:{x:10,y:10},b:{x:30,y:-10},off:0,holeText:'Ø7 déb.\\nLamage Ø15 ↧3.5',holeN:2,tol:{m:'cls',cls:'H7'}};
+  sh.dims.push(dH);
+  A(T.dimText(dH)==='2× Ø7 H7 (+0.015 / 0) déb.\\nLamage Ø15 ↧3.5','perçage : tolérance après le 1er Ø par défaut (Ø7 H7)');
+  const lists=n=>{const o=[];(function w(x){if(x.tagName==='SELECT')o.push(x);(x.children||[]).forEach(w);})(n);return o;};
+  const opt=s=>[...(s.children||[])].map(o=>o.textContent);
+  const rH=document.createElement('div');T.sideDim(rH,dH);
+  const sur=lists(rH).find(s=>opt(s).join('|')==='Ø7 déb.|Lamage Ø15 ↧3.5');
+  A(!!sur&&/Sur/.test(texte(rH)),'panneau : liste « Sur » avec les 2 Ø de l’étiquette'+(sur?'':' (listes : '+lists(rH).map(s=>opt(s).join('/')).join(' ; ')+')'));
+  if(sur){sur.value='1';sur.onchange();}
+  A(dH.tolOn===1&&T.dimText(dH)==='2× Ø7 déb.\\nLamage Ø15 H7 (+0.018 / 0) ↧3.5','choix « Lamage Ø15 » : la tolérance passe après le Ø15, écarts H7 du Ø15');
+  dH.holeText='Ø7 déb.';
+  A(T.dimText(dH)==='2× Ø7 H7 (+0.015 / 0) déb.','lamage retiré de la fonction : la tolérance revient sur le Ø7');
+  const rH2=document.createElement('div');T.sideDim(rH2,dH);
+  A(!lists(rH2).some(s=>opt(s).indexOf('Ø7 déb.')>=0),'un seul Ø : pas de liste « Sur »');
+  dH.holeText='Ø7 déb.\\nLamage Ø15 ↧3.5';dH.tol=null;
+  A(T.dimText(dH)==='2× Ø7 déb.\\nLamage Ø15 ↧3.5','tolérance retirée : étiquette nue');
   return r;
 })();`,ctx);
 out.log.forEach(m=>console.log('  ok  '+m));

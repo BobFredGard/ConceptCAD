@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**787 versions**, de `2026-09-28b` à `V1.0.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**788 versions**, de `2026-09-28b` à `V1.0.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8762,3 +8762,13 @@ Constat de Fred : « des fois, la pièce ne veut pas s'enregistrer, il faut fair
 **Correctif** (`src/97-fichiers-projets.js`) : les enregistrements (Enregistrer, Enregistrer sous, Enregistrer ici) passent l'un après l'autre (`mffSerie`) ; celui qui a attendu ne réécrit pas une pièce que le précédent vient d'enregistrer sans changement. La répétition du clavier (Ctrl+S maintenu) ne relance plus d'enregistrement. « Enregistrement de … » s'affiche dès le début. Écriture qui échoue : trois nouveaux essais (0,15 s, 0,4 s, 0,9 s) avant d'abandonner, l'original restant intact entre deux essais (`mffEcrire`) ; permission refusée : aucun essai de plus.
 
 **Test** : `test_enregistrement_sur` +6 contrôles (deux Ctrl+S qui se chevauchent sur un disque lent : la pièce modifiée est sur le disque, ni erreur ni « Enregistrer sous », une seule écriture ; trois demandes d'affilée ; fichier bloqué deux fois puis enregistré ; permission refusée sans nouvel essai). Dans le navigateur (vrai fichier, `Exemples/Axe.conceptcad`) : deux Ctrl+S à 20 ms, disque lent, Ctrl+S maintenu (1 seul enregistrement) — tout enregistré, aucune erreur ; l'ancien comportement rejoué dans la même page échoue comme décrit. `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.3 - Mise en plan : tolérance après le Ø de son choix dans une cotation de perçage
+
+Demande de Fred : « j'aimerais pouvoir ajouter soit après le Ø7, soit après le Ø15 une tolérance géométrique de type H7 ou autre » (étiquette « 2× Ø7 déb. / Lamage Ø15 ↧3.5 »).
+
+**Avant** : la tolérance d'une cotation de perçage (classe ISO 286, ± ou double) s'écrivait toujours après le 1er Ø de l'étiquette (le trou, ou la ligne du foret d'un taraudage) ; impossible de la mettre sur le lamage.
+
+**Correctif** (`src/98-mep-70-cotes.js`, `src/98-mep-90-proprietes.js`) : dès qu'une tolérance est posée à la main et que l'étiquette a plusieurs Ø (lamage, fraisure, avant-trou du double perçage, alésé et son perçage), une liste « Sur » sous « Tolérance » propose chaque ligne (« Ø7 déb. », « Lamage Ø15 ↧3.5 ») ; la tolérance s'écrit après le Ø choisi, avec les écarts calculés sur CE Ø (« Lamage Ø15 H7 (+0.018 / 0) ↧3.5 »). Choix gardé dans la cote (`tolOn`, rang du Ø) ; si ce Ø disparaît de la fonction (lamage retiré), la tolérance revient sur le 1er Ø. La tolérance automatique d'un alésé reste sur l'alésage. Annulable (Ctrl+Z).
+
+**Test** : `test_mep_tolerances` +6 contrôles (Ø7 H7 par défaut, liste « Sur » avec les 2 lignes, choix du lamage → Ø15 H7 +0.018, lamage retiré → retour sur le Ø7, un seul Ø → pas de liste, tolérance retirée → étiquette nue) ; `test_mep_hachures_cotes` : 2 cas de plus sur le texte. Dans le navigateur (`Exemples/Perçages.conceptcad`, cotation « 6× Ø6.6 déb. / Lamage Ø11 ↧6.4 ») : Classe ISO 286 puis « Sur : Lamage Ø11 » → « Lamage Ø11 H7 (+0.018 / 0) ↧6.4 » dessiné sur la planche. CACHE_VER et FORMES_VER inchangés.

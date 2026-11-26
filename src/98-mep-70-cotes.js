@@ -1255,7 +1255,7 @@
       :mepDimTextParts(d,value);
     const main=p.sym?p.main+' '+p.sym:p.main;
     const ht=d.kind==='hole'&&!d.txt?mepHoleTol(d):null;
-    if(ht)return mepTolMarks(mepHoleTolText(main,ht));
+    if(ht)return mepTolMarks(mepHoleTolText(main,ht,mepHoleTolOn(d)));
     if(p.par)return main+' ('+p.up+' / '+p.lo+')'+(p.post?' '+p.post:'');
     return p.up||p.lo?main+' '+p.up+' / '+p.lo:main;
   }
@@ -1405,9 +1405,22 @@
   /* 2026-10-22-017 : tolérance d'une cotation de perçage — posée juste après le 1er « Ø… » de
      l'étiquette (le Ø du trou ; pour un taraudage, la ligne du foret), écarts en petit corps
      (balises \u0001…\u0002 → tspan réduit) : « Ø8 H7 (+0,015 / 0) ↧12 ». */
-  function mepHoleTolText(txt,tol){
+  /* V1.0.3 : la tolérance peut aller sur un AUTRE Ø de l'étiquette (« … soit après le Ø7, soit
+     après le Ø15 », lamage, avant-trou, fraisure…) — on = rang du Ø (0 = le 1er, par défaut) ;
+     un rang qui n'existe plus (lamage retiré de la fonction) revient au 1er Ø. */
+  function mepHoleDias(txt){
+    const s=String(txt||''),re=/Ø\s?([0-9]+(?:[.,][0-9]+)?)/g,out=[];let m;
+    while((m=re.exec(s))){
+      const a=s.lastIndexOf('\n',m.index)+1,b=s.indexOf('\n',m.index);
+      out.push({m,line:s.slice(a,b<0?s.length:b).replace(/^\d+×\s*/,'').trim()});
+    }
+    return out;
+  }
+  function mepHoleTolOn(d){return d&&d.tol?Math.max(0,+d.tolOn||0):0;}
+  function mepHoleTolText(txt,tol,on){
     if(!tol||!tol.m)return txt;
-    const m=/Ø\s?([0-9]+(?:[.,][0-9]+)?)/.exec(String(txt||''));if(!m)return txt;
+    const L=mepHoleDias(txt);if(!L.length)return txt;
+    const m=(L[+on||0]||L[0]).m;
     const nom=parseFloat(m[1].replace(',','.'));if(!(nom>0))return txt;
     const p=mepDimTextParts({kind:'dia',tol},nom);let add='';
     if(tol.m==='pm'&&tol.s>0)add='\u0001'+p.sym+'\u0002';
@@ -1622,7 +1635,7 @@
         }
       }
       const ht=d.kind==='hole'&&!d.txt?mepHoleTol(d):null;
-      if(ht)txt=mepHoleTolText(txt,ht);
+      if(ht)txt=mepHoleTolText(txt,ht,mepHoleTolOn(d));
       const e=mepEntByHint(w.v1,d.a.hint);
       let cx=w.a.x,cy=w.a.y,rr=0;
       if(e&&(e.t==='C'||e.t==='A')){

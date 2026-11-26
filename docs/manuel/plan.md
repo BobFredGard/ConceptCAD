@@ -55,6 +55,7 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
 - **Tolérances ISO 286** (toutes les classes, alésages A … ZC et arbres a … zc, IT01 … IT18, ajustements) ; les cotes sont associatives et **suivent une modification du 3D**.
 - **Perçages** cotés depuis la fonction Perçage :
   - « Perçages auto » cote toute la planche ; la tolérance d'un alésé s'y écrit d'office ;
+  - **tolérance sur le Ø de son choix** : quand l'étiquette a plusieurs Ø (lamage, fraisure, avant-trou, alésé), la liste « Sur » place la tolérance après le trou ou après le lamage (« Lamage Ø15 H7 (+0.018 / 0) ») ;
   - un trou coupé par une autre fonction reste reconnu ;
   - l'outil Perçage cote le trou dans toutes les vues : vu de bout, de côté ou en biais, en coupe comme avec les traits cachés.
 - **Ordonnées X / Y** (avec cassure), notes à flèche.
