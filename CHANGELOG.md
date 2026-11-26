@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**788 versions**, de `2026-09-28b` à `V1.0.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**789 versions**, de `2026-09-28b` à `V1.0.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8772,3 +8772,15 @@ Demande de Fred : « j'aimerais pouvoir ajouter soit après le Ø7, soit après 
 **Correctif** (`src/98-mep-70-cotes.js`, `src/98-mep-90-proprietes.js`) : dès qu'une tolérance est posée à la main et que l'étiquette a plusieurs Ø (lamage, fraisure, avant-trou du double perçage, alésé et son perçage), une liste « Sur » sous « Tolérance » propose chaque ligne (« Ø7 déb. », « Lamage Ø15 ↧3.5 ») ; la tolérance s'écrit après le Ø choisi, avec les écarts calculés sur CE Ø (« Lamage Ø15 H7 (+0.018 / 0) ↧3.5 »). Choix gardé dans la cote (`tolOn`, rang du Ø) ; si ce Ø disparaît de la fonction (lamage retiré), la tolérance revient sur le 1er Ø. La tolérance automatique d'un alésé reste sur l'alésage. Annulable (Ctrl+Z).
 
 **Test** : `test_mep_tolerances` +6 contrôles (Ø7 H7 par défaut, liste « Sur » avec les 2 lignes, choix du lamage → Ø15 H7 +0.018, lamage retiré → retour sur le Ø7, un seul Ø → pas de liste, tolérance retirée → étiquette nue) ; `test_mep_hachures_cotes` : 2 cas de plus sur le texte. Dans le navigateur (`Exemples/Perçages.conceptcad`, cotation « 6× Ø6.6 déb. / Lamage Ø11 ↧6.4 ») : Classe ISO 286 puis « Sur : Lamage Ø11 » → « Lamage Ø11 H7 (+0.018 / 0) ↧6.4 » dessiné sur la planche. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.4 - Mise en plan : bulles automatiques sur la vue de son choix, colonnes de la nomenclature à retirer
+
+Demandes de Fred (plan MERLIN-39, nomenclature avec « RÉF. JUSTET ») : « il faudrait pouvoir choisir la vue par moi-même » (bulles automatiques) et « Il faut aussi pouvoir enlever des colonnes au tableau ».
+
+**Avant** : « Bulles automatiques » (panneau de la planche, nomenclature de composants) posait toujours les bulles sur la PREMIÈRE vue « Assemblage » de la planche ; le tableau de nomenclature avait toujours toutes ses colonnes (REP., QTÉ, référence, DÉSIGNATION, MATIÈRE, DIMENSIONS), même vides.
+
+**Bulles** (`src/98-mep-30-planches-cartouche.js`, `src/98-mep-90-proprietes.js`) : `mepBalloonsAuto(sh, vid)` pose les bulles sur la vue demandée, sinon la dernière choisie (`sh.blView`, gardée dans le fichier), sinon la première vue Assemblage. Panneau d'une vue « Assemblage » : ligne « Bulles (n) » avec « Bulles automatiques » (cette vue) et « Effacer » (ses bulles) ; bouton grisé avec l'explication au survol tant que la nomenclature de composants n'est pas cochée. Panneau de la planche : liste « Vue des bulles » (« Face », « Dessus », « Coupe A-A »…) quand la planche a plusieurs vues Assemblage. Message « 5 bulle(s) sur la vue « Face » ». Toujours une bulle par ligne de la nomenclature : celles d'avant sont remplacées.
+
+**Colonnes** : `mepBomCols` (colonnes de la nomenclature, sorties de `mepDrawBom`) ; sous « Nomenclature », une case par colonne sauf REP. (les bulles renvoient à son numéro) ; colonne décochée (`sh.bom.hide`) = retirée du tableau, qui se resserre d'autant ; tout recoché = rien d'écrit dans le fichier.
+
+**Test** : `test_composants_plan_bulles` +11 contrôles (vue de dessus choisie : bulles sur le dessus de la colonne ; dernière vue reprise ; noms des vues sans « Face Face » ; liste « Vue des bulles » ; bouton et « Effacer » du panneau de la vue ; bouton grisé sans nomenclature) et inscrit dans les tests rapides (3 s, n'était que dans `run.cjs`) ; `test_nomenclature_plan` +7 (MATIÈRE et DIMENSIONS retirées : 164 → 100 mm, lignes qui suivent, REP. gardé, cases du panneau). Dans le navigateur sur une copie de MERLIN-39-000 : bouton de la vue de face → 5 bulles autour de la vue ; MATIÈRE décochée → tableau sans la colonne. CACHE_VER et FORMES_VER inchangés.

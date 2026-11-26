@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.0.3';
+const APP_VER='V1.0.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -95362,11 +95362,30 @@ function filmFrame(){
   }
   /* bulles (V0.6.7) : {view, comp, p (point 3D du composant actif), dx, dy (décalage papier)} ;
      le numéro est celui de la ligne du composant dans la nomenclature (renuméroté avec elle) */
-  function mepBalloonsAuto(sh){
+  /* V1.0.4 : vues « Assemblage » de la planche (celles qui peuvent porter des bulles) et leur nom
+     dans les listes : « Face », « Coupe A-A », « Détail B », « Projection (Dessus) »… */
+  function mepBalloonViews(sh){return (sh.views||[]).filter(x=>x&&x.asm);}
+  function mepViewName(v){
+    if(!v)return '';
+    if(v.kind==='section')return 'Coupe '+(v.label||'')+'-'+(v.label||'');
+    if(v.kind==='detail')return 'Détail '+(v.label||'');
+    const lab=(v.kind==='proj'?(MEP_PROJ[v.proj||'']||{}).lab:(MEP_VIEWS[v.vk]||{}).lab)||'Vue',L=String(v.label||'').trim();
+    return !L||L===lab?lab:lab+' « '+L+' »'; // vue de face libellée « Face » : « Face », pas « Face Face »
+  }
+  // vue qui reçoit les bulles automatiques : celle demandée, sinon la dernière choisie (sh.blView),
+  // sinon la première vue « Assemblage »
+  function mepBalloonView(sh,vid){
+    const A=mepBalloonViews(sh);
+    return A.find(x=>x.id===vid)||A.find(x=>x.id===sh.blView)||A[0]||null;
+  }
+  function mepBalloonsAuto(sh,vid){
     // V0.8.2 : accroche sur la surface VISIBLE de la pièce (asmBalloonVisible ; repli : centre de
     // sa boîte), bulles rangées sur un cadre autour de la vue, dans l'ordre du tour, écartées
     // d'au moins un diamètre et demi — plus de bulles empilées ni de traits qui se croisent
-    const v=(sh.views||[]).find(x=>x.asm);if(!v)return 0;
+    // V1.0.4 : sur la vue CHOISIE (« il faudrait pouvoir choisir la vue par moi-même ») — une bulle
+    // par ligne de la nomenclature sur la planche : celles d'avant sont remplacées
+    const v=mepBalloonView(sh,vid);if(!v)return 0;
+    sh.blView=v.id;
     const rows=mepBomRows(sh);
     sh.balloons=[];
     const L=[];
@@ -95460,18 +95479,29 @@ function filmFrame(){
       const tx=mk('text',{x:B.x,y:B.y+1.3,class:'mepRevText','text-anchor':'middle'});tx.textContent=String(row.rep);
     });
   }
-  function mepDrawBom(mk,sh,pd,ty){
-    if(!sh.bom||!sh.bom.on)return;
-    const rows=mepBomRows(sh);if(!rows.length)return;
-    // V0.99.80 : colonne RÉFÉRENCE après QTÉ dès qu'une ligne a une référence (r.ref, titre r.refLabel :
-    // « RÉF. JUSTET » du pont NumPLans) ; DÉSIGNATION et MATIÈRE se resserrent (DIMENSIONS cède 2 mm,
-    // « 50,0 × 50,9 × 50,0 » y tient), même largeur totale
+  /* colonnes de la nomenclature [titre, largeur mm, champ] — all : toutes, sinon celles affichées.
+     V0.99.80 : colonne RÉFÉRENCE après QTÉ dès qu'une ligne a une référence (r.ref, titre r.refLabel :
+     « RÉF. JUSTET » du pont NumPLans) ; DÉSIGNATION et MATIÈRE se resserrent (DIMENSIONS cède 2 mm,
+     « 50,0 × 50,9 × 50,0 » y tient), même largeur totale.
+     V1.0.4 : colonnes retirées au choix (sh.bom.hide = champs ; « Il faut aussi pouvoir enlever des
+     colonnes au tableau ») — le tableau se resserre d'autant ; REP. reste toujours (numéro des bulles). */
+  function mepBomCols(sh,rows,all){
+    rows=rows||mepBomRows(sh);
     const tx=v=>String(v==null?'':v).trim();
     const hasRef=rows.some(r=>tx(r.ref));
     const refL=hasRef?tx((rows.find(r=>tx(r.ref)&&tx(r.refLabel))||rows.find(r=>tx(r.refLabel))||{}).refLabel)||'RÉFÉRENCE':'';
-    const RH=5.5,cols=hasRef
+    const cols=hasRef
       ?[['REP.',10,'rep'],['QTÉ',10,'qty'],[refL,30,'ref'],['DÉSIGNATION',50,'name'],['MATIÈRE',24,'mat'],['DIMENSIONS (mm)',40,'dims']]
       :[['REP.',10,'rep'],['QTÉ',10,'qty'],['DÉSIGNATION',62,'name'],['MATIÈRE',40,'mat'],['DIMENSIONS (mm)',42,'dims']];
+    if(all)return cols;
+    const hide=sh.bom&&Array.isArray(sh.bom.hide)?sh.bom.hide:[];
+    return cols.filter(c=>c[2]==='rep'||hide.indexOf(c[2])<0);
+  }
+  function mepDrawBom(mk,sh,pd,ty){
+    if(!sh.bom||!sh.bom.on)return;
+    const rows=mepBomRows(sh);if(!rows.length)return;
+    const tx=v=>String(v==null?'':v).trim();
+    const RH=5.5,cols=mepBomCols(sh,rows);
     const W=cols.reduce((s,c)=>s+c[1],0),n=Math.min(rows.length,12);
     // texte d'une case : coupé à ~w/1.7 caractères, puis resserré s'il dépasse encore la case (comme les
     // champs « fit » du cartouche) — « 215-01-001-O-Support Guide » débordait sur MATIÈRE. Mesure réelle
@@ -103997,8 +104027,24 @@ function filmFrame(){
         const o=document.createElement('option');o.value=k;o.textContent=l;if((sh.bom.lvl||'corps')===k)o.selected=true;s.appendChild(o);});
       s.onchange=()=>{mepEdit('nomenclature',()=>{sh.bom.lvl=s.value;});mepSideShow();};r.appendChild(s);
       if(sh.bom.lvl&&sh.bom.lvl!=='corps'){
+        // V1.0.4 : vue des bulles au choix (plusieurs vues « Assemblage » sur la planche)
+        const AV=mepBalloonViews(sh),bv=mepBalloonView(sh);
+        let vSel=null;
+        if(AV.length>1){
+          r=rowEl();
+          const L=document.createElement('label');L.textContent='Vue des bulles';r.appendChild(L);
+          vSel=document.createElement('select');vSel.id='mepBlView';
+          AV.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=mepViewName(v);vSel.appendChild(o);});
+          vSel.value=bv?bv.id:AV[0].id;
+          vSel.title='Vue « Assemblage » qui reçoit les bulles automatiques';
+          vSel.onchange=()=>{mepEdit('vue des bulles',()=>{sh.blView=vSel.value;});};
+          r.appendChild(vSel);
+        }
         r=rowEl();
-        mkBtn('Bulles automatiques',()=>{mepEdit('bulles',()=>{mepBalloonsAuto(sh);});mepSideShow();},'Une bulle par ligne de la nomenclature, sur la première vue « Assemblage » de la planche');
+        mkBtn('Bulles automatiques',()=>{let n=0;mepEdit('bulles',()=>{n=mepBalloonsAuto(sh,vSel?vSel.value:undefined);});
+          const v=mepBalloonView(sh);
+          mepStatus(v?n+' bulle(s) sur la vue « '+mepViewName(v)+' » — glissez-en une pour la placer.':'Bulles : aucune vue « Assemblage » sur la planche (panneau de la vue : Corps → Assemblage).');mepSideShow();},
+          'Une bulle par ligne de la nomenclature, sur la vue choisie'+(AV.length>1?' ci-dessus':' (vue « Assemblage »)')+' — remplace les bulles de la planche');
         mkBtn('Effacer les bulles',()=>{mepEdit('bulles',()=>{sh.balloons=[];});mepSideShow();},'Retire toutes les bulles de la planche');
         mkBtn(mepSt.blAdd?'＋ Bulle (actif)':'＋ Bulle',()=>{mepSt.blAdd=!mepSt.blAdd;
           mepStatus(mepSt.blAdd?'＋ Bulle : cliquez une pièce dans une vue « Assemblage » (Échap pour finir).':'＋ Bulle terminé.');mepSideShow();},
@@ -104006,6 +104052,22 @@ function filmFrame(){
       }
     }
     if(sh.bom&&sh.bom.on){
+      // V1.0.4 : colonnes affichées (REP. reste toujours : numéro des bulles)
+      {const cAll=mepBomCols(sh,null,true).filter(c=>c[2]!=='rep');
+       const hide=Array.isArray(sh.bom.hide)?sh.bom.hide:[];
+       r=rowEl();r.style.alignItems='flex-start';
+       const L=document.createElement('label');L.textContent='Colonnes';r.appendChild(L);
+       const box=document.createElement('div');box.id='mepBomCols';box.style.cssText='display:flex;flex-wrap:wrap;gap:2px 10px;flex:2';
+       cAll.forEach(([lab,,k])=>{
+         const it=document.createElement('label');it.style.cssText='flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;cursor:pointer;color:inherit';
+         const c=document.createElement('input');c.type='checkbox';c.checked=hide.indexOf(k)<0;c.setAttribute('data-col',k);
+         c.title='Afficher la colonne « '+lab+' » dans le tableau';
+         c.onchange=()=>{mepEdit('colonnes de la nomenclature',()=>{
+           const h=(Array.isArray(sh.bom.hide)?sh.bom.hide:[]).filter(x=>x!==k);if(!c.checked)h.push(k);
+           if(h.length)sh.bom.hide=h;else delete sh.bom.hide;});mepSideShow();};
+         it.appendChild(c);it.appendChild(document.createTextNode(String(lab).replace(/\s*\(mm\)$/,'')));box.appendChild(it);
+       });
+       r.appendChild(box);}
       mepBomRows(sh).forEach(q=>{
         r=rowEl();
         const L=document.createElement('label');L.textContent=q.rep+'. '+q.name+(q.qty>1?' ×'+q.qty:'');
@@ -104251,6 +104313,21 @@ function filmFrame(){
     }catch(e){}
     body.onchange=()=>{mepEdit('corps',()=>{v.asm=body.value==='__asm';v.bodyId=v.asm?null:(body.value||null);});};
     row('Corps',body);
+    // V1.0.4 : bulles automatiques sur CETTE vue (« il faudrait pouvoir choisir la vue par moi-même »)
+    if(v.asm&&asmPlanOn()){
+      const okBom=sh.bom&&sh.bom.on&&sh.bom.lvl&&sh.bom.lvl!=='corps';
+      const nb=(sh.balloons||[]).filter(b=>b.view===v.id).length;
+      const bB=document.createElement('button');bB.id='mepBlHere';bB.textContent='Bulles automatiques';
+      bB.disabled=!okBom;
+      bB.title=okBom?'Une bulle par ligne de la nomenclature, sur cette vue — remplace les bulles de la planche'
+        :'Cochez d’abord la nomenclature des composants (panneau de la planche : Nomenclature, Contenu « Composants »)';
+      bB.onclick=e=>{e.stopPropagation();let n=0;mepEdit('bulles',()=>{n=mepBalloonsAuto(sh,v.id);});
+        mepStatus(n+' bulle(s) sur la vue « '+mepViewName(v)+' » — glissez-en une pour la placer, Suppr la retire.');mepSideShow();};
+      const r=row('Bulles'+(nb?' ('+nb+')':''),bB);
+      if(nb){const bX=document.createElement('button');bX.textContent='Effacer';bX.title='Retire les bulles de cette vue';
+        bX.onclick=e=>{e.stopPropagation();mepEdit('bulles',()=>{sh.balloons=(sh.balloons||[]).filter(b=>b.view!==v.id);});mepSideShow();};
+        r.appendChild(bX);}
+    }
     // cases
     const mkChk=(lab,key,id,after)=>{
       const c=document.createElement('input');c.type='checkbox';c.checked=!!v[key];
@@ -105169,8 +105246,8 @@ function filmFrame(){
   // points d'entrée réservés aux tests automatisés (jamais activés dans l'app)
   if(window.__MEP_TEST_HOOKS__){
     window.__mepTest={
-      scaleLabel:sh=>mepSheetScaleLabel(sh),scaleText:s=>mepScaleText(s),scaleParse:t=>mepScaleParse(t),bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:sh=>mepBalloonsAuto(sh),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
-      drawRevs:(mk,sh,pd,ty)=>mepDrawRevs(mk,sh,pd,ty),drawBom:(mk,sh,pd,ty)=>mepDrawBom(mk,sh,pd,ty),holeFam:f=>mepHoleFam(f),cutAddBreak:(sh,v)=>mepCutAddBreak(sh,v),cutBreakAt:(sh,v,m,sG,c,r)=>mepCutBreakAt(sh,v,m,sG,c,r),cutFollow:sh=>mepCutFollowAll(sh),cutAutoRefs:(sh,v)=>mepCutAutoRefs(sh,v),cutDelBreak:(sh,v)=>mepCutDelBreak(sh,v),cutDelBreakAt:(sh,v,j,sG)=>mepCutDelBreakAt(sh,v,j,sG),cutBreakClick:(sh,v,m,sG)=>mepCutBreakClick(sh,v,m,sG),cutModel:v=>mepCutModel(v),prefsCollect:()=>mepPrefsCollect(),prefsApply:p=>mepPrefsApply(p),pageDim:sh=>mepPageDim(sh),
+      scaleLabel:sh=>mepSheetScaleLabel(sh),scaleText:s=>mepScaleText(s),scaleParse:t=>mepScaleParse(t),bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:(sh,vid)=>mepBalloonsAuto(sh,vid),viewName:v=>mepViewName(v),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
+      drawRevs:(mk,sh,pd,ty)=>mepDrawRevs(mk,sh,pd,ty),drawBom:(mk,sh,pd,ty)=>mepDrawBom(mk,sh,pd,ty),bomCols:(sh,all)=>mepBomCols(sh,null,all),sideView:(root,v)=>mepSideView(root,v,mepSheet()),sideHome:root=>mepSideHome(root,mepSheet()),holeFam:f=>mepHoleFam(f),cutAddBreak:(sh,v)=>mepCutAddBreak(sh,v),cutBreakAt:(sh,v,m,sG,c,r)=>mepCutBreakAt(sh,v,m,sG,c,r),cutFollow:sh=>mepCutFollowAll(sh),cutAutoRefs:(sh,v)=>mepCutAutoRefs(sh,v),cutDelBreak:(sh,v)=>mepCutDelBreak(sh,v),cutDelBreakAt:(sh,v,j,sG)=>mepCutDelBreakAt(sh,v,j,sG),cutBreakClick:(sh,v,m,sG)=>mepCutBreakClick(sh,v,m,sG),cutModel:v=>mepCutModel(v),prefsCollect:()=>mepPrefsCollect(),prefsApply:p=>mepPrefsApply(p),pageDim:sh=>mepPageDim(sh),
       titleTexts:sh=>{const t=[];const mk=(tag)=>{const o={textContent:''};if(tag==='text')t.push(o);return o;};mepDrawTitle(mk,sh,mepPage().pd,100);mepDrawRevs(mk,sh,mepPage().pd,100);mepDrawBom(mk,sh,mepPage().pd,100);return t.map(o=>o.textContent);},
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
         apply:(sh,id,keys)=>{mepSt.skSel=new Set(keys);mepSkApply(sh,id);},setVal:(sh,c,v)=>mepSkSetVal(sh,c,v),

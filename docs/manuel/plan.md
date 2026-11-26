@@ -13,12 +13,14 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
 - **Formats** A4 à A0, paysage ou portrait, ou format manuel ; plusieurs planches en onglets.
 - **Cadre** réglable (préréglages Justet, ISO 5457, Classique), **cartouche** dessiné en esquisse contrainte et éditable avec logo, **nomenclature** et tableau des révisions ; le **cartouche d'entreprise** peut venir d'un modèle externe, gardé hors du dépôt.
   - **Nomenclature au-dessus d'un cartouche dessiné** : son bord gauche suit le trait du cartouche, pas le cadre ; une mention écrite entre les deux (texte de confidentialité vertical) reste lisible. Une colonne **RÉFÉRENCE** s'ajoute après QTÉ dès qu'une pièce a une référence (titre fourni par le serveur de plans, ex. « RÉF. JUSTET ») ; la désignation et la matière se resserrent, le tableau garde sa largeur. Un texte trop long pour sa case est resserré pour y tenir. Une matière inconnue laisse la case vide (V0.99.80).
+  - **Colonnes au choix** : sous « Nomenclature », une case par colonne (QTÉ, référence, désignation, matière, dimensions) ; une colonne décochée disparaît et le tableau se resserre d'autant. REP. reste toujours : les bulles renvoient à son numéro.
 - **Écriture ISO 3098** et paramètres du plan enregistrés par projet (`.mfplan`).
 - **Paramètres et formules** dans les champs de la planche (format, cadre, révisions, tolérances, textes) : la formule reste affichée et la valeur suit les paramètres.
 
 ## Vues
 
 - **Face, projection, ISO, caméra, auxiliaire, coupe et détail**, par corps ou en assemblage (une hachure par pièce, bulles automatiques).
+  - **Bulles sur la vue de son choix** : cliquer une vue « Assemblage » puis « Bulles automatiques » dans son panneau (« Effacer » retire les siennes) ; dans le panneau de la planche, la liste « Vue des bulles » fait le même choix quand il y a plusieurs vues Assemblage. Une bulle par ligne de la nomenclature : celles d'avant sont remplacées.
   - **Assemblage** : à l'ouverture d'une planche vide, une seule vue de face de tout l'assemblage, avec tous ses composants (V0.94.8). Une pièce seule reçoit toujours face, dessus et côté.
 - **Orientation de la vue principale** : Face, Arrière, Côté gauche, Côté droit, Dessus, Dessous ; les projections suivent.
 - **Échelle d'une vue** : de 5:1 à 1:10, dont 3:4, 1:6 et 1:8 ; **Autre…** pour taper l'échelle de son choix (2:3, 1/7, 0,75). Le cartouche l'écrit en fraction (3:4, et non 1:1.33) (V0.95.7).
