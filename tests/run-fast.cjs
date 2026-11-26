@@ -85,6 +85,8 @@ const SUITES = [
   'test_fao_hsc_fagor',
   'test_fao_arcs_correction',
   'test_fao_contour_niveaux',
+  'test_fao_contour', // V1.0.1 : rapides, n'étaient que dans run.cjs (angle mort de npm run ci au « livre » de V1.0.0)
+  'test_fao_contour_vide',
   'test_simulation_rendu',
   'test_simulation_cartes',
   'test_fao_chanfrein',

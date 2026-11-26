@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**785 versions**, de `2026-09-28b` à `V1.0.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**786 versions**, de `2026-09-28b` à `V1.0.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8742,3 +8742,13 @@ Sert aussi à la révolution et au balayage (même constructeur de contour).
 - `test_fao_contour` (« dispatch : contour généré ») : le test comptait plus de 50 mouvements de coupe ; depuis les arcs G2 / G3 de V0.99.96, un quart de cercle n'est plus qu'un mouvement (37 ici, sans jamais toucher la paroi). Seuil ramené à 20.
 - Banc des parcours : 30 / 31 identiques ; écart accepté sur `Découpe 3 tailles.conceptcad › 1. Contour` : la fraise ne descend plus sur la passe extérieure, toute dans le vide, à chaque niveau (mouvements 217 → 199, rapides −8 %, remontées 21 → 18, coupe dans l'air −1,7 %).
 - `test_fao_contour_niveaux` : +4 contrôles (tout vide, niveau du dessus vide par l'arc d'entrée, matière dès le bas de la plongée sur place).
+
+## V1.0.1 - Les 2 tests du Contour FAO rejoignent les tests rapides
+
+Demande de Fred (« J'ajoute les 2 tests Contour aux tests rapides pour la prochaine version ? » — « Oui, ajoute-les »).
+
+**Cause** : `test_fao_contour` et `test_fao_contour_vide` (moins d'une seconde chacune) n'étaient inscrites que dans `tests/run.cjs`. Les retouches du Contour en V0.99.96 et V0.99.97 les avaient cassées sans que `npm run ci` le voie : seule la suite complète du « livre » de V1.0.0 l'a relevé.
+
+**Correctif** : les deux suites ajoutées à `tests/run-fast.cjs`, à côté de `test_fao_contour_niveaux`. `npm run ci` les lance désormais dès que le Contour FAO est touché. Aucun changement dans l'application.
+
+**Test** : `node build.js --check` ; `npm run ci` vert ; les 2 suites lancées seules, conformes ; retouche d'essai de `faoContourTrimAir` (annulée ensuite) : `node tests/run-cible.cjs --liste` choisit bien `test_fao_contour_niveaux`, `test_fao_contour` et `test_fao_contour_vide`. CACHE_VER et FORMES_VER inchangés.
