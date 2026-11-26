@@ -85,6 +85,7 @@ Manuel : [Esquisse](docs/manuel/esquisse.md) · [Fonctions 3D](docs/manuel/fonct
 ## Assemblage
 
 <img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/0b4f3081-757d-484e-b730-92943895d7a7" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e775dd9d-c943-4608-9c59-574f40386ff3" />
 
 - **Tout est composant**, comme dans Fusion 360 : pièces, sous-ensembles, fichiers liés ou dérivés, à n'importe quelle profondeur.
 - **Relations entre faces** : face contre face, cylindre dans cylindre, tangente, angle, parallèle. Elles sont gardées dans un historique d'étapes qu'on peut modifier.
