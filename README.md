@@ -84,7 +84,7 @@ Manuel : [Esquisse](docs/manuel/esquisse.md) · [Fonctions 3D](docs/manuel/fonct
 
 ## Assemblage
 
-![Assemblage : paire d'engrenages hélicoïdaux, couronne et crémaillère, ruban des composants](docs/captures/assemblage-engrenages.png)
+<img width="1920" height="1080" alt="5" src="https://github.com/user-attachments/assets/e473fccf-42eb-421b-a594-ba76a1db8375" />
 
 - **Tout est composant**, comme dans Fusion 360 : pièces, sous-ensembles, fichiers liés ou dérivés, à n'importe quelle profondeur.
 - **Relations entre faces** : face contre face, cylindre dans cylindre, tangente, angle, parallèle. Elles sont gardées dans un historique d'étapes qu'on peut modifier.
