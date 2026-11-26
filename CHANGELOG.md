@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**799 versions**, de `2026-09-28b` à `V1.0.14` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**800 versions**, de `2026-09-28b` à `V1.0.15` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8910,3 +8910,18 @@ Fred : « Quand on a des cotes avec un axe de symétrie évident, généralement
 - `src/98-mep-80-souris.js` : clic droit d'une cote symétrique « Cotes d'égalité « = » de part et d'autre de l'axe » ; sur une cote « = » : « Retirer les cotes « = » » (pas de changement d'orientation, qui les désalignerait) ; Suppr enlève les deux ; `src/98-mep-85-cote-unique.js` mepDimMoveTo : la voisine suit.
 
 **Test** : `test_mep_egalites` (nouveau, inscrit dans run et run-fast, 24 contrôles) : pièce en U et 2 axes, cotes 60, 20, longueur d'arête et verticale 30 reconnues, 0 → 40 non ; clic droit, points pleins sans flèche, « = », 10 + 10, ligne entre la pièce et la cote ou au-delà quand l'entre-deux est pris ; bouton sur toute la planche (3 cotes, 6 « = »), pas de double au 2ᵉ appui ; glisser, clic droit sur une moitié, pièce modifiée (9 + 11), enregistrement, Suppr. Sur V1.0.13 : échec. Dans le navigateur, sur Support Pédale : sans axe au milieu, le bouton ne pose rien et le dit ; axe ajouté au milieu de la cote 32 → bouton → 16 « = » 16 entre la pièce et la 32, points pleins ; une moitié glissée, l'autre suit ; clic droit « Retirer les cotes « = » » ; export DXF avec les points et les « = » ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.15 - Mise en plan : cadres de tolérance empilés (2ᵉ et 3ᵉ sous le premier) ; arête entière allumée en mode Symétrie des axes
+
+Fred : « Pouvoir empiler/ajouter une autre tolérance géométrique en dessous une existante. Le menu permet la création d'un 2nd et une 3ème » ; « L'illumination des arêtes ne fonctionne pas avec la fonction Symétrie des Axes »
+
+**Avant** : un cadre de tolérance était toujours seul ; pour en mettre 2 sur le même élément, il fallait poser un 2ᵉ cadre à flèche et l'aligner à l'œil sous le premier. En mode Symétrie de l'outil Axes, quand l'arête visée était faite de plusieurs morceaux superposés ou bout à bout (cas courant dans une vue), seul le petit morceau sous la souris s'allumait, au survol comme après la création.
+
+**Nouveau** :
+- `src/98-mep-72-tolerances-geometriques.js` : d.under = cadre du dessus ; mepGdtStack (pile de haut en bas), mepGdtBoxCalc (cadre empilé collé sous celui du dessus, sans flèche, aligné à gauche — ou à droite quand la flèche du 1er part de la droite ; sous la valeur d'une cote : même bord gauche), mepGdtStackAdd (3 cadres au plus), mepGdtCtx (clic droit sur un cadre : « Ajouter un cadre en dessous (2ᵉ / 3ᵉ) », « Supprimer ce cadre », titre « cadre i / n »), mepDimsWithout (Suppr du 1er : toute la pile part ; d'un cadre du milieu : celui d'en dessous remonte ; Suppr d'une cote : son cadre et sa pile partent) ; panneau : « Cadre i / n de la pile », bouton « + Cadre en dessous » ; chaque cadre garde ses propres réglages ;
+- `src/98-mep-80-souris.js` : clic droit sur un cadre → son menu ; saisir un cadre empilé fait glisser toute la pile (le cadre cliqué reste désigné) ; `src/98-mep-85-cote-unique.js` : un cadre empilé ne part pas seul ; duplication de planche (`98-mep-30`) et suppression en lot (`98-mep-40`) suivent la pile.
+
+**Correctif** :
+- `src/98-mep-74-axes-sources.js` mepAxisSrcEdge : en mode Symétrie, l'arête allumée est prolongée à tous les traits alignés qui la touchent ou la recouvrent — l'arête entière s'allume au survol, après la création et à la sélection de l'axe.
+
+**Test** : `test_mep_tolerances_pile` (nouveau, inscrit dans run et run-fast, 21 contrôles) : clic droit, 2ᵉ puis 3ᵉ cadre collés et alignés, sans flèche, réglages à part, plus d'« Ajouter » à 3, glisser le 3ᵉ déplace la pile, enregistrement, Suppr du milieu et du 1er, pile sous la valeur d'une cote, flèche à droite → alignés à droite. Sur V1.0.14 : 9 échecs. `test_mep_axes_sources` +3 contrôles (arête en 3 morceaux superposés et bout à bout : survol, création, sélection ; V1.0.14 : échec). Dans le navigateur, sur Support Pédale : cadre posé sur l'arête de la vue de face, clic droit → 2ᵉ puis 3ᵉ, le 3ᵉ glissé emporte la pile (flèche toujours perpendiculaire), Suppr du 1er retire tout, Ctrl+Z ramène les 3 ; arête entière allumée en Symétrie ; aucune erreur. CACHE_VER et FORMES_VER inchangés.

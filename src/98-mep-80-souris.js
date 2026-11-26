@@ -303,6 +303,8 @@
       mepStatus('Cassure : glissez pour dégager la valeur (Ctrl + clic sans glisser : la retire).');
       mepSideShow();mepRender();return;
     }
+    // cadre de tolérance empilé : glisser déplace toute la pile (son 1er cadre), il reste désigné
+    if(dim.kind==='gdt'&&dim.under){const r=mepGdtStack(sh,dim)[0];if(r&&r!==dim)dim=r;}
     const w=mepDimWorld(sh,dim);
     const tp=mepDimTextPos(sh,dim);
     let labelHit=!!tp&&Math.hypot(P.x-tp.x,P.y-tp.y)<=18/(mepSt.zoom||1);
@@ -1066,7 +1068,7 @@
         mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
       }
       if(mepSt.selDim){
-        mepEdit('suppression cote',()=>{const id=mepSt.selDim,eq=(sh.dims.find(d=>d.id===id)||{}).eq;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id&&!(eq&&d.eq===eq));mepSt.selDim=null;}); // avec ses tolérances accrochées ; cote « = » : avec sa voisine
+        mepEdit('suppression cote',()=>{const id=mepSt.selDim,eq=(sh.dims.find(d=>d.id===id)||{}).eq;sh.dims=mepDimsWithout(sh,id).filter(d=>!(eq&&d.eq===eq));mepSt.selDim=null;}); // avec ses tolérances accrochées et les cadres empilés dessous ; cote « = » : avec sa voisine
         mepSideShow();
         ev.preventDefault();ev.stopPropagation();
         return;
@@ -1543,6 +1545,7 @@
     if(snapCtx&&mepSt.chain){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;} // chaîne : accrochage seul
     const P=mepPt(ev),d=mepSt.dim?null:mepDimAt(sh,P.x,P.y);
     if(d&&d.kind==='ord'&&!snapCtx&&!mepSt.dim){mepOrdCtx(sh,d,P,ev);return;} // valeur d'ordonnée : cote de référence, suppression (98-mep-70)
+    if(d&&d.kind==='gdt'&&!snapCtx&&!mepSt.dim){mepGdtCtx(sh,d,ev);return;} // cadre de tolérance : en empiler un autre dessous (98-mep-72)
     if(!mepSt.dim&&!snapCtx&&!canCtx(d)&&mepLocCtx(sh,P,ev))return; // coupe locale : menu de la forme
     if(snapCtx&&!canCtx(d)){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;}
     if(canCtx(d)){

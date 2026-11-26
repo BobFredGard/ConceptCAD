@@ -111,7 +111,7 @@ const SUITES = [
   'test_mep_oblong',
   'test_mep_oblong_arc',
   'test_mep_tolerances',
-  'test_mep_tolerances_fleche','test_mep_egalites',
+  'test_mep_tolerances_fleche','test_mep_egalites','test_mep_tolerances_pile',
   'test_mep_oblong_reel',
   'test_mep_axes_planche',
   'test_mep_axes_sources',

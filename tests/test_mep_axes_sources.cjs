@@ -98,6 +98,23 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
       o.segCote=T.axisSrcMatch(vB,{rev:{o:[0,0,0],d:[0,1,0],t0:0,t1:25,r:2.5,rs:[2.5]}}).join();
       o.segBout=T.axisSrcMatch(vB,{rev:{o:[40,0,0],d:[0,0,1],t0:0,t1:5,r:2.5,rs:[2.5]}}).join();
       sh.views.splice(sh.views.indexOf(vB),1);
+      // 9c. « L'illumination des arêtes ne fonctionne pas avec la fonction Symétrie des Axes » : arête faite
+      //     d'un long trait et de morceaux posés dessus (comme Support Pédale) — toute l'arête s'allume
+      const vS={id:'vS',kind:'base',dir:[0,0,1],u:[1,0,0],v:[0,1,0],x:500,y:100,scale:1,mode:'hide',tangent:false,flip:false,axes:[]};
+      sh.views.push(vS);
+      T.setViewGeo(vS,{src:'dxf',els:[
+        {t:'L',x1:0,y1:0,x2:0,y2:40},{t:'L',x1:0,y1:10,x2:0,y2:20},{t:'L',x1:0,y1:40,x2:0,y2:50}, // 0-2 arête gauche : long, morceau dessus, suite qui touche
+        {t:'L',x1:0,y1:60,x2:0,y2:70}, // 3 alignée mais après un vide : pas la même arête
+        {t:'L',x1:20,y1:0,x2:20,y2:50},{t:'L',x1:20,y1:20,x2:20,y2:30}, // 4-5 arête droite et son morceau
+        {t:'L',x1:0.5,y1:0,x2:0.5,y2:50}]}); // 6 parallèle tout près, pas alignée
+      T.selAxis(null);T.setAxisMode('sym');
+      T.axisHover({x:500,y:115});o.symHovEdge=T.axisSrc(vS).join();
+      T.axisClick({x:500,y:115});T.axisClick({x:520,y:125});
+      T.axisHover({x:600,y:300});o.symNewEdge=T.axisSrc(vS).join();
+      mepSetTool('select');
+      const axS=vS.axes[vS.axes.length-1];o.symSelEdge=axS&&axS.kind==='sym'?(T.selAxis({vid:vS.id,id:axS.id,ak:'m'+axS.id+'.0'}),T.axisSrc(vS).join()):'';
+      T.selAxis(null);
+      sh.views.splice(sh.views.indexOf(vS),1);
       // 10. export (SVG, PDF, impression) : le halo ne sort jamais
       const gone=[],node={parentNode:{removeChild:n=>gone.push(n)}};
       const clone={style:{setProperty(){},removeProperty(){}},querySelectorAll:s=>String(s).split(',').indexOf('.mepAxisSrc')>=0?[node]:[]};
@@ -132,6 +149,9 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     A(r.revBout.split(',').indexOf('0')>=0&&r.revBout.split(',').indexOf('2')>=0&&r.revBout.split(',').indexOf('4')<0,'révolution de côté : arêtes vues par la tranche aux 2 bouts, pas les droites hors rayon');
     A(r.segCote==='0,1,2,3,5','de côté : sortie en petits segments au bout et génératrice ; pas un trou en travers au milieu');
     A(r.segBout==='6,7,9','de bout : cercle dessiné en segments ou en polyligne ; pas un trait partant du centre');
+    A(r.symHovEdge==='0,1,2','Symétrie, survol d’un morceau d’arête : toute l’arête alignée s’allume (pas la partie après un vide, ni la parallèle voisine) — '+r.symHovEdge);
+    A(r.symNewEdge==='0,1,2,4,5','Symétrie, axe créé : ses 2 arêtes entières restent allumées — '+r.symNewEdge);
+    A(r.symSelEdge==='0,1,2,4,5','axe de symétrie sélectionné ensuite : ses 2 arêtes entières — '+r.symSelEdge);
     A(r.export===1,'export : le halo est retiré');
   }
   // ───────── partie 2 : vrai noyau

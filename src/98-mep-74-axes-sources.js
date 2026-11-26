@@ -90,18 +90,43 @@
     }
     return out.filter(Boolean);
   }
+  /* 2026-11-26 (Fred : « L'illumination des arêtes ne fonctionne pas avec la fonction Symétrie des Axes ») :
+     une arête vue est souvent faite de plusieurs traits alignés — un long et des morceaux posés dessus
+     (Support Pédale : x = −15, de 5,55 à 49, plus 28 → 37 et 5,55 → 8). Le survol tombait sur un morceau
+     de 9 mm : seul lui s'allumait. Une droite choisie allume toute l'arête : les traits alignés qui
+     touchent ou chevauchent, de proche en proche (pas ceux séparés par un vide). */
+  function mepAxisSrcEdge(els,idx){
+    const out=new Set(idx);
+    idx.forEach(i=>{
+      const e=els[i];if(!e||e.t!=='L')return;
+      const dx=e.x2-e.x1,dy=e.y2-e.y1,L=Math.hypot(dx,dy);if(L<1e-9)return;
+      const ux=dx/L,uy=dy/L,tol=Math.max(1e-3,L*1e-5);
+      const off=(x,y)=>Math.abs((x-e.x1)*uy-(y-e.y1)*ux),t=(x,y)=>(x-e.x1)*ux+(y-e.y1)*uy;
+      const cand=[];els.forEach((f,j)=>{if(f&&f.t==='L'&&!out.has(j)&&off(f.x1,f.y1)<tol&&off(f.x2,f.y2)<tol)cand.push(j);});
+      let lo=0,hi=L,grow=true;
+      while(grow){
+        grow=false;
+        cand.forEach(j=>{
+          if(out.has(j))return;
+          const f=els[j],a=t(f.x1,f.y1),b=t(f.x2,f.y2),m=Math.min(a,b),M=Math.max(a,b);
+          if(M>=lo-tol&&m<=hi+tol){out.add(j);lo=Math.min(lo,m);hi=Math.max(hi,M);grow=true;}
+        });
+      }
+    });
+    return [...out];
+  }
   // n° des traits de la vue qui correspondent à une source
   function mepAxisSrcMatch(sh,v,els,s){
     const out=[];
     if(s.el){
-      const i=els.indexOf(s.el);if(i>=0)return[i];
+      const i=els.indexOf(s.el);if(i>=0)return mepAxisSrcEdge(els,[i]);
       const q=s.el,n=(a,b)=>Math.abs(a-b)<=1e-6;
       els.forEach((e,j)=>{if(e.t==='L'&&q.t==='L'&&((n(e.x1,q.x1)&&n(e.y1,q.y1)&&n(e.x2,q.x2)&&n(e.y2,q.y2))||(n(e.x1,q.x2)&&n(e.y1,q.y2)&&n(e.x2,q.x1)&&n(e.y2,q.y1))))out.push(j);});
-      return out;
+      return mepAxisSrcEdge(els,out);
     }
     if(s.pair){ // même appariement que l'axe : sans paire retrouvée, l'axe garde sa dernière position, rien à souligner
       const pr=mepAxisTrackPair(mepGeoOf(v),s.pair[0],s.pair[1]);
-      return pr?pr.map(e=>els.indexOf(e)).filter(i=>i>=0):[];
+      return pr?mepAxisSrcEdge(els,pr.map(e=>els.indexOf(e)).filter(i=>i>=0)):[];
     }
     if(s.slot){
       mepSlotsOf(v).forEach(q=>{if(mepSlotSameCenters(q,s.slot,0.01))out.push(...q.ia,...q.ib,...q.il);});

@@ -20,7 +20,7 @@
         if(v.section)v.section.pid=idMap[v.section.pid]||null;});
       const dMap={};
       c.dims.forEach(d=>{const nid=mepUid('d');dMap[d.id]=nid;d.id=nid;d.vid=idMap[d.vid]||d.vid;if(d.vid2)d.vid2=idMap[d.vid2]||d.vid2;});
-      c.dims.forEach(d=>{if(d.on)d.on=dMap[d.on]||d.on;}); // tolérances accrochées à une cote
+      c.dims.forEach(d=>{if(d.on)d.on=dMap[d.on]||d.on;if(d.under)d.under=dMap[d.under]||d.under;if(d.eqOf)d.eqOf=dMap[d.eqOf]||d.eqOf;}); // tolérances accrochées à une cote, cadres empilés, cotes « = »
       ns.views=c.views;ns.dims=c.dims;ns.sk=c.sk;
       doc.mep.sheets.splice(doc.mep.cur+1,0,ns);
       doc.mep.cur++;
