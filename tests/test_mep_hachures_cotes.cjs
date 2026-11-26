@@ -120,7 +120,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
         out.ordPick=red===1&&redT>=1&&redT<rS.texts.length&&rJ.lines.length===n0+2;out.ordPickDbg=red+'/'+redT+' traits rouges, '+n0+'→'+rJ.lines.length+' traits avec cassure';
         // perçage : tolérance posée après le 1er Ø de l'étiquette
         out.holeTol=[T.holeTolText('Ø8 ↧12',{m:'cls',cls:'H7'}),T.holeTolText('M10×1.25 ↧18\\nØ8.5 ↧25',{m:'pm',s:0.05}),
-          T.holeTolText('Ø6.6 déb.',{m:'dbl',hi:0.1,lo:-0.05}),T.holeTolText('Ø6.6 déb.',null)].join(' | ');
+          T.holeTolText('Ø6.6 déb.',{m:'dbl',hi:0.1,lo:-0.05}),T.holeTolText('Ø6.6 déb.',null),
+          T.holeTolText('Ø7 déb.\\nLamage Ø15 ↧3.5',{m:'cls',cls:'H7'},1),T.holeTolText('Ø7 déb.',{m:'cls',cls:'H7'},1)].join(' | ');
         sh.dims.length=nD0;
         // ── 1f. note à flèche : texte libre multiligne souligné, flèche sur la pointe
         const dN={id:'__dN__',kind:'note',vid:par.id,vid2:null,a:{x:50,y:-30},b:{x:80,y:-50},off:0,txt:'REPÈRE A\\nTrempé'};
@@ -261,7 +262,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   A(r.ordDel==='0,100,50|1|-1|true|false|0,100','ordonnées : le clic désigne la valeur la plus proche, seule elle est supprimée (l’origine reste)');
   console.log('  · ordonnées, tolérance d’un point : '+r.ordTol+' ; perçage : '+r.holeTol);
   A(r.ordTol==='0,100 H7,+0,.035,0,(,)','ordonnées : tolérance H7 sur une seule valeur (écarts entre parenthèses, alignés sur la virgule depuis V0.24.0 : « +0 » et « .035 »), l’origine reste nue');
-  A(r.holeTol==='Ø8 H7 (+0.015 / 0) ↧12 | M10×1.25 ↧18\nØ8.5 ±0.05 ↧25 | Ø6.6 +0.1 / −0.05 déb. | Ø6.6 déb.','perçage : tolérance après le Ø (classe ISO, ±, double), rien sans tolérance');
+  A(r.holeTol==='Ø8 H7 (+0.015 / 0) ↧12 | M10×1.25 ↧18\nØ8.5 ±0.05 ↧25 | Ø6.6 +0.1 / −0.05 déb. | Ø6.6 déb. | Ø7 déb.\nLamage Ø15 H7 (+0.018 / 0) ↧3.5 | Ø7 H7 (+0.015 / 0) déb.','perçage : tolérance après le Ø (classe ISO, ±, double), rien sans tolérance ; sur le 2e Ø (lamage) au choix, retour au 1er s’il n’existe plus');
   A(r.ordAdd==='0|1','ordonnées : groupe sélectionné + outil Ordonnées → la valeur s’AJOUTE au groupe (pas de nouveau « 0 »)');
   A(r.ordNeg==='0,65','ordonnées : jamais de valeur négative (point du côté opposé : 65, pas −65)');
   A(r.ordY==='0,65'&&r.ordN===2,'ordonnées Y : « 0 » puis 65 (vers le haut) ; une cote par groupe');

@@ -710,6 +710,9 @@
         while(grew){grew=false;sh.views.forEach(v=>{if(v.parent&&gone.has(v.parent)&&!gone.has(v.id)){gone.add(v.id);grew=true;}});}
         sh.views=sh.views.filter(v=>!gone.has(v.id));
         sh.dims=sh.dims.filter(d=>!lot.dims.has(d.id)&&!gone.has(d.vid)&&!gone.has(d.vid2));
+        // cadres de tolérance empilés sous un cadre retiré : partent avec lui (98-mep-72)
+        let orph=true;
+        while(orph){const ids=new Set(sh.dims.map(d=>d.id)),n0=sh.dims.length;sh.dims=sh.dims.filter(d=>!(d.under&&!ids.has(d.under)));orph=sh.dims.length!==n0;}
       }
       if(sk&&ns)mepSkDelRaw(sk);
     });

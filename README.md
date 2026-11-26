@@ -12,7 +12,7 @@ Ou installez-le depuis le site, dans Chrome ou Edge : icône d’installation de
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Version actuelle : **V1.0.0** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+Version actuelle : **V1.0.16** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
 
 > **V1.0.0, la première version stable.** Les programmes d'usinage ont été essayés sur une vraie machine, une **Fagor 8065**. Les dernières versions n'ont corrigé que de tous petits défauts relevés pendant ces essais.
 
@@ -84,7 +84,8 @@ Manuel : [Esquisse](docs/manuel/esquisse.md) · [Fonctions 3D](docs/manuel/fonct
 
 ## Assemblage
 
-![Assemblage : paire d'engrenages hélicoïdaux, couronne et crémaillère, ruban des composants](docs/captures/assemblage-engrenages.png)
+<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/0b4f3081-757d-484e-b730-92943895d7a7" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e775dd9d-c943-4608-9c59-574f40386ff3" />
 
 - **Tout est composant**, comme dans Fusion 360 : pièces, sous-ensembles, fichiers liés ou dérivés, à n'importe quelle profondeur.
 - **Relations entre faces** : face contre face, cylindre dans cylindre, tangente, angle, parallèle. Elles sont gardées dans un historique d'étapes qu'on peut modifier.
@@ -103,6 +104,8 @@ Manuel : [Assemblage](docs/manuel/assemblage.md)
 ## FAO
 
 ![Espace FAO : programme complet taillé dans le brut, avec l'outil réel](docs/captures/fao-simulation.png)
+<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/de37d709-c522-429b-97ca-d59a566261c9" />
+<img width="1920" height="1080" alt="2" src="https://github.com/user-attachments/assets/62479a0a-4410-4c53-a308-43f16214ff06" />
 
 - **Posages** : repère d'usinage sur un des 27 points du brut ou du modèle. Brut en boîte, en cylindre ou en vrai corps. Usinage **3+2**.
 - **Opérations** :
@@ -123,7 +126,7 @@ Manuel : [FAO](docs/manuel/fao.md)
 
 ## PLAN
 
-![Espace PLAN : planche A4 du Crochet, vues, cotes, perçages et vue 3D](docs/captures/plan-crochet.png)
+<img width="1920" height="1080" alt="3" src="https://github.com/user-attachments/assets/91c1d94c-f159-4308-b191-a6ce34b57b77" />
 
 - **Planches** A4 à A0, cartouche dessiné, nomenclature.
 - **Vues aux arêtes exactes**, calculées sur plusieurs cœurs : face, projections, ISO, caméra, auxiliaire, **coupe** (même brisée), détail, coupe locale. On peut aussi importer un DXF.
@@ -138,7 +141,7 @@ Manuel : [PLAN](docs/manuel/plan.md)
 
 ## RENDU
 
-![Atelier RENDU : moteur, ambiance, fond et sol, appareil photo](docs/captures/rendu-atelier.png)
+<img width="1920" height="1080" alt="4" src="https://github.com/user-attachments/assets/a29a75e0-584c-488b-aac4-f0fd58b119f9" />
 
 - Images réalistes en 1920×1080 ou en 4K.
 - **Deux moteurs** : rapide, ou lancer de rayons (reflets entre pièces, vrai verre).

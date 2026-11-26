@@ -216,6 +216,7 @@ function asmPivotPick(cg,name){
   try{asmDraw();renderTree();renderProps();}catch(e){}
 }
 function asmFit(){
+  if(viewSavedTake())return; // V1.0.7 : vue enregistrée dans le fichier ouvert (10-scene-3d)
   const S=asmSceneGet(),box=new THREE.Box3();
   S.getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});
   try{viewUpReset();}catch(e){}
@@ -548,7 +549,7 @@ function asmRenderProps(p){
     return;
   }
   const cc=asmComp(o.comp)||{};
-  H('📦 '+o.name);
+  H(' '+o.name).insertAdjacentHTML('afterbegin',asmCompIcon(cc)); // V1.0.6 : dessin de la pièce normalisée (48-composants-icones)
   Note('Composant « '+cc.name+' » · '+asmCompOccs(o.comp).length+' occurrence(s)'+(cc.occ&&cc.occ.length?' · '+cc.occ.length+' sous-composant(s)':''));
   if(cc.link)Note('🔗 Lié à '+(cc.link.rel||cc.link.name)+(asmLinkDirty(cc)?' · ✎ modifié ici (écrit à l’enregistrement)':'')+(cc.link.st==='warn'?' · ⚠ '+cc.link.msg:''));
   else if(cc.of)Note('🔗 Fait partie d’un composant lié.');

@@ -132,6 +132,24 @@ async function mffBackup(h,old){
   }catch(e){}
   return out;
 }
+/* V1.0.2 : fichier bloqué un instant par un autre logiciel (synchronisation Dropbox, antivirus,
+   serveur qui relit le fichier juste après l'enregistrement précédent) : le remplacement de
+   l'original échouait (« accès refusé », « utilisé par un autre processus ») et seul « Enregistrer
+   sous » passait. L'écriture est retentée après ces pauses (ms) avant d'abandonner ; l'original
+   reste intact entre deux essais (fichier d'échange). Permission refusée : pas de nouvel essai. */
+let MFF_ESSAIS=[150,400,900];
+async function mffEcrire(h,bin){
+  for(let i=0;;i++){
+    let w=null;
+    try{w=await h.createWritable();await w.write(bin);await w.close();return;}
+    catch(e){
+      if(w)try{await w.abort();}catch(e2){}
+      const nom=e&&e.name;
+      if(i>=MFF_ESSAIS.length||nom==='NotAllowedError'||nom==='SecurityError'||nom==='AbortError')throw e;
+      await new Promise(r=>setTimeout(r,MFF_ESSAIS[i]));
+    }
+  }
+}
 async function mffWriteSafe(h,data,opt){
   // → {bak:{disk,idb}} ; lève une erreur si rien n'a été écrit (l'original est alors intact)
   const bad=mffCheckData(data);if(bad)throw new Error('enregistrement annulé : '+bad+' — le fichier sur le disque n’a pas été touché');
@@ -139,9 +157,7 @@ async function mffWriteSafe(h,data,opt){
   let bak={disk:'',idb:false};
   if(old&&old!==data&&!(opt&&opt.noBak))bak=await mffBackup(h,old);
   const bin=await mffPack(data);
-  const w=await h.createWritable();
-  try{await w.write(bin);await w.close();}
-  catch(e){try{await w.abort();}catch(e2){}throw e;}
+  await mffEcrire(h,bin);
   // relecture : le fichier écrit doit avoir la bonne taille ET redonner exactement le projet
   // (jamais vide ni abîmé) ; sinon la version précédente est remise
   try{
@@ -151,7 +167,7 @@ async function mffWriteSafe(h,data,opt){
     else{let back=null;try{back=await mffFileText(f);}catch(e){back=null;}
       if(back!==null&&back!==data)why=back.length?'contenu relu différent':'fichier vide';}
     if(why){
-      if(old){const w2=await h.createWritable();await w2.write(await mffPack(old));await w2.close();}
+      if(old)await mffEcrire(h,await mffPack(old));
       throw new Error('relecture : '+why+(old?' — version précédente remise':''));
     }
   }catch(e){if(/relecture/.test(e&&e.message||''))throw e;}
@@ -184,10 +200,27 @@ async function mffBakMenu(anchor){
   mfPop(anchor,items);
 }
 function mffBase(n){return String(n||'').replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');}
-async function mffSave(){
-  // true si enregistré
+/* ---- un seul enregistrement à la fois (V1.0.2) ----
+   Deux enregistrements qui se chevauchaient (Ctrl+S appuyé deux fois pendant qu'une grosse pièce
+   s'enregistre, ou bouton + raccourci) : la relecture du premier tombait sur le fichier écrit par
+   le second, le croyait abîmé, remettait l'ANCIENNE version et ouvrait « Enregistrer sous » ; le
+   second annonçait « Enregistré » sur un disque qui avait la version d'avant. Les enregistrements
+   passent désormais l'un après l'autre ; celui qui a attendu ne réécrit pas une pièce que le
+   précédent vient d'enregistrer sans changement depuis. */
+let mffFile=Promise.resolve(),mffEnCours=0;
+function mffSerie(fn){
+  const attendu=mffEnCours>0;mffEnCours++;
+  const p=mffFile.then(()=>fn(attendu));
+  mffFile=p.then(()=>{mffEnCours--;},()=>{mffEnCours--;});
+  return p;
+}
+function mffSave(){return mffSerie(mffSaveNow);} // true si enregistré
+function mffSaveAs(){return mffSerie(()=>mffSaveAsNow());}
+async function mffSaveNow(attendu){
+  if(attendu&&mffHandle&&!mffModified())return true; // le précédent vient de l'enregistrer
   if(mffHandle&&(MFF_FS||typeof mffHandle.createWritable==='function')){ // un lien qui sait écrire suffit
     try{
+      try{faceEl.textContent='Enregistrement de '+mffHandle.name+'…';}catch(e){}
       if(!(await mffPerm(mffHandle,'readwrite')))throw new Error('permission refusée');
       const r=await mffWrite(mffHandle);fileHandle=mffHandle;mffMark();mffRecentAdd(mffHandle);
       try{autosave();}catch(e){}
@@ -196,9 +229,9 @@ async function mffSave(){
       return true;
     }catch(e){try{faceEl.textContent='Enregistrement impossible ('+(e&&e.message||e)+') — « Enregistrer sous… ».';}catch(e2){}}
   }
-  return await mffSaveAs();
+  return await mffSaveAsNow();
 }
-async function mffSaveAs(){
+async function mffSaveAsNow(){
   const fname=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad';
   if(MFF_FS&&window.showSaveFilePicker){
     try{
@@ -313,7 +346,7 @@ async function mffFolderPanel(){
     const ch=document.createElement('button');ch.textContent=mffFolder?'Changer de dossier…':'Choisir un dossier…';ch.onclick=async()=>{if(await mffFolderChoose())draw();};bar.appendChild(ch);
     if(mffFolder){const sv=document.createElement('button');sv.className='primary';sv.textContent='Enregistrer ici';sv.title='Enregistrer la pièce courante dans ce dossier';
       sv.onclick=async()=>{const nm=prompt('Nom du fichier :',(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_'));if(!nm)return;
-        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
+        await mffSerie(async()=>{try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}});};
       bar.appendChild(sv);}
     body.appendChild(bar);
     if(!mffFolder){const n=document.createElement('div');n.className='mffNote';n.textContent='Choisissez le dossier où vous rangez vos pièces : la liste de ses projets apparaîtra ici (double-clic pour ouvrir).';body.appendChild(n);return;}
@@ -390,7 +423,8 @@ function mffCss(){
     // raccourcis : Ctrl+S, Ctrl+Maj+S, Ctrl+O
     document.addEventListener('keydown',e=>{
       if(!(e.ctrlKey||e.metaKey))return;const k=(e.key||'').toLowerCase();
-      if(k==='s'){e.preventDefault();e.stopPropagation();(e.shiftKey?mffSaveAs:mffSave)();}
+      // V1.0.2 : touche maintenue (répétition du clavier) = un seul enregistrement
+      if(k==='s'){e.preventDefault();e.stopPropagation();if(!e.repeat)(e.shiftKey?mffSaveAs:mffSave)();}
       else if(k==='o'){e.preventDefault();e.stopPropagation();mffOpen();}
     },true);
     mffFolderLoad();

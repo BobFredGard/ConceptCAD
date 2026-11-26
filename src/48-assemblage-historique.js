@@ -152,6 +152,7 @@ function asmHistName(c,s){
 function asmHistIcon(c,s){
   if(s.k==='rel'){const o=asmHistOcc(c,s),L=o?((o._histReal?o._histReal.cons:o.cons)||[]):[],k=L.find(r=>r.id===s.rel);
     return '🧲<small>'+(k&&ASM_CONS[k.t]?ASM_CONS[k.t].ic:'')+'</small>';}
+  if(s.k==='ins'){const o=asmHistOcc(c,s);return asmCompIcon(o&&asmComp(o.comp));} // V1.0.6 : vis, goupille… dessinée (48-composants-icones)
   return ASM_HIST_K[s.k].ic;
 }
 let asmHistSel=null; // V0.99.40 : étape choisie dans la barre (id) — Suppr la supprime tant qu'on n'a pas cliqué ailleurs
@@ -236,6 +237,7 @@ function asmTlHost(){
       'body.ui-modern[data-ws="cao"][data-asm="1"]:not(.mf-sk) #asmTl{display:flex}'+
       'body.ui-modern[data-ws="cao"][data-asm="1"] #treeOverlay{max-height:calc(100% - 108px)}'+
       '#asmTl .tlbS small{font-size:.62rem;margin-left:1px;opacity:.8}'+
+      '#asmTl .tlbS svg.stdIc{width:1.5em;height:1.5em}'+ // V1.0.6 : dessin d'une pièce normalisée, un peu plus grand que dans l'arbre
       '#asmTl .tlbS.k-rel{background:rgba(10,132,255,.13)}#asmTl .tlbS.k-move{border-style:dashed}#asmTl .tlbS.k-pat{background:rgba(48,209,88,.12)}';
     document.head.appendChild(st);
   }catch(e){}

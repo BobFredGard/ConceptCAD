@@ -129,6 +129,7 @@
     .mepSkFree{stroke:var(--mepSkFreeCol,#0a84ff)}
     .mepDraft{stroke:#ffd60a;stroke-width:.7;stroke-dasharray:3 2;fill:none}
     .mepSnap{fill:none;stroke:#ffd60a;stroke-width:.9}
+    .mepBlGuide{fill:none;stroke:#2f7ff0;stroke-width:.3;stroke-dasharray:1.2 .8}
     .mepArrowM{fill:var(--mepDimCol,#111)}
     .mepArrowSel{fill:#ff3b30}
     .mepArrowK{fill:var(--mepInk,#151515)}
@@ -138,6 +139,7 @@
     .mepAxisCross{fill:none;stroke:var(--mepAxisCol,#111);stroke-width:var(--mepLwAxisX,.62);stroke-linecap:butt;pointer-events:none}
     .mepAxisSel{stroke:#0066ff!important;stroke-width:1.1!important}
     .mepAxisPick{fill:none;stroke:#ffd60a;stroke-width:1.1;pointer-events:none}
+    .mepAxisSrc{fill:none;stroke:#ffa500;stroke-opacity:.6;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
   `;
   document.head.appendChild(css);
 

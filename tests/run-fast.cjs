@@ -85,6 +85,8 @@ const SUITES = [
   'test_fao_hsc_fagor',
   'test_fao_arcs_correction',
   'test_fao_contour_niveaux',
+  'test_fao_contour', // V1.0.1 : rapides, n'étaient que dans run.cjs (angle mort de npm run ci au « livre » de V1.0.0)
+  'test_fao_contour_vide',
   'test_simulation_rendu',
   'test_simulation_cartes',
   'test_fao_chanfrein',
@@ -101,6 +103,7 @@ const SUITES = [
   'test_esquisse_intersection',
   'test_cote_points',
   'test_mep_accrochages',
+  'test_mep_ordonnees_accrochage',
   'test_mep_chaine',
   'test_esquisse_oblong',
   'test_esquisse_oblong_arc',
@@ -108,8 +111,10 @@ const SUITES = [
   'test_mep_oblong',
   'test_mep_oblong_arc',
   'test_mep_tolerances',
+  'test_mep_tolerances_fleche','test_mep_egalites','test_mep_tolerances_pile','test_mep_filetage_exterieur',
   'test_mep_oblong_reel',
   'test_mep_axes_planche',
+  'test_mep_axes_sources',
   'test_mep_filigrane',
   'test_mep_rugosite',
   'test_mep_angle_texte',
@@ -169,10 +174,14 @@ const SUITES = [
   'test_cartouche_modele',
   'test_cartouche_exterieur',
   'test_nomenclature_plan',
+  'test_composants_plan_bulles', // V1.0.4 : 3 s, n'était que dans run.cjs
   'test_composants_liaisons',
   'test_composants_relations',
   'test_relations_aretes',
   'test_assemblage_historique',
+  'test_composants_icones', // V1.0.6 : icônes des pièces normalisées, moins d'une seconde
+  'test_vue_enregistree', // V1.0.7 : vue 3D enregistrée dans le fichier, moins d'une seconde
+  'test_zoom_deplacement', // V1.0.8 : zoom et déplacement de la vue 3D, moins d'une seconde
   'test_materiaux',
   'test_environnement_piece',
   'test_rendu_patine',

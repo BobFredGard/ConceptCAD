@@ -220,7 +220,9 @@ function threadCompute(shape,f,bin){
   const lim=f.lenMode==='len'?Math.min(Math.max(P,+f.len||0),full):full;
   const zStart=free0!=null?-(free0+P+0.05):0.05;
   const len=f.lenMode==='len'?Math.min(Math.max(P,+f.len||0),span):span;
-  const g={o,d,R,rR:th.rR,len,P,lh:!!f.lh,free:free0!=null};
+  // f0 / f1 : bouts libres (distance jusqu'à la fin de matière au fond de filet), span : longueur de la face
+  // — lus par la mise en plan (98-mep-76) pour tracer le fond de filet jusqu'au chanfrein
+  const g={o,d,R,rR:th.rR,len,P,lh:!!f.lh,free:free0!=null,f0:free0!=null?free0:0,f1:free1!=null?free1:null,span};
   let thr=null;
   if(f.model&&threadModelable(f)){
     const nT=Math.floor((lim-zStart)/P+1e-9)-1;
@@ -235,10 +237,38 @@ function threadCompute(shape,f,bin){
   if(!g.free)w.push('aucun bout libre : le filet part du bout de la face et s’y arrête net');
   return {g,thr,w};
 }
+/* 2026-11-26 : rejeu de fond ou partiel (occThreadSkip : pièce gardée relue à l'ouverture, recalcul de
+   fond…) — le filet COSMÉTIQUE y est quand même résolu (axe, départ, longueur), sur une copie de la
+   fonction : le document n'est pas touché (ni _thLen, ni _err, ni la référence de la face). Sans cela,
+   un fichier rouvert n'avait ni spirale en 3D ni filet en mise en plan avant une vraie reconstruction. */
+const threadCkFond=new Map(); // clé de préfixe du rejeu → g (filets cosmétiques seulement)
+let threadVueT=null;
+function threadGeoPut(f,g){
+  const o=threadGeo.get(f.id),k=x=>x?x.o.join()+'|'+x.d.join()+'|'+x.len+'|'+x.rR+'|'+x.f0+'|'+x.span+'|'+x.bid:'';
+  threadGeo.set(f.id,g);
+  if(k(o)===k(g))return;
+  // filet nouveau ou déplacé : spirales 3D et mise en plan redessinées, après le rejeu en cours
+  clearTimeout(threadVueT);
+  threadVueT=setTimeout(function(){
+    try{if(typeof holeThreadOverlay==='function'&&typeof scene!=='undefined'&&scene)holeThreadOverlay();}catch(e){}
+    try{if(typeof window!=='undefined'&&window.mepIsOpen&&window.mepIsOpen()&&window.mepRefresh)window.mepRefresh();}catch(e){}
+  },300);
+}
 function threadReplayStep(f,result,ck,msgs,threads,bid,bin){
   // Branche du rejeu (occReplayBodyIn, src/20) : le solide n'est pas modifié ; le vide
   // fileté rejoint les filets des taraudages, creusés en fin de rejeu.
-  if(occThreadSkip)return;
+  if(occThreadSkip){
+    if(!result||(f.model&&threadModelable(f)))return; // filet modélisé : à la vraie reconstruction
+    let g=threadCkFond.get(ck);
+    if(!g){
+      const fc=Object.assign({},f,{cyl:JSON.parse(JSON.stringify(f.cyl||null))});
+      try{g=threadCompute(result,fc,null).g;}catch(err){return;}
+      threadCkFond.set(ck,g);
+      while(threadCkFond.size>40)threadCkFond.delete(threadCkFond.keys().next().value);
+    }
+    threadGeoPut(f,Object.assign({bid:bid},g));
+    return;
+  }
   if(!result){msgs.push(`${f.name} : aucun axe à fileter — ignoré`);return;}
   let e=threadCk.get(ck);
   if(!e){
@@ -249,7 +279,7 @@ function threadReplayStep(f,result,ck,msgs,threads,bid,bin){
     while(threadCk.size>40){const k=threadCk.keys().next().value;const o=threadCk.get(k);threadCk.delete(k);try{if(o.thr)o.thr.delete();}catch(x){}}
   }
   delete f._err;
-  threadGeo.set(f.id,Object.assign({bid:bid},e.g));
+  threadGeoPut(f,Object.assign({bid:bid},e.g));
   f._thLen=+e.g.len.toFixed(3);
   if(e.w.length)msgs.push(...e.w.map(x=>`${f.name} : ${x}`));
   if(e.thr){const cp=occShapeCopy(e.thr);if(cp)threads.push({f,thr:cp});}

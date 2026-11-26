@@ -20,7 +20,7 @@
         if(v.section)v.section.pid=idMap[v.section.pid]||null;});
       const dMap={};
       c.dims.forEach(d=>{const nid=mepUid('d');dMap[d.id]=nid;d.id=nid;d.vid=idMap[d.vid]||d.vid;if(d.vid2)d.vid2=idMap[d.vid2]||d.vid2;});
-      c.dims.forEach(d=>{if(d.on)d.on=dMap[d.on]||d.on;}); // tolérances accrochées à une cote
+      c.dims.forEach(d=>{if(d.on)d.on=dMap[d.on]||d.on;if(d.under)d.under=dMap[d.under]||d.under;if(d.eqOf)d.eqOf=dMap[d.eqOf]||d.eqOf;}); // tolérances accrochées à une cote, cadres empilés, cotes « = »
       ns.views=c.views;ns.dims=c.dims;ns.sk=c.sk;
       doc.mep.sheets.splice(doc.mep.cur+1,0,ns);
       doc.mep.cur++;
@@ -327,11 +327,30 @@
   }
   /* bulles (V0.6.7) : {view, comp, p (point 3D du composant actif), dx, dy (décalage papier)} ;
      le numéro est celui de la ligne du composant dans la nomenclature (renuméroté avec elle) */
-  function mepBalloonsAuto(sh){
+  /* V1.0.4 : vues « Assemblage » de la planche (celles qui peuvent porter des bulles) et leur nom
+     dans les listes : « Face », « Coupe A-A », « Détail B », « Projection (Dessus) »… */
+  function mepBalloonViews(sh){return (sh.views||[]).filter(x=>x&&x.asm);}
+  function mepViewName(v){
+    if(!v)return '';
+    if(v.kind==='section')return 'Coupe '+(v.label||'')+'-'+(v.label||'');
+    if(v.kind==='detail')return 'Détail '+(v.label||'');
+    const lab=(v.kind==='proj'?(MEP_PROJ[v.proj||'']||{}).lab:(MEP_VIEWS[v.vk]||{}).lab)||'Vue',L=String(v.label||'').trim();
+    return !L||L===lab?lab:lab+' « '+L+' »'; // vue de face libellée « Face » : « Face », pas « Face Face »
+  }
+  // vue qui reçoit les bulles automatiques : celle demandée, sinon la dernière choisie (sh.blView),
+  // sinon la première vue « Assemblage »
+  function mepBalloonView(sh,vid){
+    const A=mepBalloonViews(sh);
+    return A.find(x=>x.id===vid)||A.find(x=>x.id===sh.blView)||A[0]||null;
+  }
+  function mepBalloonsAuto(sh,vid){
     // V0.8.2 : accroche sur la surface VISIBLE de la pièce (asmBalloonVisible ; repli : centre de
     // sa boîte), bulles rangées sur un cadre autour de la vue, dans l'ordre du tour, écartées
     // d'au moins un diamètre et demi — plus de bulles empilées ni de traits qui se croisent
-    const v=(sh.views||[]).find(x=>x.asm);if(!v)return 0;
+    // V1.0.4 : sur la vue CHOISIE (« il faudrait pouvoir choisir la vue par moi-même ») — une bulle
+    // par ligne de la nomenclature sur la planche : celles d'avant sont remplacées
+    const v=mepBalloonView(sh,vid);if(!v)return 0;
+    sh.blView=v.id;
     const rows=mepBomRows(sh);
     sh.balloons=[];
     const L=[];
@@ -388,6 +407,33 @@
     L.forEach(q=>{q.B=fromS(q.s);});
     return L;
   }
+  /* V1.0.5 : bulle glissée calée sur le CENTRE d'une autre bulle — même hauteur et/ou même verticale
+     (« Elles sont alignées verticalement et horizontalement avec les autres bulles par le centre du
+     cercle ? » → « Oui, ajoute-le ») ; tol en mm papier. → {x, y, gx, gy} : centre calé, et le
+     centre de la bulle sur laquelle il s'est aligné en X (gx) / en Y (gy), pour les repères */
+  function mepBalloonCenter(sh,b){
+    const v=mepView(sh,b.view);if(!v)return null;
+    const l=mepLocal(v,b.p),A=mepToSheet(v,l[0],l[1]);
+    return{x:A.x+(+b.dx||0),y:A.y+(+b.dy||0)};
+  }
+  function mepBalloonSnap(sh,id,x,y,tol){
+    let bx=null,by=null;
+    (Array.isArray(sh.balloons)?sh.balloons:[]).forEach(o=>{
+      if(!o||o.id===id)return;
+      const C=mepBalloonCenter(sh,o);if(!C)return;
+      const ex=Math.abs(C.x-x),ey=Math.abs(C.y-y);
+      // à écart égal, la bulle la plus proche porte le repère
+      if(ex<=tol){const s=ex+1e-3*ey;if(!bx||s<bx.s)bx={s,C};}
+      if(ey<=tol){const s=ey+1e-3*ex;if(!by||s<by.s)by={s,C};}
+    });
+    return{x:bx?bx.C.x:x,y:by?by.C.y:y,gx:bx?bx.C:null,gy:by?by.C:null};
+  }
+  // repères d'alignement pendant le glisser (groupe d'aide : jamais exportés ni imprimés)
+  function mepDrawBalloonGuides(mk){
+    const pk=mepSt.pick,G=pk&&pk.kind==='blDrag'?pk.guides:null;if(!G)return;
+    if(G.gx)mk('line',{x1:G.gx.x,y1:G.gx.y,x2:G.x,y2:G.y,class:'mepBlGuide'},mepGHlp);
+    if(G.gy)mk('line',{x1:G.gy.x,y1:G.gy.y,x2:G.x,y2:G.y,class:'mepBlGuide'},mepGHlp);
+  }
   function mepBalloonAt(sh,x,y){
     // bulle dont le cercle contient le point (la dernière dessinée d'abord)
     const B=Array.isArray(sh.balloons)?sh.balloons:[];
@@ -425,18 +471,29 @@
       const tx=mk('text',{x:B.x,y:B.y+1.3,class:'mepRevText','text-anchor':'middle'});tx.textContent=String(row.rep);
     });
   }
-  function mepDrawBom(mk,sh,pd,ty){
-    if(!sh.bom||!sh.bom.on)return;
-    const rows=mepBomRows(sh);if(!rows.length)return;
-    // V0.99.80 : colonne RÉFÉRENCE après QTÉ dès qu'une ligne a une référence (r.ref, titre r.refLabel :
-    // « RÉF. JUSTET » du pont NumPLans) ; DÉSIGNATION et MATIÈRE se resserrent (DIMENSIONS cède 2 mm,
-    // « 50,0 × 50,9 × 50,0 » y tient), même largeur totale
+  /* colonnes de la nomenclature [titre, largeur mm, champ] — all : toutes, sinon celles affichées.
+     V0.99.80 : colonne RÉFÉRENCE après QTÉ dès qu'une ligne a une référence (r.ref, titre r.refLabel :
+     « RÉF. JUSTET » du pont NumPLans) ; DÉSIGNATION et MATIÈRE se resserrent (DIMENSIONS cède 2 mm,
+     « 50,0 × 50,9 × 50,0 » y tient), même largeur totale.
+     V1.0.4 : colonnes retirées au choix (sh.bom.hide = champs ; « Il faut aussi pouvoir enlever des
+     colonnes au tableau ») — le tableau se resserre d'autant ; REP. reste toujours (numéro des bulles). */
+  function mepBomCols(sh,rows,all){
+    rows=rows||mepBomRows(sh);
     const tx=v=>String(v==null?'':v).trim();
     const hasRef=rows.some(r=>tx(r.ref));
     const refL=hasRef?tx((rows.find(r=>tx(r.ref)&&tx(r.refLabel))||rows.find(r=>tx(r.refLabel))||{}).refLabel)||'RÉFÉRENCE':'';
-    const RH=5.5,cols=hasRef
+    const cols=hasRef
       ?[['REP.',10,'rep'],['QTÉ',10,'qty'],[refL,30,'ref'],['DÉSIGNATION',50,'name'],['MATIÈRE',24,'mat'],['DIMENSIONS (mm)',40,'dims']]
       :[['REP.',10,'rep'],['QTÉ',10,'qty'],['DÉSIGNATION',62,'name'],['MATIÈRE',40,'mat'],['DIMENSIONS (mm)',42,'dims']];
+    if(all)return cols;
+    const hide=sh.bom&&Array.isArray(sh.bom.hide)?sh.bom.hide:[];
+    return cols.filter(c=>c[2]==='rep'||hide.indexOf(c[2])<0);
+  }
+  function mepDrawBom(mk,sh,pd,ty){
+    if(!sh.bom||!sh.bom.on)return;
+    const rows=mepBomRows(sh);if(!rows.length)return;
+    const tx=v=>String(v==null?'':v).trim();
+    const RH=5.5,cols=mepBomCols(sh,rows);
     const W=cols.reduce((s,c)=>s+c[1],0),n=Math.min(rows.length,12);
     // texte d'une case : coupé à ~w/1.7 caractères, puis resserré s'il dépasse encore la case (comme les
     // champs « fit » du cartouche) — « 215-01-001-O-Support Guide » débordait sur MATIÈRE. Mesure réelle

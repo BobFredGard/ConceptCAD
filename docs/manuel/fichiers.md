@@ -29,6 +29,9 @@
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
 - **Parcours FAO dans le fichier** : les parcours calculés sont rangés dans le `.conceptcad`, la pièce se rouvre sans recalcul. Depuis la V0.99.43 ils sont écrits en colonnes exactes, sans rien arrondir : fichier plus léger (une pièce de 15,8 Mo passe à 13,3 Mo), mêmes points au bit près, même code machine. Une version plus ancienne de ConceptCAD ne lit pas ces parcours et les recalcule.
 - **Enregistrement sûr** : contenu vérifié avant écriture et relu après (jamais vide), version précédente gardée (`nom.conceptcad.bak` et copie dans le navigateur), menu **Copie de secours**.
+  - Un seul enregistrement à la fois : Ctrl+S appuyé deux fois ou maintenu pendant qu'une grosse pièce s'enregistre ne fait plus échouer l'enregistrement ni ouvrir « Enregistrer sous » (V1.0.2). « Enregistrement de … » s'affiche dès le début.
+  - Fichier bloqué un instant par un autre logiciel (synchronisation Dropbox, antivirus, serveur) : ConceptCAD réessaie tout seul pendant une seconde et demie avant de proposer « Enregistrer sous ».
+- **Vue 3D gardée dans le fichier** (V1.0.7) : à l'enregistrement, l'angle de vue, le zoom et le point visé partent avec la pièce ; à la prochaine ouverture, la pièce ou l'assemblage réapparaît exactement comme on l'avait laissé (même composant, mode Modéliser ou Assembler). **Recadrer** (ou « Tout afficher ») cadre de nouveau toute la pièce. Tourner la vue ne compte pas comme une modification : pas de ● à l'écran. Enregistré pendant une esquisse : c'est la vue 3D d'avant l'esquisse qui revient. Les fichiers plus anciens s'ouvrent recadrés, comme avant.
 
 ---
 

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**785 versions**, de `2026-09-28b` à `V1.0.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**801 versions**, de `2026-09-28b` à `V1.0.16` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8742,3 +8742,199 @@ Sert aussi à la révolution et au balayage (même constructeur de contour).
 - `test_fao_contour` (« dispatch : contour généré ») : le test comptait plus de 50 mouvements de coupe ; depuis les arcs G2 / G3 de V0.99.96, un quart de cercle n'est plus qu'un mouvement (37 ici, sans jamais toucher la paroi). Seuil ramené à 20.
 - Banc des parcours : 30 / 31 identiques ; écart accepté sur `Découpe 3 tailles.conceptcad › 1. Contour` : la fraise ne descend plus sur la passe extérieure, toute dans le vide, à chaque niveau (mouvements 217 → 199, rapides −8 %, remontées 21 → 18, coupe dans l'air −1,7 %).
 - `test_fao_contour_niveaux` : +4 contrôles (tout vide, niveau du dessus vide par l'arc d'entrée, matière dès le bas de la plongée sur place).
+
+## V1.0.1 - Les 2 tests du Contour FAO rejoignent les tests rapides
+
+Demande de Fred (« J'ajoute les 2 tests Contour aux tests rapides pour la prochaine version ? » — « Oui, ajoute-les »).
+
+**Cause** : `test_fao_contour` et `test_fao_contour_vide` (moins d'une seconde chacune) n'étaient inscrites que dans `tests/run.cjs`. Les retouches du Contour en V0.99.96 et V0.99.97 les avaient cassées sans que `npm run ci` le voie : seule la suite complète du « livre » de V1.0.0 l'a relevé.
+
+**Correctif** : les deux suites ajoutées à `tests/run-fast.cjs`, à côté de `test_fao_contour_niveaux`. `npm run ci` les lance désormais dès que le Contour FAO est touché. Aucun changement dans l'application.
+
+**Test** : `node build.js --check` ; `npm run ci` vert ; les 2 suites lancées seules, conformes ; retouche d'essai de `faoContourTrimAir` (annulée ensuite) : `node tests/run-cible.cjs --liste` choisit bien `test_fao_contour_niveaux`, `test_fao_contour` et `test_fao_contour_vide`. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.2 - Enregistrement : plus de bascule sur « Enregistrer sous », plus de version d'avant remise en silence
+
+Constat de Fred : « des fois, la pièce ne veut pas s'enregistrer, il faut faire enregistrer-sous ».
+
+**Cause** : deux enregistrements pouvaient se chevaucher (Ctrl+S appuyé deux fois ou touche maintenue pendant qu'une grosse pièce s'enregistre, bouton + raccourci). La relecture du premier tombait sur le fichier écrit par le second, le croyait abîmé, remettait l'ancienne version sur le disque et ouvrait « Enregistrer sous ». Le second annonçait « Enregistré » et éteignait le ● alors que le disque avait la version d'avant. Reproduit dans le navigateur sur `Exemples/Axe.conceptcad` : « Enregistrement impossible (relecture : 334461 octets au lieu de 334460 — version précédente remise) », fenêtre « Enregistrer sous » ouverte, modification absente du fichier. Autre cause possible du même symptôme : un fichier bloqué un instant par un autre logiciel (synchronisation Dropbox, antivirus, serveur), que l'appli Windows n'arrivait pas à remplacer.
+
+**Correctif** (`src/97-fichiers-projets.js`) : les enregistrements (Enregistrer, Enregistrer sous, Enregistrer ici) passent l'un après l'autre (`mffSerie`) ; celui qui a attendu ne réécrit pas une pièce que le précédent vient d'enregistrer sans changement. La répétition du clavier (Ctrl+S maintenu) ne relance plus d'enregistrement. « Enregistrement de … » s'affiche dès le début. Écriture qui échoue : trois nouveaux essais (0,15 s, 0,4 s, 0,9 s) avant d'abandonner, l'original restant intact entre deux essais (`mffEcrire`) ; permission refusée : aucun essai de plus.
+
+**Test** : `test_enregistrement_sur` +6 contrôles (deux Ctrl+S qui se chevauchent sur un disque lent : la pièce modifiée est sur le disque, ni erreur ni « Enregistrer sous », une seule écriture ; trois demandes d'affilée ; fichier bloqué deux fois puis enregistré ; permission refusée sans nouvel essai). Dans le navigateur (vrai fichier, `Exemples/Axe.conceptcad`) : deux Ctrl+S à 20 ms, disque lent, Ctrl+S maintenu (1 seul enregistrement) — tout enregistré, aucune erreur ; l'ancien comportement rejoué dans la même page échoue comme décrit. `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.3 - Mise en plan : tolérance après le Ø de son choix dans une cotation de perçage
+
+Demande de Fred : « j'aimerais pouvoir ajouter soit après le Ø7, soit après le Ø15 une tolérance géométrique de type H7 ou autre » (étiquette « 2× Ø7 déb. / Lamage Ø15 ↧3.5 »).
+
+**Avant** : la tolérance d'une cotation de perçage (classe ISO 286, ± ou double) s'écrivait toujours après le 1er Ø de l'étiquette (le trou, ou la ligne du foret d'un taraudage) ; impossible de la mettre sur le lamage.
+
+**Correctif** (`src/98-mep-70-cotes.js`, `src/98-mep-90-proprietes.js`) : dès qu'une tolérance est posée à la main et que l'étiquette a plusieurs Ø (lamage, fraisure, avant-trou du double perçage, alésé et son perçage), une liste « Sur » sous « Tolérance » propose chaque ligne (« Ø7 déb. », « Lamage Ø15 ↧3.5 ») ; la tolérance s'écrit après le Ø choisi, avec les écarts calculés sur CE Ø (« Lamage Ø15 H7 (+0.018 / 0) ↧3.5 »). Choix gardé dans la cote (`tolOn`, rang du Ø) ; si ce Ø disparaît de la fonction (lamage retiré), la tolérance revient sur le 1er Ø. La tolérance automatique d'un alésé reste sur l'alésage. Annulable (Ctrl+Z).
+
+**Test** : `test_mep_tolerances` +6 contrôles (Ø7 H7 par défaut, liste « Sur » avec les 2 lignes, choix du lamage → Ø15 H7 +0.018, lamage retiré → retour sur le Ø7, un seul Ø → pas de liste, tolérance retirée → étiquette nue) ; `test_mep_hachures_cotes` : 2 cas de plus sur le texte. Dans le navigateur (`Exemples/Perçages.conceptcad`, cotation « 6× Ø6.6 déb. / Lamage Ø11 ↧6.4 ») : Classe ISO 286 puis « Sur : Lamage Ø11 » → « Lamage Ø11 H7 (+0.018 / 0) ↧6.4 » dessiné sur la planche. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.4 - Mise en plan : bulles automatiques sur la vue de son choix, colonnes de la nomenclature à retirer
+
+Demandes de Fred (plan MERLIN-39, nomenclature avec « RÉF. JUSTET ») : « il faudrait pouvoir choisir la vue par moi-même » (bulles automatiques) et « Il faut aussi pouvoir enlever des colonnes au tableau ».
+
+**Avant** : « Bulles automatiques » (panneau de la planche, nomenclature de composants) posait toujours les bulles sur la PREMIÈRE vue « Assemblage » de la planche ; le tableau de nomenclature avait toujours toutes ses colonnes (REP., QTÉ, référence, DÉSIGNATION, MATIÈRE, DIMENSIONS), même vides.
+
+**Bulles** (`src/98-mep-30-planches-cartouche.js`, `src/98-mep-90-proprietes.js`) : `mepBalloonsAuto(sh, vid)` pose les bulles sur la vue demandée, sinon la dernière choisie (`sh.blView`, gardée dans le fichier), sinon la première vue Assemblage. Panneau d'une vue « Assemblage » : ligne « Bulles (n) » avec « Bulles automatiques » (cette vue) et « Effacer » (ses bulles) ; bouton grisé avec l'explication au survol tant que la nomenclature de composants n'est pas cochée. Panneau de la planche : liste « Vue des bulles » (« Face », « Dessus », « Coupe A-A »…) quand la planche a plusieurs vues Assemblage. Message « 5 bulle(s) sur la vue « Face » ». Toujours une bulle par ligne de la nomenclature : celles d'avant sont remplacées.
+
+**Colonnes** : `mepBomCols` (colonnes de la nomenclature, sorties de `mepDrawBom`) ; sous « Nomenclature », une case par colonne sauf REP. (les bulles renvoient à son numéro) ; colonne décochée (`sh.bom.hide`) = retirée du tableau, qui se resserre d'autant ; tout recoché = rien d'écrit dans le fichier.
+
+**Test** : `test_composants_plan_bulles` +11 contrôles (vue de dessus choisie : bulles sur le dessus de la colonne ; dernière vue reprise ; noms des vues sans « Face Face » ; liste « Vue des bulles » ; bouton et « Effacer » du panneau de la vue ; bouton grisé sans nomenclature) et inscrit dans les tests rapides (3 s, n'était que dans `run.cjs`) ; `test_nomenclature_plan` +7 (MATIÈRE et DIMENSIONS retirées : 164 → 100 mm, lignes qui suivent, REP. gardé, cases du panneau). Dans le navigateur sur une copie de MERLIN-39-000 : bouton de la vue de face → 5 bulles autour de la vue ; MATIÈRE décochée → tableau sans la colonne. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.5 - Mise en plan : une bulle glissée se cale sur le centre des autres bulles
+
+Question de Fred : « Elles sont alignées verticalement et horizontalement avec les autres bulles par le centre du cercle ? », puis « Oui, ajoute-le ».
+
+**Avant** : les bulles posées par « Bulles automatiques » étaient alignées côté par côté (cadre autour de la vue), mais une bulle glissée à la main allait exactement où on la lâchait, sans aucun calage.
+
+**Correctif** (`src/98-mep-30-planches-cartouche.js`, `src/98-mep-80-souris.js`) : pendant le glisser d'une bulle, son centre se cale à la même hauteur et/ou sur la même verticale que le centre d'une autre bulle de la planche, à moins de 6 pixels à l'écran (`mepBalloonSnap`, `mepBalloonCenter`) ; à écart égal, la bulle la plus proche porte le repère. Repère bleu en pointillé du centre de cette bulle au centre de la bulle glissée (`mepDrawBalloonGuides`, groupe d'aide : jamais exporté ni imprimé), effacé au lâcher. Maj enfoncée : placement libre (comme la ligne de coupe). Message de sélection d'une bulle mis à jour.
+
+**Test** : `test_composants_plan_bulles` +5 contrôles (calage en X, en Y, les deux, rien au-delà de la tolérance, jamais sur elle-même). Dans le navigateur, sur une copie de MERLIN-39-000 : bulle 3 glissée près de la verticale de la bulle 1 → même X au centième près, repère affiché ; Maj → libre ; lâchée → calée, repère effacé. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.6 - Assemblage : chaque pièce normalisée a son dessin dans la timeline et l'arborescence
+
+Demande de Fred : « Dans la timeline de l'assemblage, si le composant entré est un composant normalisé, l'icône devrait être identique au composant : 1 vis -> dessin de la vis etc... ».
+
+**Avant** : dans la barre d'historique de l'assemblage, chaque insertion avait le même cube 📦, que la pièce soit une vis, une goupille ou une pièce dessinée ; l'arborescence et l'en-tête du panneau d'une occurrence aussi.
+
+**Correctif** (`src/48-composants-icones.js`, nouveau) : `stdIcKind` reconnaît la famille d'après la fiche `doc.std` (réglages enregistrés, sinon la clé : fichiers anciens compris) et `stdIcSvg` la dessine (SVG 24 × 24, axe vertical vu un peu de dessus, dégradés propres à chaque dessin) : vis CHC et FHC (ISO, ANSI), bouchon à collerette et bouchon conique, goupille cylindrique, conique et élastique, clavettes A / B / C, joint torique et quadrilobe, racleur, rondelle plate et Grower, douille autotaraudeuse, roue, couronne et crémaillère, aimants (nord rouge, sud vert, comme dans la vue). `asmCompIcon` : ce dessin pour une pièce normalisée, 🔩 pour une famille sans dessin, le cube pour une pièce ordinaire. Mêmes dessins partout : étape d'insertion de la timeline (`src/48-assemblage-historique.js`, un peu plus grand dans la barre), arborescence (occurrence et groupe ×N, `src/42-arbre-modele.js`), en-tête du panneau d'une occurrence (`src/47-assemblage-interface.js`), onglets de la fenêtre « Composants normalisés » (`stdCatIcon`).
+
+**Test** : `test_composants_icones` (nouveau, inscrit dans les tests rapides, moins d'une seconde) : les 39 types des onglets donnent le bon dessin, avec et sans réglages enregistrés ; paire d'engrenages ; 26 dessins bien formés, dégradés définis dans le dessin, identifiants jamais répétés ; timeline (CHC ×3, goupille, pièce ordinaire = cube, relation = aimant) ; arborescence (groupe des 3 vis dessiné). Ancien comportement rejoué : échec. Dans le navigateur, sur `Exemples/Test Visserie.conceptcad` (goupilles et FHC M8 dessinées) et sur une copie de MERLIN-39-000 avec une pièce de chaque famille : dessins dans la timeline, étape choisie, arborescence, onglets de la fenêtre. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.7 - Fichiers : la vue 3D enregistrée revient à l'ouverture
+
+Demande de Fred (assemblage MERLIN-39-000) : « Quand je sauvegarde le modèle, j'aimerais qu'à la prochaine ouverture, le modèle retrouve sa position sauvegardée ».
+
+**Avant** : le fichier ne gardait pas la vue ; à chaque ouverture, la pièce ou l'assemblage était recadré en vue isométrique, quel que soit l'angle choisi avant d'enregistrer.
+
+**Correctif** (`src/10-scene-3d.js`, `src/90-50-document-sauvegarde.js`) : `bundleSerialise` range la vue dans le fichier (`cam` : position de la caméra, point visé, verticale, et le composant affiché avec le mode Modéliser / Assembler) — esquisse ouverte : la vue 3D d'avant l'esquisse. `bundleRestore` la relit (`viewCamRead` : trois nombres finis, caméra distincte du point visé, sinon ignorée) ; les recadrages automatiques de l'ouverture (`showAll`, `asmFit` : chargement, image de la pièce, rejeu exact) la remettent (`viewSavedTake`) au lieu de recadrer. Pendant l'ouverture, elle attend que le composant et le mode enregistrés soient revenus (MERLIN-39-000 en mode Assembler passe d'abord par Modéliser). Elle est oubliée dès que la vue est bougée (souris, molette, cube de vue, esquisse : caméra changée depuis la remise), par **Recadrer** / « Tout afficher » (`viewFitAll`, `src/95-toolbar.js`, `src/40-50-panneau-proprietes.js`, `src/90-10-selection-mesure.js`), Nouveau, un autre fichier, un import (`src/90-30-import.js`) ou un autre composant. La vue n'entre pas dans l'empreinte du document : tourner la pièce ne la marque pas modifiée. Téléphone (`src/99-mobile.js`) : pas de second cadrage par-dessus la vue remise. Fichiers d'avant V1.0.7 : recadrés comme avant.
+
+**Test** : `test_vue_enregistree` (nouveau, inscrit dans les tests rapides, moins d'une seconde, 26 contrôles) : vue écrite dans le fichier, empreinte inchangée, vue remise à l'ouverture et gardée aux recadrages suivants, oubliée après un mouvement, un changement de caméra, la vue de face, Recadrer, Nouveau, un autre composant ; attente du bon mode pendant l'ouverture ; fichiers anciens et vues abîmées ignorés ; esquisse ouverte ; ancien comportement rejoué : échec. Dans le navigateur, sur une copie de MERLIN-39-000 : pièce MERLIN-39-001 vue de côté et assemblage entier (mode Assembler) vu de face, enregistrés puis rouverts → même vue au centième, toujours là 12 s après (rejeu exact compris), pas de ● ; Recadrer recadre toute la pièce. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.8 - CAO / FAO : le zoom et le déplacement de la vue 3D ne s'emballent plus
+
+Demande de Fred : « Comportement du zoom et du déplacement dans la vue 3D. Des fois, le zoom part trop vite et le déplacement devient incontrôlable. »
+
+**Causes** (mesurées sur `Exemples/Support Pédale Déportée R1200RT 2011.conceptcad`) :
+- **molette dans le vide** (à côté de la pièce, dans un trou) : le zoom visait le plan de la *cible* de la vue, souvent loin derrière la pièce. La pièce fonçait sur la caméra : un cran divisait par deux la distance à la pièce, le suivant la traversait (sur la pièce, un cran rapproche de 15 %) ;
+- **déplacement au clic droit** (OrbitControls) : sa vitesse suivait la distance de cette cible, pas celle de la pièce sous la souris. Après le cas précédent, la pièce glissait plusieurs fois plus vite que la souris (4,7 à 12 fois dans les essais) ; elle continuait aussi à glisser après le lâcher ;
+- **amortis comptés en images** (zoom : 30 % du reste par image ; déplacement : 8 %) : sur une pièce lourde, avec peu d'images par seconde, zoom et déplacement continuaient seuls plusieurs secondes après le geste (à 1 image par seconde, 3 crans de molette n'étaient pas finis au bout de 5 s). On en rajoutait, puis tout partait d'un coup.
+
+**Correctif** (`src/10-scene-3d.js`) :
+- `viewVoidPoint` / `viewAimAt` : rien sous la souris → le point visé est pris à la profondeur de la pièce la plus proche **autour du curseur** (couronnes de 8 rayons de plus en plus larges, dans la vue), sinon du centre des pièces, sinon le plan de la cible comme avant. Dans le vide aussi, chaque cran rapproche la pièce de 15 % ; elle reste devant la caméra ;
+- `viewPanBy` / `viewPanDown` / `viewPanMove` : déplacement **« à la main »**, clic droit glissé ou Ctrl + molette enfoncée. Le point saisi au clic (la pièce sous la souris, sinon la pièce voisine) reste exactement sous le curseur pendant tout le geste, et rien ne glisse après le lâcher. OrbitControls ne fait plus de déplacement (`enablePan=false`, aussi quand il est refait pour le haut de la vue en FAO) ; Ctrl / Maj + clic droit gardent la rotation d'OrbitControls, le clic droit court garde le menu ;
+- `orbitTick` : la part du zoom appliquée à chaque image est comptée **en millisecondes** (`VIEW_ZOOM_TAU`, 47 ms) : même douceur qu'avant à 60 images/s, cran fini dès l'image suivante sur une pièce lourde. `orbitZoomWheel` : jamais plus de ≈ 4 crans en attente (`VIEW_ZOOM_PEND_MAX`), donc pas de bond quand la molette est lancée ou que les images sont lentes ;
+- téléphone (`src/99-mobile.js`, `mfmPan`) : le point pincé suit les doigts, même calcul.
+
+La rotation n'a pas changé.
+
+**Test** : `test_zoom_deplacement` (nouveau, inscrit dans les tests rapides, moins d'une seconde, 31 contrôles, vrai three et vrai lancer de rayons sur un cube) : sur la pièce, point visé sous le curseur, 15 % par cran, butée à 0,5 mm ; dans le vide avec la cible 5 fois plus loin que la pièce, point visé à la profondeur de la pièce voisine, 15 % par cran sur 10 crans, la pièce toujours devant ; repli sur le centre des pièces puis sur le plan de la cible ; amorti à 60 et à 5 images/s ; plafond du zoom en attente ; déplacement au pixel près sur la pièce, dans le vide et à Ctrl + molette, sans glissement après le lâcher ; pas de déplacement avec Ctrl ou Maj + clic droit, au clic court, en esquisse, vue bloquée, bouton lâché hors de la fenêtre ; OrbitControls refait sans déplacement. Anciens comportements rejoués (plan de la cible, vitesse de la cible, 30 % par image) : échec. Dans le navigateur, sur Support Pédale : un cran dans le vide divisait par deux la distance à la pièce et le second la traversait ; désormais 15 % par cran. Le point saisi au clic droit reste sous le curseur au pixel près (l'ancien déplacement allait 4,7 fois trop vite dans cette situation), rien ne bouge après le lâcher, Ctrl + molette idem ; 3 crans de molette finis en 0,36 s à 1 image par seconde (avant : pas finis au bout de 5 s). CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.9 - CAO / FAO : la rotation s'arrête aussi tout de suite sur une pièce lourde
+
+Suite de V1.0.8. Fred : « Oui, la rotation aussi ».
+
+**Avant** : l'inertie de la rotation (clic gauche ou clic-molette glissé) appliquait 20 % du glissement restant **à chaque image**. Quand l'affichage est lent (pièce lourde), la pièce continuait à tourner seule plusieurs secondes après le lâcher : à 1 image par seconde, 83 % seulement du mouvement était fait au bout de 4 s.
+
+**Correctif** (`src/10-scene-3d.js`) : `orbitTick` et `skOrbTick` (orbite de la vue d'esquisse) comptent cette part **en millisecondes** (`ORBIT_ROT_TAU` ≈ 75 ms, tiré de `ORBIT_ROT_DAMP`). À 60 images/s, la rotation garde exactement la même douceur (20 % à la première image). Sur une pièce lourde, elle s'arrête dès l'image suivante. L'angle total d'un glisser et la vitesse ne changent pas.
+
+**Test** : `test_zoom_deplacement` +5 contrôles (36 en tout) : 20 % à la première image à 60 images/s ; 99,5 % du glissement appliqué en 2 images à 5 images/s ; même angle final aux deux cadences ; ancien amorti rejoué (20 % par image) : 36 % seulement en 0,4 s, échec. Dans le navigateur, sur Support Pédale, à 1 image par seconde : rotation finie dès l'image suivant le lâcher (ancien réglage : 83 % au bout de 4 s). CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.10 - Mise en plan : un trait d'axe sélectionné souligne les traits qui ont servi à le construire
+
+Demande de Fred : « Mise en plan, traits d'axes -> mettre en surbrillance légère les traits qui servent à leur réalisation ».
+
+**Avant** : un trait d'axe sélectionné passait en bleu, sans rien montrer de ce qui l'avait fait naître. Pendant la création d'un axe de symétrie, la 1re droite cliquée n'était pas marquée du tout.
+
+**Correctif** (`src/98-mep-74-axes-sources.js`, nouveau) : un halo bleu pâle (classe `mepAxisSrc`, 7 px à l'écran à toute échelle, opacité 0,3, sous le trait) souligne les traits d'origine de l'axe sélectionné :
+- perçage (fonction Perçage) : cercles du trou vu de bout, parois vues de côté — reconnus comme la cotation de perçage (`mepHoleAt`, `mepHoleAtLine`) ;
+- révolution du solide exact (cylindre d'un STEP, cercle extrudé…) : cercles concentriques de bout ; génératrices et arêtes vues par la tranche, dans sa longueur, de côté ;
+- cercle de la vue (maillage, DXF) ; 2 droites d'un axe de symétrie, retrouvées comme l'axe lui-même (`mepAxisTrackPair`) ; trous d'un alignement ou d'un cercle de perçage ; bouts et côtés d'un oblong droit ou en arc (contours emboîtés compris) ;
+- axe libre : rien.
+
+Les axes automatiques portent leur source dès leur calcul (`mepAxisAutoGeom`, `mepAxisCylPrims` : `p.src`) ; un axe posé à la main la tire de son annotation, seulement quand il est sélectionné (`mepAxisAnnSrc`). Résultat gardé par géométrie de vue tant que la sélection ne change pas. Pendant la création (outil Axes), la 1re droite d'un axe de symétrie et les trous déjà choisis pour un alignement ou un cercle de perçage sont soulignés de même. Le halo est retiré de l'export SVG, PDF, impression (`mepExportPrep`) et DXF (`MEP_DXF_SKIP`).
+
+**Test** : `test_mep_axes_sources` (nouveau, inscrit dans les tests rapides, 23 contrôles). Sans noyau, vue DXF : axe de symétrie → ses 2 droites, pas la 3e parallèle ; halo aux coordonnées de la planche ; cercle → ce cercle seul ; alignement → ses 2 cercles ; axe libre et rien de sélectionné → rien ; oblong automatique → ses 4 traits ; création : 1re droite d'un axe de symétrie dès le 1er clic, trous d'un alignement, rien après l'outil ; révolution de côté et de bout ; export sans halo. Sur le vrai noyau : bloc percé Ø8 (croix de bout → le cercle seul ; axe de côté → les 2 parois ; axe posé d'un clic sur le trou → le cercle ; même trou vu de côté → les parois) et cylindre extrudé (cercle R10 ; 2 génératrices et 2 bouts). Sur la version précédente : échec. Dans le navigateur, sur Support Pédale : croix du trou Ø8 H7 → son cercle seul ; axe vertical de la vue de droite → bord et arêtes du cylindre ; 1re droite d'un axe de symétrie soulignée ; Échap efface tout. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.11 - Mise en plan : les traits d'origine s'allument dès la création d'un axe, en jaune orangé
+
+Suite de V1.0.10. Fred : « Oui, mais il faudrait qu'il s'illumine au moment de la création », « Et il faut une autre couleur plus visible, jaune orangé », « Mais aussi après », « Comme maintenant ».
+
+**Avant** : avec l'outil Axes, rien ne s'allumait au survol, et un axe de trou (un seul clic) ne montrait jamais ses traits d'origine à sa création ; il fallait quitter l'outil et le sélectionner. Le halo bleu pâle se voyait peu. Le bord d'un trou dessiné en petits segments (trou qui débouche dans une face courbe, cercle venu d'un maillage) n'était pas reconnu.
+
+**Correctif** :
+- `src/98-mep-74-axes-sources.js` : `mepAxisHovCand` / `mepAxisHovUpdate` — au survol, l'outil Axes allume ce que prendrait le clic, dans le même ordre que `mepAxisClick` (oblong droit, oblong en arc, trou ou cercle, révolution ; droite en mode Symétrie ; rien en mode Libre). Redessin seulement quand cela change (≈ 4 ms par mouvement de souris sur Support Pédale). `mepAxisNewId` : chaque création (trou, oblong, oblong en arc, symétrie, alignement, cercle de perçage, libre — `src/98-mep-71-oblong.js`, `src/98-mep-80-souris.js`) note l'axe créé (`mepSt.axisNew`), dont les traits restent allumés tant que l'outil reste ouvert ; un oblong qui a déjà son axe rallume celui-ci. Changer de mode ou d'outil, ou Échap, éteint tout. Après, la sélection rallume les traits comme en V1.0.10 ;
+- révolution vue de bout : un bord en segments ou en polyligne posé sur un de ses cercles est reconnu ; vue de côté : un trait entièrement dans la bande du rayon, près d'un bout (zone de 2 rayons, au plus un tiers de la longueur), l'est aussi — courbe de sortie d'un trou dans une face courbe ; un trou en travers au milieu ne l'est pas ;
+- `src/98-mep-00-modele.js` : halo jaune orangé (`#ffa500`, opacité 0,6, toujours 7 px à l'écran).
+
+**Test** : `test_mep_axes_sources` +14 contrôles (37 en tout) : survol d'un cercle et d'un côté d'oblong avant le clic, rien dans le vide ni en mode Libre ; après le clic, souris ailleurs, le cercle de l'axe créé reste allumé, avec le trou survolé en plus ; 2e droite d'un axe de symétrie : ses 2 droites restent allumées ; changement de mode ou d'outil : tout s'éteint ; sélection après coup : rallumé ; bords en segments de côté et de bout ; sur le vrai noyau, survol puis clic sur un trou percé. Sur V1.0.10 : échec. Dans le navigateur, sur Support Pédale : survol du trou Ø8 H7 → son cercle en jaune orangé avant le clic, resté allumé après la création, souris ailleurs ; trou Ø5 débouchant dans une face courbe → tout son bord (avant : un seul petit trait) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.12 - Mise en plan : clic droit et cote de référence dans les cotes d'ordonnées
+
+Fred : « Il manque aux cotes d'ordonnées la possibilité du clic droit qui existe pour la cotation normale », puis « Et aussi ajouter le moyen qu'une des cotes d'ordonnée soit une cote de référence ».
+
+**Avant** : avec l'outil Ordonnées X / Y, le clic droit n'ouvrait rien : pas d'accrochage imposé (extrémité, milieu, centre, point extrême, intersection), seulement le point automatique. Aucune valeur d'un groupe ne pouvait être une cote de référence. Le texte d'une valeur ne s'attrapait pas, seule sa ligne d'attache.
+
+**Correctif** :
+- `src/98-mep-80-souris.js` (mepOnContext) : dans l'outil Ordonnées, le clic droit ouvre le menu « Accrochage » de l'outil Cote ; `src/98-mep-86-accrochages.js` : mepSnapModeHover (survol commun aux outils Cote et Ordonnées : repère du point, prolongements d'une intersection), mepSetSnapMode (consignes propres aux ordonnées), mepDrawSnapHov ; `src/98-mep-70-cotes.js` mepOrdClick : le point imposé sert d'origine « 0 » et de points, le choix reste jusqu'à ce qu'on en change (comme les 2 points d'une cote) ; points d'intersection suivis (mepIntRefresh) et prolongements tracés avec le groupe ; Échap n'annule qu'une intersection en cours, le groupe continue ;
+- cote de référence d'UNE valeur (p.ref, entre parenthèses, en gris comme une cote de référence) : Maj + clic à la pose, clic droit sur une valeur (mepOrdCtx : « Cote de référence », « Supprimer ce point »), case « Cote de référence » du panneau quand la valeur est désignée (`src/98-mep-90-proprietes.js`, mepOrdSetRef) ; jamais l'origine ;
+- mepDrawOrd : le texte de chaque valeur s'ajoute aux traits attrapables du groupe (clic pour désigner, clic droit).
+
+**Test** : `test_mep_ordonnees_accrochage` (nouveau, inscrit dans run et run-fast, 36 contrôles) : mêmes 7 choix que l'outil Cote, intersection dans le vide pour l'origine (survol, repère, prolongements, suivi quand une arête bouge), centre et point extrême X pour les points, retour à Automatique, Échap / Entrée ; Maj + clic, clic droit sur le texte d'une valeur (et non son trait), case du panneau, enregistrement. Sur V1.0.11 : échec. Dans le navigateur, sur Support Pédale : menu « Accrochage » au clic droit de l'outil Ordonnées X, repère d'extrémité au survol ; ordonnées Y avec Maj + clic → « (10.55) », clic droit sur la valeur 56 → « Cote de référence » → « (56) », case du panneau cochée ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.13 - Mise en plan : flèche des tolérances géométriques perpendiculaire à l'arête, cadre écartable
+
+Fred : « Les Tolérances géométriques devraient avoir leur flèche perpendiculaire à l'arête choisie et l'on doit pouvoir écarter la boite vers l'extérieur de la vue ».
+
+**Avant** : la ligne de repère du cadre ISO 1101 allait tout droit de l'attache du cadre à la pointe : la flèche arrivait de biais sur l'arête dès que le cadre n'était pas juste en face. Zoomé, un clic sur une case éloignée du centre du cadre (référence « A » au bout d'un cadre large) ne le saisissait pas : la vue glissait au lieu du cadre. Le triangle d'une référence posée sur un cercle suivait la direction de la corde voisine, pas le rayon.
+
+**Correctif** :
+- `src/98-mep-72-tolerances-geometriques.js` : mepGdtNormal (normale à l'élément visé : arête droite ou oblique, cercle ou arc le long du rayon ; repère d'accrochage d'abord) ; mepGdtLeader (coude au pied de la normale qui passe par la pointe, flèche d'au moins 0,75 fois la hauteur du cadre, retournée du côté du cadre) ; mepDrawGdt : ligne du cadre au coude, puis flèche le long de la normale ; pointe dans le vide : ligne droite comme avant ; le triangle d'une référence se pose à plat sur l'élément (cercle compris) ;
+- `src/98-mep-80-souris.js` mepDimAt : un clic n'importe où dans la boîte d'un cadre de tolérance ou d'une lettre de référence la saisit (pas l'état de surface, dont la boîte contient la ligne de repère) ; le cadre s'écarte aussi loin qu'on veut, la flèche reste perpendiculaire.
+
+**Test** : `test_mep_tolerances_fleche` (nouveau, inscrit dans run et run-fast, 12 contrôles) : arête verticale, horizontale, cercle, droite à 45°, pointe dans le vide, saisie dans la dernière case à zoom 8, cadre écarté loin de la vue puis passé de l'autre côté de l'arête, référence sur le haut d'un cercle. Sur V1.0.12 : 8 échecs. Dans le navigateur, sur Support Pédale : cadre posé sur l'arête gauche d'une vue (flèche horizontale avec coude), puis glissé par sa case du symbole loin sous la vue et hors d'elle : flèche toujours horizontale sur l'arête ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.14 - Mise en plan : cotes d'égalité « = » automatiques de part et d'autre d'un axe de symétrie
+
+Fred : « Quand on a des cotes avec un axe de symétrie évident, généralement on rajoute 2 cotes alignées avec des points à la place des flèches et un "=" à la place du chiffre. Peux-tu me proposer un outil automatique? »
+
+**Avant** : pour montrer qu'une forme est symétrique, il fallait poser 2 cotes à la main (bord → axe, axe → bord), remplacer leur texte par « = » une par une, et les flèches restaient des flèches.
+
+**Nouveau** :
+- `src/98-mep-88-egalites.js` (nouveau) : mepEqFind (cote linéaire coupée en son milieu, à 0,01 mm près sur la pièce, par un trait d'axe de la vue parallèle à ses rappels), mepEqMake (2 cotes en chaîne bord → axe → bord : bords pris là où partent les rappels de la cote, avec son repère pour suivre la pièce ; point du milieu sur l'axe, repère axp pour suivre l'axe ; même orientation que la cote), mepEqLinePt (ligne posée entre la pièce et la cote s'il y a la place, sinon au-delà, sur la première ligne libre : 7 mm entre lignes, aucune cote parallèle qui la chevauche à moins de 6 mm), mepEqAuto (cote donnée, sinon cote sélectionnée, sinon vue sélectionnée, sinon toute la planche ; une cote qui a déjà ses égalités est laissée), mepEqSync (glisser l'une déplace l'autre), mepEqRemove ; bouton « Égalités » dans le groupe Cotes du ruban, avec son icône et sa fiche (`src/97-interface-moderne.js`, `src/97-interface-fiches-dessins.js`) ;
+- `src/98-mep-70-cotes.js` : d.term='dot' — un point plein au lieu de chaque flèche (≈ 2/3 de la demi-largeur d'une flèche), aussi en SVG, PDF et DXF ; valeur « = » (d.txt) ;
+- `src/98-mep-80-souris.js` : clic droit d'une cote symétrique « Cotes d'égalité « = » de part et d'autre de l'axe » ; sur une cote « = » : « Retirer les cotes « = » » (pas de changement d'orientation, qui les désalignerait) ; Suppr enlève les deux ; `src/98-mep-85-cote-unique.js` mepDimMoveTo : la voisine suit.
+
+**Test** : `test_mep_egalites` (nouveau, inscrit dans run et run-fast, 24 contrôles) : pièce en U et 2 axes, cotes 60, 20, longueur d'arête et verticale 30 reconnues, 0 → 40 non ; clic droit, points pleins sans flèche, « = », 10 + 10, ligne entre la pièce et la cote ou au-delà quand l'entre-deux est pris ; bouton sur toute la planche (3 cotes, 6 « = »), pas de double au 2ᵉ appui ; glisser, clic droit sur une moitié, pièce modifiée (9 + 11), enregistrement, Suppr. Sur V1.0.13 : échec. Dans le navigateur, sur Support Pédale : sans axe au milieu, le bouton ne pose rien et le dit ; axe ajouté au milieu de la cote 32 → bouton → 16 « = » 16 entre la pièce et la 32, points pleins ; une moitié glissée, l'autre suit ; clic droit « Retirer les cotes « = » » ; export DXF avec les points et les « = » ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.15 - Mise en plan : cadres de tolérance empilés (2ᵉ et 3ᵉ sous le premier) ; arête entière allumée en mode Symétrie des axes
+
+Fred : « Pouvoir empiler/ajouter une autre tolérance géométrique en dessous une existante. Le menu permet la création d'un 2nd et une 3ème » ; « L'illumination des arêtes ne fonctionne pas avec la fonction Symétrie des Axes »
+
+**Avant** : un cadre de tolérance était toujours seul ; pour en mettre 2 sur le même élément, il fallait poser un 2ᵉ cadre à flèche et l'aligner à l'œil sous le premier. En mode Symétrie de l'outil Axes, quand l'arête visée était faite de plusieurs morceaux superposés ou bout à bout (cas courant dans une vue), seul le petit morceau sous la souris s'allumait, au survol comme après la création.
+
+**Nouveau** :
+- `src/98-mep-72-tolerances-geometriques.js` : d.under = cadre du dessus ; mepGdtStack (pile de haut en bas), mepGdtBoxCalc (cadre empilé collé sous celui du dessus, sans flèche, aligné à gauche — ou à droite quand la flèche du 1er part de la droite ; sous la valeur d'une cote : même bord gauche), mepGdtStackAdd (3 cadres au plus), mepGdtCtx (clic droit sur un cadre : « Ajouter un cadre en dessous (2ᵉ / 3ᵉ) », « Supprimer ce cadre », titre « cadre i / n »), mepDimsWithout (Suppr du 1er : toute la pile part ; d'un cadre du milieu : celui d'en dessous remonte ; Suppr d'une cote : son cadre et sa pile partent) ; panneau : « Cadre i / n de la pile », bouton « + Cadre en dessous » ; chaque cadre garde ses propres réglages ;
+- `src/98-mep-80-souris.js` : clic droit sur un cadre → son menu ; saisir un cadre empilé fait glisser toute la pile (le cadre cliqué reste désigné) ; `src/98-mep-85-cote-unique.js` : un cadre empilé ne part pas seul ; duplication de planche (`98-mep-30`) et suppression en lot (`98-mep-40`) suivent la pile.
+
+**Correctif** :
+- `src/98-mep-74-axes-sources.js` mepAxisSrcEdge : en mode Symétrie, l'arête allumée est prolongée à tous les traits alignés qui la touchent ou la recouvrent — l'arête entière s'allume au survol, après la création et à la sélection de l'axe.
+
+**Test** : `test_mep_tolerances_pile` (nouveau, inscrit dans run et run-fast, 21 contrôles) : clic droit, 2ᵉ puis 3ᵉ cadre collés et alignés, sans flèche, réglages à part, plus d'« Ajouter » à 3, glisser le 3ᵉ déplace la pile, enregistrement, Suppr du milieu et du 1er, pile sous la valeur d'une cote, flèche à droite → alignés à droite. Sur V1.0.14 : 9 échecs. `test_mep_axes_sources` +3 contrôles (arête en 3 morceaux superposés et bout à bout : survol, création, sélection ; V1.0.14 : échec). Dans le navigateur, sur Support Pédale : cadre posé sur l'arête de la vue de face, clic droit → 2ᵉ puis 3ᵉ, le 3ᵉ glissé emporte la pile (flèche toujours perpendiculaire), Suppr du 1er retire tout, Ctrl+Z ramène les 3 ; arête entière allumée en Symétrie ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.16 - Mise en plan : filetage extérieur dessiné (fond de filet gris, ISO 6410) et coté « M4 »
+
+Fred : « Normalement ce Ø4 est un M4. La vue ne montre pas le filet du cylindre qui existe dans le 3D et ne cote pas comme un filetage. A corriger » ; « Et voir aussi le fond de filet en gris, comme pour les trous taraudés »
+
+**Avant** : la mise en plan ne connaissait que les taraudages des perçages. Un axe fileté par la fonction Filetage (filet cosmétique) apparaissait lisse dans les vues, et sa cote se lisait « Ø4 ». À la réouverture d'un fichier, la pièce relue telle qu'enregistrée et le rejeu de fond qui sautait les filetages laissaient aussi la 3D sans spirale jusqu'à une vraie reconstruction.
+
+**Correctif** :
+- `src/98-mep-76-filetages-exterieurs.js` (nouveau) : mepXThreads (filets cosmétiques de la vue, géométrie du rejeu), mepXThreadEls — vue de côté : 2 traits de fond de filet (Ø d1 = d − 1,0825·P) en trait fin gris (comme les taraudages), du bout libre (première rencontre avec le contour : chanfrein, même posé après le filetage dans l'historique, ou bout plat) jusqu'à la fin du filet ; trait fort de fin de filetage quand le filet s'arrête avant le bout de la face ; vue en bout, bout libre vu : 3/4 de cercle au fond de filet ; coupe par l'axe : mêmes traits ; mepDimThreadOf / mepDimThreadText : une cote Ø entre génératrices de la partie filetée, ou de diamètre sur le cercle vu en bout, s'écrit avec la désignation du filetage (« M4 », « M4×0,5 », « M4-LH », classe → « M4-6g », texte avant et après gardés ; texte imposé : inchangé) ;
+- `src/98-mep-10-projection-hlr.js` : traits ajoutés à la finition de la vue (avant coupe locale et détail) ; mepXThreadSig dans la clé des vues ; `src/98-mep-70-cotes.js` et `98-mep-90-proprietes.js` : texte de la cote ;
+- `src/76-filetage.js` : threadCompute garde les bouts libres et la longueur de la face (f0, f1, span) ; threadReplayStep résout aussi le filet cosmétique pendant le rejeu de fond (copie de la fonction : document, empreinte et pièce gardée intacts) ; threadGeoPut redessine les spirales 3D et le plan quand un filet apparaît ou bouge.
+
+**Test** : `test_mep_filetage_exterieur` (nouveau, inscrit dans run et run-fast, 24 contrôles) : axe M4 chanfreiné avec épaulement — 2 traits fins au Ø 3,242 de l'épaulement jusqu'au chanfrein, chanfrein posé après le filetage, grand chanfrein sans dépassement, longueur filetée 5 avec trait fort de fin, 3/4 de cercle vu du bout libre et rien de l'autre côté, filet modélisé ou masqué : rien ; cotes « M4 », « M4-6g », « 2× M4 », « M4×0,5 », « M4-LH », Ø3,2 du chanfrein, Ø6 de l'épaulement, partie lisse Ø4, cercle vu en bout ; sans géométrie du rejeu : rien et Ø4. Sur V1.0.15 : échec. Dans le navigateur, sur une copie de la pièce de Fred (hors dépôt) : fond de filet gris du chanfrein à l'épaulement dans la vue de face, cote « M4 » au lieu de « Ø4 », Ø6 inchangé ; fichier rouvert : filet en plan et spirale 3D après le seul rejeu de fond, empreinte du document et pièce gardée inchangées (contrôle 3/3) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.

@@ -72,6 +72,7 @@ function buildScene(){
   controls.enableDamping=true; controls.dampingFactor=0.08;
   controls.zoomSpeed=zoomInv?-1:1;
   controls.enableZoom=false; // V0.11.27 : molette = zoom VERS LA SOURIS (orbitZoomWheel), plus vers la cible
+  controls.enablePan=false;  // V1.0.8 : déplacement au clic droit = viewPanBy (le point saisi suit la souris)
   // Souris : rotation = clic GAUCHE enfoncé, roulette (molette) conservée = rotation aussi,
   // déplacement (pan) = clic DROIT enfoncé. Clic court sans glisser = sélection (gardien >6px).
   if(controls.mouseButtons&&THREE.MOUSE){controls.mouseButtons.LEFT=THREE.MOUSE.ROTATE;controls.mouseButtons.MIDDLE=THREE.MOUSE.ROTATE;controls.mouseButtons.RIGHT=THREE.MOUSE.PAN;}
@@ -251,7 +252,10 @@ function refreshMirror(){
    ne fait ensuite que recopier la position et regarder la cible.
    Contrainte : azimut autour du Z de la vue, élévation bornée avant les pôles, Z en haut.
    Libre : rotation autour des axes ÉCRAN (haut et droite de la caméra), camera.up suit.
-   Inertie : 20 % du reste par image (ORBIT_ROT_DAMP, V0.10.0 ; OrbitControls : 8 % pour le pan et le zoom). */
+   Inertie : 20 % du reste par image (ORBIT_ROT_DAMP, V0.10.0 ; OrbitControls : 8 % pour le pan et le zoom) ;
+   V1.0.9 : à 60 images/s, comptée en temps (ORBIT_ROT_TAU) — même arrêt rapide sur une pièce lourde.
+   V1.0.8 : le zoom (orbitZoomWheel) et le déplacement (viewPanBy) ne passent plus par OrbitControls non plus ;
+   il ne garde que la rotation autour de la cible de Ctrl / Maj + clic droit glissé. */
 function orbitApplyButtons(){
   if(!controls||!controls.mouseButtons||!THREE.MOUSE)return;
   controls.mouseButtons.LEFT=-1;controls.mouseButtons.MIDDLE=-1;
@@ -346,6 +350,81 @@ function viewTargetPlaneAt(cx,cy){
   const pl=new THREE.Plane().setFromNormalAndCoplanarPoint(d,controls.target);
   return rayc.ray.intersectPlane(pl,new THREE.Vector3());
 }
+/* V1.0.8 — ZOOM ET DÉPLACEMENT QUI NE S'EMBALLENT PLUS (demande de Fred : « Des fois, le zoom part trop
+   vite et le déplacement devient incontrôlable »). Causes mesurées sur Support Pédale :
+   1. molette dans le VIDE : le zoom visait le plan de la CIBLE, souvent loin derrière la pièce — la
+      pièce fonçait sur la caméra (16 → 0,7 mm en 8 crans), jusqu'à la traverser ;
+   2. déplacement d'OrbitControls réglé sur la distance de la cible, pas sur la pièce sous la souris :
+      après le cas 1, la pièce glissait 12 fois plus vite que la souris, et continuait après le lâcher ;
+   3. amortis comptés en IMAGES (zoom : 30 % du reste par image ; déplacement : 8 %) : sur une pièce
+      lourde, peu d'images par seconde, zoom et déplacement continuaient seuls plusieurs secondes après
+      le geste ; on en rajoutait, puis tout partait d'un coup.
+   Correctifs : point visé dans le vide à la profondeur de la pièce la plus proche du curseur
+   (viewVoidPoint) ; déplacement « à la main », sans glissement (viewPanBy : le point saisi reste sous
+   le curseur) ; amorti du zoom compté en millisecondes (VIEW_ZOOM_TAU) et zoom en attente plafonné. */
+const VIEW_ZOOM_TAU=47;          // ms : 30 % du reste par image à 60 images/s (comme avant) ; fini aussitôt sur une pièce lourde
+const VIEW_ZOOM_PEND_MAX=0.65;   // zoom en attente au plus (log du facteur) : ≈ 4 crans, ×1,9
+const VIEW_VOID_RINGS=[0.04,0.12,0.3]; // couronnes de rayons autour du curseur (part de la hauteur de la vue)
+function viewDampF(dt,tau){return dt>0?1-Math.exp(-dt/tau):0;} // part du reste à appliquer en dt ms
+function viewDepthOf(P){ // profondeur de P le long de la vue (distance au plan de la caméra)
+  const d=camera.getWorldDirection(new THREE.Vector3());
+  return P.clone().sub(camera.position).dot(d);
+}
+function viewRayAtDepth(cx,cy,D){ // point du rayon de la souris à la profondeur D
+  const r=renderer.domElement.getBoundingClientRect();
+  if(!r.width||!r.height)return null;
+  rayc.setFromCamera(new THREE.Vector2(((cx-r.left)/r.width)*2-1,-((cy-r.top)/r.height)*2+1),camera);
+  const c=rayc.ray.direction.dot(camera.getWorldDirection(new THREE.Vector3()));
+  if(camera.isOrthographicCamera||!(c>1e-6))return null;
+  return rayc.ray.origin.clone().addScaledVector(rayc.ray.direction,D/c);
+}
+// rien sous la souris : point du rayon à la profondeur de la pièce la plus proche AUTOUR du curseur
+// (couronnes de 8 rayons de plus en plus larges, dans la vue ; la première qui touche donne la plus
+// petite profondeur), sinon du centre des pièces, sinon null (plan de la cible : viewAimAt)
+function viewVoidPoint(cx,cy){
+  if(!camera||!renderer||camera.isOrthographicCamera)return null;
+  const r=renderer.domElement.getBoundingClientRect();
+  if(!r.width||!r.height)return null;
+  let D=Infinity;
+  for(const k of VIEW_VOID_RINGS){
+    const R=k*r.height;
+    for(let i=0;i<8;i++){
+      const a=i*Math.PI/4,x=cx+R*Math.cos(a),y=cy+R*Math.sin(a);
+      if(x<r.left||x>r.right||y<r.top||y>r.bottom)continue;
+      let h=null;try{h=viewHitAt(x,y);}catch(e){}
+      if(h){const d=viewDepthOf(h);if(d>0&&d<D)D=d;}
+    }
+    if(D<Infinity)break;
+  }
+  if(D===Infinity){try{const c=orbitPivot(),d=c?viewDepthOf(c):0;if(d>0)D=d;}catch(e){}}
+  return D<Infinity?viewRayAtDepth(cx,cy,D):null;
+}
+// point visé par la molette, le déplacement ou le pincement : la pièce sous la souris, sinon viewVoidPoint,
+// sinon le plan de la cible, sinon la cible
+function viewAimAt(cx,cy){
+  let P=null;
+  try{P=viewHitAt(cx,cy);}catch(e){}
+  if(!P)try{P=viewVoidPoint(cx,cy);}catch(e){}
+  if(!P)try{P=viewTargetPlaneAt(cx,cy);}catch(e){}
+  return P||controls.target.clone();
+}
+// déplacement écran de (dx,dy) px : caméra ET cible glissent ensemble ; un point à la profondeur D
+// suit exactement la souris (D absent : la cible, comme avant)
+function viewPanBy(dx,dy,D){
+  if(!camera||!controls||!renderer)return;
+  const H=renderer.domElement.clientHeight||600;
+  let s;
+  if(camera.isOrthographicCamera)s=(camera.top-camera.bottom)/(camera.zoom||1)/H;
+  else{
+    if(!(D>1e-9))D=camera.position.distanceTo(controls.target);
+    s=2*D*Math.tan((camera.fov||50)*Math.PI/360)/(camera.zoom||1)/H;
+  }
+  camera.updateMatrixWorld();
+  const R=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,0),U=new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld,1);
+  const d=R.multiplyScalar(-dx*s).add(U.multiplyScalar(dy*s));
+  camera.position.add(d);controls.target.add(d);camera.updateMatrixWorld();
+  viewUserMoved=true;
+}
 // V0.21.14 : mode Modéliser — sous-composants du composant actif dessinés autour de la pièce (asmCtx, 47) :
 // ils servent au pivot de rotation comme les occurrences sélectionnables du mode Assembler
 function asmCtxSub(){
@@ -413,14 +492,15 @@ function orbitZoomWheel(e){
   let P=null;
   if(H&&Math.abs(e.clientX-H.x)<=3&&Math.abs(e.clientY-H.y)<=3&&now-H.t<1000&&H.cam===orbitCamKey())P=H.P;
   else{
-    try{P=viewHitAt(e.clientX,e.clientY)||viewTargetPlaneAt(e.clientX,e.clientY);}catch(err){}
-    if(!P)P=controls.target.clone();
+    P=viewAimAt(e.clientX,e.clientY); // V1.0.8 : dans le vide, profondeur de la pièce voisine (viewVoidPoint)
     _fzHit={x:e.clientX,y:e.clientY,P,cam:orbitCamKey()};
   }
   _fzHit.t=now;
   // un cran (100) ≈ 15 % ; logarithme du facteur cumulé, écoulé par orbitTick
   const ln=d*0.0016;
   if(_fz&&_fz.ln*ln>0)_fz.ln+=ln;else _fz={ln};
+  // V1.0.8 : jamais plus de ≈ 4 crans en attente — molette lancée ou images lentes : pas de bond
+  _fz.ln=Math.max(-VIEW_ZOOM_PEND_MAX,Math.min(VIEW_ZOOM_PEND_MAX,_fz.ln));
   _fz.P=P;
   viewUserMoved=true;
 }
@@ -463,10 +543,18 @@ function orbitRotate(dx,dy,P){
 // inertie : le reste du glissement s'écoule à chaque image. V0.10.0 : 20 % par image (était 8 %,
 // l'amortissement d'OrbitControls) — la pièce suit la souris de plus près, avec une inertie plus courte ;
 // l'atelier RENDU, lui, suit la souris sans inertie. Le pan et le zoom gardent 8 %.
+// V1.0.9 (Fred : « Oui, la rotation aussi ») : ces 20 % valent à 60 images/s ; la part est désormais
+// comptée en TEMPS (ORBIT_ROT_TAU ≈ 75 ms), comme le zoom en V1.0.8. Sur une pièce lourde (5 images/s),
+// la pièce s'arrête en 2 images au lieu de tourner seule 3 à 4 s après le lâcher.
 const ORBIT_ROT_DAMP=0.2;
+const ORBIT_ROT_TAU=-1000/60/Math.log(1-ORBIT_ROT_DAMP);
+let _otT=0; // heure de l'image précédente (orbitTick)
 function orbitTick(){
+  const now=performance.now(),dt=_otT?Math.min(1000,Math.max(0,now-_otT)):1000/60;_otT=now;
   if(_fz){
-    const f=(controls&&controls.enableDamping)?0.3:1,a=_fz.ln*f;
+    // V1.0.8 : part du zoom restant comptée en TEMPS : 30 % par image à 60 images/s comme avant,
+    // presque tout d'un coup à 5 images/s (avant : 30 % par image, il traînait plusieurs secondes)
+    const f=(controls&&controls.enableDamping)?viewDampF(dt,VIEW_ZOOM_TAU):1,a=_fz.ln*f;
     let moved=false;try{moved=orbitZoomApply(a,_fz.P);}catch(e){}
     if(_fzHit)_fzHit.cam=orbitCamKey(); // ce mouvement-là ne périme pas le point visé
     _fz.ln-=a;
@@ -474,20 +562,37 @@ function orbitTick(){
   }
   if(!_fo||(!_fo.vx&&!_fo.vy))return;
   try{if(typeof skEdit!=='undefined'&&skEdit){_fo.vx=_fo.vy=0;return;}}catch(e){}
-  const f=(controls&&controls.enableDamping)?ORBIT_ROT_DAMP:1;
+  const f=(controls&&controls.enableDamping)?viewDampF(dt,ORBIT_ROT_TAU):1;
   orbitRotate(_fo.vx*f,_fo.vy*f,_fo.P);
   _fo.vx*=1-f;_fo.vy*=1-f;
   if(Math.abs(_fo.vx)<0.01&&Math.abs(_fo.vy)<0.01){_fo.vx=_fo.vy=0;if(!_fo.down){_fo=null;orbitMarkShow(null);}}
 }
+// V1.0.8 : DÉPLACEMENT « À LA MAIN » — clic droit glissé, ou Ctrl + molette enfoncée (2026-10-23).
+// Le point saisi au clic (pièce sous la souris, sinon viewVoidPoint) reste sous le curseur pendant
+// tout le geste ; rien ne glisse après le lâcher. Ctrl / Maj + clic droit : rotation d'OrbitControls.
+let _fp=null; // déplacement en cours {id,mask,x,y,x0,y0,P}
+function viewPanDown(e){
+  const droit=e.button===2&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey,milieu=e.button===1&&(e.ctrlKey||e.metaKey);
+  if(!droit&&!milieu)return;
+  if(!controls||controls.enabled===false||!camera)return;
+  try{if(typeof skEdit!=='undefined'&&skEdit)return;}catch(err){}
+  _fp={id:e.pointerId,mask:droit?2:4,x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY,P:null};
+}
+function viewPanMove(e){
+  if(!_fp||e.pointerId!==_fp.id)return;
+  if(e.buttons!==undefined&&!(e.buttons&_fp.mask)){_fp=null;return;} // bouton lâché hors de la fenêtre
+  if(!controls||controls.enabled===false){_fp=null;return;}
+  const dx=e.clientX-_fp.x,dy=e.clientY-_fp.y;
+  if(!dx&&!dy)return;
+  _fp.x=e.clientX;_fp.y=e.clientY;
+  if(!_fp.P)_fp.P=viewAimAt(_fp.x0,_fp.y0); // point saisi : cherché au premier mouvement (clic court = menu, sans calcul)
+  viewPanBy(dx,dy,viewDepthOf(_fp.P));
+}
+function viewPanUp(e){if(_fp&&e.pointerId===_fp.id)_fp=null;}
 function orbitWire(el){
-  // 2026-10-23 : Ctrl + molette enfoncée = DÉPLACEMENT, comme le clic droit. Écouteur en
-  // CAPTURE : il passe avant OrbitControls et règle la molette pour ce seul geste.
-  el.addEventListener('pointerdown',e=>{
-    if(e.button!==1||!controls||!controls.mouseButtons||!THREE.MOUSE)return;
-    // OrbitControls INVERSE le rôle avec Ctrl/Maj (PAN + Ctrl = rotation, ROTATE + Ctrl = déplacement) :
-    // la molette est donc déclarée ROTATE pour ce geste, ce qui donne bien un déplacement
-    controls.mouseButtons.MIDDLE=(e.ctrlKey||e.metaKey)?THREE.MOUSE.ROTATE:-1;
-  },true);
+  el.addEventListener('pointerdown',viewPanDown);
+  window.addEventListener('pointermove',viewPanMove);
+  window.addEventListener('pointerup',viewPanUp);window.addEventListener('pointercancel',viewPanUp);
   el.addEventListener('pointerdown',e=>{
     if(e.button!==0&&e.button!==1)return;
     if(e.button===1&&(e.ctrlKey||e.metaKey))return; // Ctrl + molette : déplacement (OrbitControls)
@@ -553,6 +658,7 @@ function viewControlsRebuild(){
   controls=new THREE.OrbitControls(o.obj||camera,renderer.domElement);
   controls.enableDamping=o.damp;controls.dampingFactor=o.df;controls.zoomSpeed=o.zs;controls.enableRotate=o.rot;
   controls.enableZoom=false; // zoom vers la souris : orbitZoomWheel
+  controls.enablePan=false;  // déplacement : viewPanBy (V1.0.8)
   if(o.mb&&controls.mouseButtons)Object.assign(controls.mouseButtons,o.mb);
   controls.target.copy(t);controls.update();
 }
@@ -675,7 +781,65 @@ function viewDecorTo(S){
   mv(floorMesh);
   try{if(typeof vEnvS!=='undefined'&&vEnvS){if(vEnvS.sun){mv(vEnvS.sun);mv(vEnvS.sun.target);}mv(vEnvS.floor);}}catch(e){}
 }
+/* V1.0.7 : VUE 3D ENREGISTRÉE dans le fichier (« Quand je sauvegarde le modèle, j'aimerais qu'à la
+   prochaine ouverture, le modèle retrouve sa position sauvegardée ») — position de la caméra, point
+   visé et verticale, avec le composant affiché et le mode (Modéliser / Assembler) à l'enregistrement.
+   À l'ouverture, viewSaved attend : les recadrages automatiques (showAll, asmFit : chargement, image
+   de la pièce, rejeu exact, imports rejoués) remettent cette vue au lieu de recadrer, tant que la vue
+   n'a pas été bougée (souris, molette, cube de vue, esquisse : caméra changée depuis la dernière
+   remise) et que le même composant est affiché (pendant l'ouverture, elle attend que le composant
+   et le mode enregistrés soient revenus). « Recadrer » / « Tout afficher » (viewFitAll),
+   Nouveau, un import et un autre composant l'oublient. La vue ne compte pas comme une modification
+   (pas de ●). */
+let viewSaved=null;
+function viewCtxKey(){
+  try{return (typeof asm!=='undefined'&&asm)?[asm.active||'',(asm.path||[]).join('/'),typeof asmMode!=='undefined'?asmMode:''].join('|'):'';}
+  catch(e){return '';}
+}
+function viewCamGet(){
+  // vue à enregistrer ; esquisse ouverte : la vue 3D d'avant l'esquisse (celle qui reviendra)
+  try{
+    let p=camera.position,t=controls.target,u=camera.up;
+    if(typeof skEdit!=='undefined'&&skEdit&&_skPrevCam){p=_skPrevCam.pos;t=_skPrevCam.target;u=_skPrevCam.up;}
+    const a=v=>[v.x,v.y,v.z].map(x=>+(+x).toFixed(4));
+    const o={p:a(p),t:a(t),up:a(u),ctx:viewCtxKey()};
+    return viewCamRead(o)?o:null;
+  }catch(e){return null;}
+}
+function viewCamRead(c){
+  // vue lue dans un fichier : contrôlée (trois nombres finis, caméra distincte du point visé)
+  const ok=v=>Array.isArray(v)&&v.length===3&&v.every(x=>x!==null&&x!==''&&Number.isFinite(+x));
+  if(!c||typeof c!=='object'||!ok(c.p)||!ok(c.t))return null;
+  const p=c.p.map(Number),t=c.t.map(Number);
+  if(!(Math.hypot(p[0]-t[0],p[1]-t[1],p[2]-t[2])>1e-6))return null;
+  const up=ok(c.up)&&Math.hypot(+c.up[0],+c.up[1],+c.up[2])>1e-6?c.up.map(Number):null;
+  return {p,t,up,ctx:String(c.ctx==null?'':c.ctx)};
+}
+function viewCamLoin(V){
+  // caméra changée depuis la dernière remise de la vue enregistrée (cube de vue, esquisse…) : 2 % du recul
+  const d=Math.hypot(V.p[0]-V.t[0],V.p[1]-V.t[1],V.p[2]-V.t[2])||1;
+  const e=(v,a)=>Math.hypot(v.x-a[0],v.y-a[1],v.z-a[2]);
+  return !(e(camera.position,V.p)<=0.02*d&&e(controls.target,V.t)<=0.02*d);
+}
+function viewSavedTake(){
+  // recadrage automatique de l'ouverture : la vue enregistrée si elle vaut encore (sinon oubliée)
+  const V=viewSaved;if(!V)return false;
+  try{
+    if(viewUserMoved||(V.mis&&(V.ctx!==viewCtxKey()||viewCamLoin(V)))){viewSaved=null;return false;}
+    // pas encore remise : l'ouverture passe par d'autres états (mode Modéliser avant Assembler,
+    // composant pas encore activé) → recadrage ordinaire, la vue attend son composant
+    if(V.ctx!==viewCtxKey())return false;
+  }catch(e){viewSaved=null;return false;}
+  try{
+    camera.position.set(V.p[0],V.p[1],V.p[2]);controls.target.set(V.t[0],V.t[1],V.t[2]);
+    if(V.up)camera.up.set(V.up[0],V.up[1],V.up[2]).normalize();else viewUpReset();
+    camera.lookAt(controls.target);controls.update();
+    V.mis=true;return true;
+  }catch(e){viewSaved=null;return false;}
+}
+function viewFitAll(){viewSaved=null;showAll();} // « Recadrer », « Tout afficher » : toute la pièce, vue enregistrée oubliée
 function showAll(){
+  if(viewSavedTake())return; // V1.0.7 : vue enregistrée dans le fichier ouvert
   const box=new THREE.Box3();
   bodies.forEach(b=>{if(b.visible)box.expandByObject(b.mesh);});
   doc.sketches.forEach(s=>{const m=scene.getObjectByName('sk_'+s.id);if(m&&s.visible!==false)box.expandByObject(m);});
@@ -706,6 +870,7 @@ function viewFit(o){
   controls.update();
 }
 function setView(v){
+  viewSaved=null; // V1.0.7 : vue choisie → la vue enregistrée du fichier ne revient plus
   // esquisse ouverte : la vue d'esquisse s'oriente (le plan reste éditable)
   try{const SV={iso:[0.6,-0.6,0.6],top:[0,0,1],front:[0,-1,0],right:[1,0,0]};if(SV[v]&&sketchViewDir(SV[v]))return;}catch(e){}
   if(v==='iso'){viewFit([0.6,-0.6,0.6]);return;} // Iso = vue complète isométrique
@@ -993,12 +1158,14 @@ function skOrbSnapFace(){ // lâchée presque de face : la vue se recale DANS le
   if(!skEdit||!skPersp()||Math.abs(skOrb.D[2])<SK_SNAP_FACE)return;
   skOrbSetFrame([0,0,skOrb.D[2]<0?-1:1],[skOrb.U[0],skOrb.U[1],0]);
 }
+let _skoT=0; // heure de l'image précédente (skOrbTick)
 function skOrbTick(){
-  // inertie de l'orbite d'esquisse : comme orbitTick (ORBIT_ROT_DAMP du reste par image)
+  // inertie de l'orbite d'esquisse : comme orbitTick (V1.0.9 : part comptée en temps, ORBIT_ROT_TAU)
+  const now=performance.now(),dt=_skoT?Math.min(1000,Math.max(0,now-_skoT)):1000/60;_skoT=now;
   const o=(typeof skOrbDrag!=='undefined')?skOrbDrag:null;if(!o)return;
   if(!skEdit){skOrbDrag=null;return;}
   if(o.vx||o.vy){
-    const f=(controls&&controls.enableDamping)?ORBIT_ROT_DAMP:1;
+    const f=(controls&&controls.enableDamping)?viewDampF(dt,ORBIT_ROT_TAU):1;
     skOrbDragBy(o.vx*f,o.vy*f);o.vx*=1-f;o.vy*=1-f;
     if(Math.abs(o.vx)<0.01&&Math.abs(o.vy)<0.01)o.vx=o.vy=0;
   }

@@ -68,6 +68,27 @@ const vm=require('vm');
     att(!D.tx.includes('—')&&D.row(0)[3]==='','11 : sans référence aussi, matière vide = case vide');
     ROWS=nl(false,'','Acier S235');D=draw();
     att(D.row(0)[3]==='Acier S235','12 : matière renseignée écrite');
+    // 16-21 (V1.0.4, « Il faut aussi pouvoir enlever des colonnes au tableau ») : colonnes retirées au
+    // choix — le tableau se resserre d'autant, chaque ligne suit, REP. reste (numéro des bulles)
+    ROWS=nl(true,'RÉF. JUSTET',' ');
+    const w0=draw().rect.a.width;
+    sh.bom.hide=['mat','dims'];D=draw();
+    att(D.head.join('|')==='REP.|QTÉ|RÉF. JUSTET|DÉSIGNATION'&&D.widths.join()==='10,10,30,50'&&near(D.rect.a.width,100)&&near(w0,164),'16 : MATIÈRE et DIMENSIONS retirées : 4 colonnes, tableau de 164 à 100 mm ('+D.head.join(' | ')+')');
+    att(D.row(0).join('|')==='1|1|MERLIN-39-001|215-01-001-O-Support Guide','17 : chaque ligne suit les colonnes gardées : '+D.row(0).join(' / '));
+    sh.bom.hide=['rep','qty','ref','name','mat','dims'];D=draw();
+    att(D.head.join('|')==='REP.'&&near(D.rect.a.width,10)&&D.row(0).join('|')==='1','18 : REP. ne se retire pas (numéro des bulles)');
+    delete sh.bom.hide;D=draw();
+    att(D.head.length===6&&T.bomCols(sh,true).length===6&&T.bomCols(sh).length===6,'19 : toutes les colonnes revenues');
+    const boxes=()=>{const root=document.createElement('div');T.sideHome(root);const o={};
+      (function w(n){if(n.tagName==='INPUT'&&/^Afficher la colonne « (.*) »/.test(n.title||''))o[/« (.*) »/.exec(n.title)[1]]=n;(n.children||[]).forEach(w);})(root);return o;};
+    let B=boxes();
+    att(Object.keys(B).join('|')==='QTÉ|RÉF. JUSTET|DÉSIGNATION|MATIÈRE|DIMENSIONS (mm)'&&Object.values(B).every(c=>c.checked),'20 : panneau de la planche : une case cochée par colonne, sauf REP. ('+Object.keys(B).join(' | ')+')');
+    if(B['MATIÈRE']){B['MATIÈRE'].checked=false;B['MATIÈRE'].onchange();}
+    D=draw();B=boxes();
+    att(sh.bom.hide&&sh.bom.hide.join()==='mat'&&D.head.indexOf('MATIÈRE')<0&&near(D.rect.a.width,140)&&B['MATIÈRE']&&!B['MATIÈRE'].checked,'21 : case MATIÈRE décochée : colonne retirée du tableau (140 mm), la case reste décochée');
+    if(B['MATIÈRE']){B['MATIÈRE'].checked=true;B['MATIÈRE'].onchange();}
+    att(!sh.bom.hide&&draw().head.length===6,'22 : recochée : colonne revenue, rien d’écrit dans le fichier');
+    ROWS=nl(false,'','Acier S235');
     // 13 : cartouche étroit, pas de place à côté : jamais hors du cadre à droite
     sh.format='A4';sh.orient='portrait';
     const ptsA=sh.title.tb.sk.pts;ptsA.a.x=ptsA.b.x=ptsA.c.x=-100;ptsA.t1.x=-102;ptsA.a.y=-60;

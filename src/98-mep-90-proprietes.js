@@ -324,8 +324,24 @@
         const o=document.createElement('option');o.value=k;o.textContent=l;if((sh.bom.lvl||'corps')===k)o.selected=true;s.appendChild(o);});
       s.onchange=()=>{mepEdit('nomenclature',()=>{sh.bom.lvl=s.value;});mepSideShow();};r.appendChild(s);
       if(sh.bom.lvl&&sh.bom.lvl!=='corps'){
+        // V1.0.4 : vue des bulles au choix (plusieurs vues « Assemblage » sur la planche)
+        const AV=mepBalloonViews(sh),bv=mepBalloonView(sh);
+        let vSel=null;
+        if(AV.length>1){
+          r=rowEl();
+          const L=document.createElement('label');L.textContent='Vue des bulles';r.appendChild(L);
+          vSel=document.createElement('select');vSel.id='mepBlView';
+          AV.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=mepViewName(v);vSel.appendChild(o);});
+          vSel.value=bv?bv.id:AV[0].id;
+          vSel.title='Vue « Assemblage » qui reçoit les bulles automatiques';
+          vSel.onchange=()=>{mepEdit('vue des bulles',()=>{sh.blView=vSel.value;});};
+          r.appendChild(vSel);
+        }
         r=rowEl();
-        mkBtn('Bulles automatiques',()=>{mepEdit('bulles',()=>{mepBalloonsAuto(sh);});mepSideShow();},'Une bulle par ligne de la nomenclature, sur la première vue « Assemblage » de la planche');
+        mkBtn('Bulles automatiques',()=>{let n=0;mepEdit('bulles',()=>{n=mepBalloonsAuto(sh,vSel?vSel.value:undefined);});
+          const v=mepBalloonView(sh);
+          mepStatus(v?n+' bulle(s) sur la vue « '+mepViewName(v)+' » — glissez-en une pour la placer.':'Bulles : aucune vue « Assemblage » sur la planche (panneau de la vue : Corps → Assemblage).');mepSideShow();},
+          'Une bulle par ligne de la nomenclature, sur la vue choisie'+(AV.length>1?' ci-dessus':' (vue « Assemblage »)')+' — remplace les bulles de la planche');
         mkBtn('Effacer les bulles',()=>{mepEdit('bulles',()=>{sh.balloons=[];});mepSideShow();},'Retire toutes les bulles de la planche');
         mkBtn(mepSt.blAdd?'＋ Bulle (actif)':'＋ Bulle',()=>{mepSt.blAdd=!mepSt.blAdd;
           mepStatus(mepSt.blAdd?'＋ Bulle : cliquez une pièce dans une vue « Assemblage » (Échap pour finir).':'＋ Bulle terminé.');mepSideShow();},
@@ -333,6 +349,22 @@
       }
     }
     if(sh.bom&&sh.bom.on){
+      // V1.0.4 : colonnes affichées (REP. reste toujours : numéro des bulles)
+      {const cAll=mepBomCols(sh,null,true).filter(c=>c[2]!=='rep');
+       const hide=Array.isArray(sh.bom.hide)?sh.bom.hide:[];
+       r=rowEl();r.style.alignItems='flex-start';
+       const L=document.createElement('label');L.textContent='Colonnes';r.appendChild(L);
+       const box=document.createElement('div');box.id='mepBomCols';box.style.cssText='display:flex;flex-wrap:wrap;gap:2px 10px;flex:2';
+       cAll.forEach(([lab,,k])=>{
+         const it=document.createElement('label');it.style.cssText='flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;cursor:pointer;color:inherit';
+         const c=document.createElement('input');c.type='checkbox';c.checked=hide.indexOf(k)<0;c.setAttribute('data-col',k);
+         c.title='Afficher la colonne « '+lab+' » dans le tableau';
+         c.onchange=()=>{mepEdit('colonnes de la nomenclature',()=>{
+           const h=(Array.isArray(sh.bom.hide)?sh.bom.hide:[]).filter(x=>x!==k);if(!c.checked)h.push(k);
+           if(h.length)sh.bom.hide=h;else delete sh.bom.hide;});mepSideShow();};
+         it.appendChild(c);it.appendChild(document.createTextNode(String(lab).replace(/\s*\(mm\)$/,'')));box.appendChild(it);
+       });
+       r.appendChild(box);}
       mepBomRows(sh).forEach(q=>{
         r=rowEl();
         const L=document.createElement('label');L.textContent=q.rep+'. '+q.name+(q.qty>1?' ×'+q.qty:'');
@@ -578,6 +610,21 @@
     }catch(e){}
     body.onchange=()=>{mepEdit('corps',()=>{v.asm=body.value==='__asm';v.bodyId=v.asm?null:(body.value||null);});};
     row('Corps',body);
+    // V1.0.4 : bulles automatiques sur CETTE vue (« il faudrait pouvoir choisir la vue par moi-même »)
+    if(v.asm&&asmPlanOn()){
+      const okBom=sh.bom&&sh.bom.on&&sh.bom.lvl&&sh.bom.lvl!=='corps';
+      const nb=(sh.balloons||[]).filter(b=>b.view===v.id).length;
+      const bB=document.createElement('button');bB.id='mepBlHere';bB.textContent='Bulles automatiques';
+      bB.disabled=!okBom;
+      bB.title=okBom?'Une bulle par ligne de la nomenclature, sur cette vue — remplace les bulles de la planche'
+        :'Cochez d’abord la nomenclature des composants (panneau de la planche : Nomenclature, Contenu « Composants »)';
+      bB.onclick=e=>{e.stopPropagation();let n=0;mepEdit('bulles',()=>{n=mepBalloonsAuto(sh,v.id);});
+        mepStatus(n+' bulle(s) sur la vue « '+mepViewName(v)+' » — glissez-en une pour la placer, Suppr la retire.');mepSideShow();};
+      const r=row('Bulles'+(nb?' ('+nb+')':''),bB);
+      if(nb){const bX=document.createElement('button');bX.textContent='Effacer';bX.title='Retire les bulles de cette vue';
+        bX.onclick=e=>{e.stopPropagation();mepEdit('bulles',()=>{sh.balloons=(sh.balloons||[]).filter(b=>b.view!==v.id);});mepSideShow();};
+        r.appendChild(bX);}
+    }
     // cases
     const mkChk=(lab,key,id,after)=>{
       const c=document.createElement('input');c.type='checkbox';c.checked=!!v[key];
@@ -832,6 +879,19 @@
       mepSideShow();
     };
     row('Tolérance',sel);
+    // V1.0.3 : cotation de perçage à plusieurs Ø (lamage, avant-trou, fraisure, alésé…) — choix
+    // du Ø qui porte la tolérance posée à la main (l'automatique reste sur l'alésage)
+    if(d.kind==='hole'&&d.tol&&!d.txt){
+      const L=mepHoleDias(d.holeText||'');
+      if(L.length>1){
+        const on=document.createElement('select');
+        L.forEach((x,k)=>{const o=document.createElement('option');o.value=String(k);o.textContent=x.line;on.appendChild(o);});
+        on.value=String(L[mepHoleTolOn(d)]?mepHoleTolOn(d):0);
+        on.onchange=()=>{mepEdit('tolérance sur',()=>{if(+on.value>0)d.tolOn=+on.value;else delete d.tolOn;});mepSideShow();};
+        on.title='Ø de l’étiquette après lequel s’écrit la tolérance';
+        row('Sur',on);
+      }
+    }
     if(d.tol&&d.tol.m==='pm'){
       const s=document.createElement('input');s.type='number';s.step='0.01';s.value=d.tol.s;
       s.onchange=()=>{mepEdit('±',()=>{d.tol.s=+s.value||0;});};if(typeof parFxBind==='function')parFxBind(s,d.tol,'s');
@@ -908,7 +968,13 @@
           mk('Supprimer ce point',()=>mepOrdDelPt(sh,d,op),'Retire la valeur désignée du groupe (Suppr)','danger');
           // tolérance de CETTE valeur seulement (2026-10-22-017)
           const tolBox=document.createElement('div');
-          mepTolEditor((lab,el)=>{const rr=document.createElement('div');rr.className='row';const L=document.createElement('label');L.textContent=lab;rr.appendChild(L);if(el)rr.appendChild(el);tolBox.appendChild(rr);return rr;},d.pts[op]);
+          const tRow=(lab,el)=>{const rr=document.createElement('div');rr.className='row';const L=document.createElement('label');L.textContent=lab;rr.appendChild(L);if(el)rr.appendChild(el);tolBox.appendChild(rr);return rr;};
+          mepTolEditor(tRow,d.pts[op]);
+          // cote de référence pour CETTE valeur (2026-11-26) : entre parenthèses, comme une cote normale
+          const cbR=document.createElement('input');cbR.type='checkbox';cbR.checked=!!d.pts[op].ref;
+          cbR.title='Valeur entre parenthèses, donnée pour information (aussi : clic droit sur la valeur, Maj + clic à la pose)';
+          cbR.onchange=()=>mepOrdSetRef(sh,d,op,cbR.checked);
+          tRow('Cote de référence',cbR);
           root.appendChild(n);root.appendChild(tolBox);n.__done=1;
         }else if(op===-1)n.textContent+='\nOrigine « 0 » désignée : supprimez le groupe pour la retirer.';
       }
@@ -930,7 +996,7 @@
       root.appendChild(r);
       return r;
     };
-    const val=mepDimMeasure(sh,d);
+    const val=mepDimMeasure(sh,d);mepDimThreadSync(sh,d);
     const read=document.createElement('div');
     read.className='note';
     read.style.whiteSpace='pre-line';

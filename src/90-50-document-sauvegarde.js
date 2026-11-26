@@ -428,8 +428,9 @@ async function bundleSerialise(){
   // V0.99.16 : image complète d'une pièce (20-75, pcVersFichier) — ouverture sans recalcul sur tout poste
   const docObj=JSON.parse(serialise());
   let pfin=null;try{if(typeof pcVersFichier==='function')pfin=await pcVersFichier(JSON.stringify(docObj));}catch(e){pfin=null;}
+  let cam=null;try{cam=viewCamGet();}catch(e){cam=null;} // V1.0.7 : vue 3D, remise à l'ouverture (10-scene-3d)
   return JSON.stringify({app:'ConceptCAD',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
-    at:Date.now(),name:doc.name||'',doc:docObj,
+    at:Date.now(),name:doc.name||'',doc:docObj,cam:cam||undefined,
     nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined,pfin:pfin||undefined});
 }
 let faoBundleMovesN=0;   // trajectoires embarquees dans le fichier ouvert
@@ -533,6 +534,8 @@ async function bundleRestore(txt,opts){
   faoBundleMovesN=await bundleStoreCaches(b); // trajectoires puis sources des imports, AVANT le document
   try{pcFichierAttendu=b._pfin?{e:b._pfin,doc:null}:null;pcFichierDoc=null;}catch(e){} // V0.99.16 : image de ce fichier (20-75)
   faoBundleWantReport=true;   // consomme par faoMovesDone() (fin de lecture)
+  // V1.0.7 : vue 3D enregistrée → remise par les recadrages de l'ouverture (10-scene-3d viewSavedTake)
+  try{viewSaved=viewCamRead(b.cam);if(viewSaved)viewUserMoved=false;}catch(e){viewSaved=null;}
   try{ setTimeout(function(){
         try{ if(faoBundleWantReport&&!faoMovesPending()){ faoBundleWantReport=false; bundleReport(); } }
         catch(e){} },1500); }catch(e){}

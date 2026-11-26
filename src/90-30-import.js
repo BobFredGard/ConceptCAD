@@ -185,6 +185,7 @@ function importAttach(name,fmt,u8,entry,fileName){
     docPushUndo('réimport '+name);
     ph.src=src;ph._mesh=entry.mesh;importGeom.set(ph.id,entry);
     sel={kind:'feature',id:ph.id};
+    viewSaved=null; // V1.0.7 : nouvel import → recadrage
     markDirty();builtVersion=-1;builtHash=null;rebuild();showAll();
     return ph.id;
   }
@@ -211,7 +212,7 @@ async function importSTL(file){
   const u8=new Uint8Array(await file.arrayBuffer());
   let entry;try{entry=importStlBuild(u8);}catch(e){alert('STL illisible.');return;}
   const id=importAttach(file.name.replace(/\.[^.]+$/,''),'stl',u8,entry,file.name);
-  sel={kind:'feature',id};markDirty();rebuild();showAll();
+  sel={kind:'feature',id};viewSaved=null;markDirty();rebuild();showAll(); // V1.0.7 : nouvel import → recadrage
 }
 let _importRestoring=null; // restauration en cours (promesse), sinon null
 async function importRestorePending(opts){
@@ -288,6 +289,7 @@ async function importSTEP(file){
     if(!iges&&/\.ig(e)?s$/i.test(file.name))throw new Error('ce fichier .igs ne ressemble pas à un IGES (lignes de 80 caractères)');
     const entry=importStepBuild(u8);
     importAttach(file.name.replace(/\.[^.]+$/,''),iges?'iges':'step',u8,entry,file.name);
+    viewSaved=null; // V1.0.7 : nouvel import → recadrage
     markDirty();rebuild();showAll();
     let msg=nom+' importé : '+file.name;
     const L=iges&&importIgesSolidify.last;

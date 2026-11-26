@@ -44,9 +44,82 @@
     const t=sh.dims.find(x=>x.id===d.on);
     return t&&t!==d&&!mepIsTol(t.kind)?t:null;
   }
+  /* 2026-11-26 : « Pouvoir empiler/ajouter une autre tolérance géométrique en dessous une existante. Le menu
+     permet la création d'un 2nd et une 3ème » — cadres empilés (ISO 1101) : d.under = id du cadre du dessus.
+     Pas de flèche à lui : collé sous le cadre du dessus (bords alignés du côté de la ligne de repère), il le
+     suit ; 3 cadres au plus par pile. Glisser un cadre de la pile déplace toute la pile ; Suppr du 1er
+     retire la pile, d'un cadre du milieu : celui d'en dessous remonte. Clic droit sur un cadre ou bouton
+     du panneau « + Cadre en dessous ». */
+  const MEP_GDT_STACK_MAX=3;
+  function mepGdtAbove(sh,d){return d&&d.under?sh.dims.find(x=>x.id===d.under&&x.kind==='gdt')||null:null;}
+  // cadres de la pile de d, de haut en bas
+  function mepGdtStack(sh,d){
+    let r=d,k=0;
+    while(r&&r.under&&k++<8){const a=mepGdtAbove(sh,r);if(!a)break;r=a;}
+    const out=[r];let c=r;k=0;
+    while(k++<8){const n=sh.dims.find(x=>x.kind==='gdt'&&x.under===c.id&&out.indexOf(x)<0);if(!n)break;out.push(n);c=n;}
+    return out;
+  }
+  // cadre dessiné (mm papier) {x0,x1,y0,y1,right : ligne de repère à droite} — sans dessiner
+  function mepGdtBoxCalc(sh,d,k){
+    if(!d||d.kind!=='gdt'||(k|0)>8)return null;
+    const H=mepGdtH(),s=mepGdtFrame(null,d,0,0,null,null,null,true),W=s.x1-s.x0;
+    if(d.under){
+      const P=mepGdtBoxCalc(sh,mepGdtAbove(sh,d),(k|0)+1);if(!P)return null;
+      const x0=P.right?P.x1-W:P.x0;
+      return{x0,x1:x0+W,y0:P.y1,y1:P.y1+H,right:P.right};
+    }
+    const w=mepGdtWorld(sh,d);if(!w)return null;
+    if(d.on)return{x0:w.b.x-W/2,x1:w.b.x+W/2,y0:w.b.y,y1:w.b.y+H,right:false};
+    const left=w.a.x<=w.b.x,x0=left?w.b.x:w.b.x-W;
+    return{x0,x1:x0+W,y0:w.b.y-H/2,y1:w.b.y+H/2,right:!left};
+  }
+  function mepGdtStackAdd(sh,d){
+    if(!sh||!d||d.kind!=='gdt')return null;
+    const st=mepGdtStack(sh,d);
+    if(st.length>=MEP_GDT_STACK_MAX){mepStatus('Tolérance : '+MEP_GDT_STACK_MAX+' cadres empilés au plus.');return null;}
+    const last=st[st.length-1];
+    const n={id:mepUid('d'),kind:'gdt',vid:last.vid,vid2:null,under:last.id,g:mepGdtNew()};
+    mepEdit('cadre de tolérance empilé',()=>{sh.dims.push(n);});
+    mepDimClearSelection();mepSt.selDim=n.id;mepSt.sel=null;
+    mepSideShow();mepRender();
+    mepStatus((st.length+1)+'ᵉ cadre ajouté sous le précédent — réglez-le dans le panneau.');
+    return n;
+  }
+  function mepGdtCtx(sh,d,ev){
+    mepSt.selDim=d.id;mepSt.sel=null;mepSt.entSel=[];
+    mepSideShow();mepRender();
+    const st=mepGdtStack(sh,d),n=st.length,i=st.indexOf(d);
+    const it=[];
+    if(n<MEP_GDT_STACK_MAX)it.push(['   Ajouter un cadre en dessous ('+(n+1)+'ᵉ)',()=>mepGdtStackAdd(sh,d)]);
+    it.push(['   Supprimer ce cadre'+(i===0&&n>1?' (et ceux du dessous)':''),()=>{
+      mepEdit('suppression tolérance',()=>{sh.dims=mepDimsWithout(sh,d.id);mepSt.selDim=null;});mepSideShow();}]);
+    mepCtxMenu(ev.clientX,ev.clientY,'Tolérance géométrique'+(n>1?' — cadre '+(i+1)+' / '+n:''),it);
+  }
+  /* cotes restantes après suppression de la cote id : avec ce qui en dépend (tolérances accrochées, cadres
+     empilés dessous) ; un cadre empilé retiré du milieu : celui d'en dessous remonte sous celui du dessus */
+  function mepDimsWithout(sh,id){
+    const d=sh.dims.find(x=>x.id===id);
+    const up=d&&d.kind==='gdt'&&d.under?d.under:null;
+    const gone=new Set([id]);
+    let grow=true;
+    while(grow){
+      grow=false;
+      sh.dims.forEach(x=>{
+        if(gone.has(x.id))return;
+        if((x.on&&gone.has(x.on))||(x.under&&gone.has(x.under)&&!(up&&x.under===id))){gone.add(x.id);grow=true;}
+      });
+    }
+    return sh.dims.filter(x=>!gone.has(x.id)).map(x=>{if(up&&x.under===id)x.under=up;return x;});
+  }
   /* ancrages en mm papier : {a (pointe / pied), b (cadre / carré), v1, u (direction imposée)} */
   function mepGdtWorld(sh,d){
     const v1=mepView(sh,d.vid);if(!v1)return null;
+    if(d.under){ // cadre empilé : coin haut gauche de son cadre
+      const B=mepGdtBoxCalc(sh,d);if(!B)return null;
+      const p={x:B.x0,y:B.y0};
+      return{a:p,b:p,v1,box:B};
+    }
     if(d.on){
       const t=mepGdtHost(sh,d);if(!t)return null;
       if(d.kind==='gdt'){
@@ -72,6 +145,26 @@
     if(!best)return null;
     const dx=best.x2-best.x1,dy=best.y2-best.y1,L=Math.hypot(dx,dy);
     return L>1e-9?{x:dx/L,y:dy/L}:null;
+  }
+  /* 2026-11-26 : « Les tolérances géométriques devraient avoir leur flèche perpendiculaire à l'arête
+     choisie » — normale unitaire (repère de la vue, même sens que le papier) à l'élément sous la
+     pointe : la droite de l'accrochage d'abord (un sommet touche 2 arêtes), sinon la droite, le cercle
+     ou l'arc le plus proche (normale = rayon) ; null dans le vide. Sert au cadre et à la référence. */
+  function mepGdtNormal(v,q){
+    if(!v||!q)return null;
+    const g=mepGeoOf(v),els=(g&&g.els)||[],h=q.hint,tol=0.05/Math.max(v.scale,1e-9)+0.05;
+    const nL=e=>{const dx=e.x2-e.x1,dy=e.y2-e.y1,L=Math.hypot(dx,dy);return L>1e-9?{x:-dy/L,y:dx/L}:null;};
+    const nC=e=>{const dx=q.x-e.cx,dy=q.y-e.cy,L=Math.hypot(dx,dy);return L>1e-9?{x:dx/L,y:dy/L}:null;};
+    if(h&&h.t==='eln'&&h.l)return nL(h.l);
+    if(h&&h.t==='seg'&&typeof h.i==='number'){const e=els[h.i];if(e&&e.t==='L'&&mepSegDist(q,e)<tol)return nL(e);}
+    let best=null,bd=tol;
+    els.forEach(e=>{
+      let dd=Infinity;
+      if(e.t==='L')dd=mepSegDist(q,e);
+      else if(e.t==='C'||(e.t==='A'&&mepArcIn(e,Math.atan2(q.y-e.cy,q.x-e.cx))))dd=Math.abs(Math.hypot(q.x-e.cx,q.y-e.cy)-e.r);
+      if(dd<bd){bd=dd;best=e;}
+    });
+    return best?(best.t==='L'?nL(best):nC(best)):null;
   }
   /* ----- symboles dessinés en traits ----- */
   function mepGdtSymbol(draw,k,cx,cy,H,L,F){
@@ -146,12 +239,28 @@
     draw('line',Object.assign({x1:x,y1:y0,x2:x,y2:y1},L));
     return{x0,x1:x0+W,y0,y1};
   }
+  /* ligne de repère d'un cadre : A = pointe (sur l'arête), S = bout de l'attache du cadre, n = normale.
+     Le dernier tronçon (flèche) suit la normale, tournée vers le cadre ; son coude K est le pied de S
+     sur cette normale : arête horizontale → descente verticale sous un trait horizontal, arête
+     verticale → flèche horizontale. Longueur mini de la flèche : 0,75 case. → {k (coude) | null} */
+  function mepGdtLeader(A,S,n,H){
+    if(!n)return{k:null}; // dans le vide : droit vers la pointe, comme avant
+    let nx=n.x,ny=n.y,t=(S.x-A.x)*nx+(S.y-A.y)*ny;
+    if(t<0){nx=-nx;ny=-ny;t=-t;} // côté du cadre (hors matière)
+    t=Math.max(t,H*0.75);
+    const k={x:A.x+nx*t,y:A.y+ny*t};
+    return{k:Math.hypot(k.x-S.x,k.y-S.y)>1e-6?k:null,n:{x:nx,y:ny}};
+  }
   const mepGdtBoxes=new WeakMap(); // cote → cadre dessiné (mm papier) : clic dedans = la saisir
   function mepDrawGdt(draw,d,sh,L,T,AR){
     if(d.kind==='rough'){mepDrawRough(draw,d,sh,L,T,AR);return;} // 98-mep-73
     const w=mepGdtWorld(sh,d);if(!w)return;
     const H=mepGdtH(),F=Object.assign({},L,{class:L.class+' mepGdtFill'});
     if(d.kind==='gdt'){
+      if(d.under){ // cadre empilé : collé sous celui du dessus, sans flèche
+        const B=w.box;mepGdtBoxes.set(d,mepGdtFrame(draw,d,B.x0,(B.y0+B.y1)/2,T,L,F));
+        return;
+      }
       if(d.on){ // sous la valeur de la cote, centré
         const s=mepGdtFrame(draw,d,0,0,T,L,F,true),W=s.x1-s.x0;
         mepGdtBoxes.set(d,mepGdtFrame(draw,d,w.b.x-W/2,w.b.y+H/2,T,L,F));
@@ -163,18 +272,21 @@
       const box=mepGdtFrame(draw,d,x0,w.b.y,T,L,F);mepGdtBoxes.set(d,box);
       const ax=left?box.x0:box.x1;
       // attache : petit trait horizontal hors du cadre, puis la ligne de repère vers la pointe
-      const kx=ax+(left?-H*0.5:H*0.5);
+      const kx=ax+(left?-H*0.5:H*0.5),S={x:kx,y:w.b.y};
       draw('line',Object.assign({x1:ax,y1:w.b.y,x2:kx,y2:w.b.y},L));
-      draw('line',Object.assign({x1:kx,y1:w.b.y,x2:w.a.x,y2:w.a.y,'marker-end':AR},L));
+      const G=mepGdtLeader(w.a,S,mepGdtNormal(w.v1,d.a),H);
+      if(G.k)draw('line',Object.assign({x1:S.x,y1:S.y,x2:G.k.x,y2:G.k.y},L));
+      const K=G.k||S;
+      draw('line',Object.assign({x1:K.x,y1:K.y,x2:w.a.x,y2:w.a.y,'marker-end':AR},L));
       return;
     }
     // référence : triangle noirci, attache, lettre encadrée
     const hb=H/2,side=H*0.75,ht=side*0.87;
     let n=w.u||null;
     if(!n){
-      const e=d.a?mepGdtEdgeDir(w.v1,d.a):null;
+      const e=d.a?mepGdtNormal(w.v1,d.a):null; // droite, ou cercle / arc (rayon) depuis V1.0.13
       let bx=w.b.x-w.a.x,by=w.b.y-w.a.y;const bl=Math.hypot(bx,by)||1;bx/=bl;by/=bl;
-      if(e){let nx=-e.y,ny=e.x;if(nx*bx+ny*by<0){nx=-nx;ny=-ny;}n={x:nx,y:ny};} // perpendiculaire à l'arête, côté carré
+      if(e){let nx=e.x,ny=e.y;if(nx*bx+ny*by<0){nx=-nx;ny=-ny;}n={x:nx,y:ny};} // perpendiculaire à l'arête, côté carré
       else n={x:bx,y:by};
     }
     const tx=-n.y,ty=n.x,A={x:w.a.x+n.x*ht,y:w.a.y+n.y*ht};
@@ -254,6 +366,8 @@
     const note=t=>{const n=document.createElement('div');n.className='note';n.style.whiteSpace='pre-line';n.textContent=t;root.appendChild(n);return n;};
     const redo=()=>{mepSideShow();mepRender();};
     if(d.on){const t=mepGdtHost(sh,d);note(t?'Accroché à une cote : '+(d.kind==='gdt'?'le cadre reste sous sa valeur.':'le triangle prolonge sa ligne de cote.'):'La cote porteuse a été supprimée.');}
+    const pile=d.kind==='gdt'?mepGdtStack(sh,d):[d];
+    if(pile.length>1)note('Cadre '+(pile.indexOf(d)+1)+' / '+pile.length+' de la pile — glisser un cadre déplace toute la pile.');
     if(d.kind==='datum'){
       const i=document.createElement('input');i.type='text';i.value=d.l||'';i.maxLength=3;i.style.width='4em';i.style.textTransform='uppercase';
       i.onchange=()=>{
@@ -311,7 +425,13 @@
       }else note('Tolérance de forme : pas de référence.');
     }
     const act=document.createElement('div');act.className='row';
+    if(d.kind==='gdt'&&pile.length<MEP_GDT_STACK_MAX){
+      const bAdd=document.createElement('button');bAdd.textContent='+ Cadre en dessous ('+(pile.length+1)+'ᵉ)';
+      bAdd.title='Empiler un autre cadre de tolérance sous celui-ci (3 au plus)';
+      bAdd.onclick=()=>mepGdtStackAdd(sh,d);
+      act.appendChild(bAdd);
+    }
     const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
-    bDel.onclick=()=>{mepEdit('suppression tolérance',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();};
+    bDel.onclick=()=>{mepEdit('suppression tolérance',()=>{sh.dims=mepDimsWithout(sh,d.id);mepSt.selDim=null;});mepSideShow();};
     act.appendChild(bDel);root.appendChild(act);
   }

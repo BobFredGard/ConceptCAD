@@ -408,6 +408,7 @@ const MF_IC={
   pNote:'<path d="M4 20l7-7"/><path d="M4 20l1.2-4.2M4 20l4.2-1.2"/><path d="M11 13h10"/><path d="M12 9h8M12 5.5h6"/>',
   pOrdX:'<path d="M5 20V9M11 20V6M18 20V11"/><path d="M3 20h18"/><path d="M4 6.5h2M10 3.5h2M17 8.5h2"/>',
   pOrdY:'<path d="M4 5h11M4 11h15M4 18h9"/><path d="M4 3v18"/><path d="M17.5 4v2M21 10v2M15.5 17v2"/>',
+  pEq:'<path d="M3 17h18M3 13v7.5M21 13v7.5"/><path d="M12 2.5v19" stroke-dasharray="4 1.6 1 1.6"/><circle cx="3" cy="17" r="1.4"/><circle cx="12" cy="17" r="1.4"/><circle cx="21" cy="17" r="1.4"/><path d="M5.5 8.5h4M5.5 11.5h4M14.5 8.5h4M14.5 11.5h4"/>',
   pHoles:'<circle cx="6" cy="17" r="3"/><circle cx="14" cy="17" r="3"/><path d="M16.2 14.8L20 11h2"/><path d="M3 5h8M3 8.5h6"/><path d="M14 5h3"/>',
   pAxHole:'<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 9.5v5M12 17.5v4M2.5 12h4M9.5 12h5M17.5 12h4"/>',
   pAxPitch:'<circle cx="12" cy="12" r="8" stroke-dasharray="4 1.6 1 1.6"/><circle cx="12" cy="4" r="1.8"/><circle cx="18.9" cy="16" r="1.8"/><circle cx="5.1" cy="16" r="1.8"/>',
@@ -519,6 +520,7 @@ function mfRibbon(){
   grp('Cotes',[['pDim','Cote',mepT('dim'),'Outil cote unique : Ø, longueur, distance, angle'],
     ['pHole','Perçage',mepT('hole'),'Cotation perçage : Ø, lamage, fraisure, taraudage'],
     ['pHoles','Perçages auto',()=>{try{mepSetActive(true);mepAutoHoles();}catch(e){}},'Coter toutes les fonctions Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche'],
+    ['pEq','Égalités',()=>{try{mepSetActive(true);mepEqAuto();}catch(e){}},'Cotes d’égalité « = » : chaque cote coupée en son milieu par un axe de symétrie reçoit 2 cotes à points marquées « = » (bord → axe → bord) — cote sélectionnée, sinon vue sélectionnée, sinon toute la planche'],
     ['pNote','Note',mepT('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',mepT('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
     ['pOrdY','Ordonnées Y',mepT('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');

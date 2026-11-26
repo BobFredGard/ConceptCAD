@@ -74,6 +74,47 @@ const {loadApp}=require('./appvm.cjs');
     const vt=T.addView({kind:'base',vk:'top',asm:true});T.geo(vt);
     const r3=T.balloonAdd(vt.x+30*vt.scale,vt.y+0*vt.scale);
     A(r3.ok&&r3.b.comp===C.id&&near(r3.b.p[2],50,1e-3),'17 : vue de dessus : bulle sur le DESSUS de la colonne (Z 50)');
+    // ── V1.0.4 : bulles automatiques sur la vue CHOISIE (« il faudrait pouvoir choisir la vue par moi-même ») ──
+    A(T.balloonsAuto(sh,vt.id)===2&&sh.balloons.length===2&&sh.balloons.every(b=>b.view===vt.id)&&sh.blView===vt.id,'19 : bulles automatiques sur la vue de dessus choisie (les 4 d’avant remplacées)');
+    const bCt=sh.balloons.find(b=>b.comp===C.id);
+    A(bCt&&near(bCt.p[2],50,1e-3),'20 : vue de dessus : bulle de la colonne sur son DESSUS (Z 50)');
+    A(T.balloonsAuto(sh)===2&&sh.balloons.every(b=>b.view===vt.id),'21 : sans vue demandée : la dernière choisie est reprise');
+    A(T.balloonsAuto(sh,'inconnue')===2&&sh.balloons.every(b=>b.view===vt.id),'22 : vue inconnue : la dernière choisie');
+    A(T.viewName(v)==='Face'&&T.viewName(vt)==='Dessus'&&T.viewName(Object.assign({},v,{label:'Face'}))==='Face'&&T.viewName(Object.assign({},v,{label:'Principale'}))==='Face « Principale »','23 : noms des vues dans la liste : '+T.viewName(v)+', '+T.viewName(vt)+' (libellé « Face » pas répété)');
+    const walk=(n,f)=>{f(n);(n.children||[]).forEach(c=>walk(c,f));};
+    // panneau de la planche : liste « Vue des bulles » (2 vues Assemblage)
+    let rootH=document.createElement('div');T.sideHome(rootH);
+    let vSel=null,bAuto=null;walk(rootH,n=>{if(n.id==='mepBlView')vSel=n;if(n.tagName==='BUTTON'&&n.textContent==='Bulles automatiques')bAuto=n;});
+    A(vSel&&(vSel.children||[]).map(o=>o.textContent).join('|')==='Face|Dessus'&&vSel.value===vt.id,'24 : panneau de la planche : liste « Vue des bulles » (Face, Dessus), sur la dernière choisie');
+    if(vSel&&bAuto){vSel.value=v.id;vSel.onchange();bAuto.onclick({stopPropagation(){}});}
+    A(sh.balloons.length===2&&sh.balloons.every(b=>b.view===v.id),'25 : « Face » choisie dans la liste puis « Bulles automatiques » : bulles sur la vue de face');
+    // panneau de la vue : bouton « Bulles automatiques » pour CETTE vue, « Effacer »
+    let rootV=document.createElement('div');T.sideView(rootV,vt);
+    let bHere=null;walk(rootV,n=>{if(n.id==='mepBlHere')bHere=n;});
+    A(bHere&&!bHere.disabled,'26 : panneau de la vue de dessus : bouton « Bulles automatiques »');
+    if(bHere)bHere.onclick({stopPropagation(){}});
+    A(sh.balloons.length===2&&sh.balloons.every(b=>b.view===vt.id),'27 : bouton de la vue : bulles sur la vue de dessus');
+    rootV=document.createElement('div');T.sideView(rootV,vt);
+    let bX=null;walk(rootV,n=>{if(n.tagName==='BUTTON'&&n.textContent==='Effacer')bX=n;});
+    if(bX)bX.onclick({stopPropagation(){}});
+    A(bX&&sh.balloons.length===0,'28 : « Effacer » de la vue : ses bulles retirées');
+    sh.bom.on=false;rootV=document.createElement('div');T.sideView(rootV,vt);bHere=null;walk(rootV,n=>{if(n.id==='mepBlHere')bHere=n;});
+    A(bHere&&bHere.disabled,'29 : sans nomenclature de composants : bouton grisé (explication au survol)');
+    sh.bom.on=true;
+    // ── V1.0.5 : bulle glissée calée sur le CENTRE d'une autre bulle (même hauteur / même verticale) ──
+    T.balloonsAuto(sh,v.id);
+    const [k0,k1]=sh.balloons,C0=T.balloonCenter(k0),C1=T.balloonCenter(k1);
+    const yFar=Math.max(C0.y,C1.y)+40,xFar=Math.max(C0.x,C1.x)+40;
+    let G=T.balloonSnap(k1.id,C0.x+0.8,yFar,1);
+    A(near(G.x,C0.x,1e-9)&&near(G.y,yFar,1e-9)&&G.gx&&!G.gy,'30 : à 0,8 mm de la verticale d’une autre bulle : centre calé dessus (même X), repère vertical');
+    G=T.balloonSnap(k1.id,xFar,C0.y-0.6,1);
+    A(near(G.y,C0.y,1e-9)&&near(G.x,xFar,1e-9)&&G.gy&&!G.gx,'31 : à 0,6 mm de sa hauteur : même Y, repère horizontal');
+    G=T.balloonSnap(k1.id,C0.x+0.5,C0.y+0.5,1);
+    A(near(G.x,C0.x,1e-9)&&near(G.y,C0.y,1e-9)&&G.gx&&G.gy,'32 : les deux à la fois');
+    G=T.balloonSnap(k1.id,C0.x+1.5,yFar,1);
+    A(near(G.x,C0.x+1.5,1e-9)&&!G.gx&&!G.gy,'33 : trop loin (1,5 mm) : rien ne bouge');
+    G=T.balloonSnap(k1.id,C1.x+0.3,yFar,1);
+    A(!G.gx||!near(G.gx.x,C1.x,1e-9)||near(C0.x,C1.x,1),'34 : jamais calée sur elle-même');
     // nomenclature au niveau « pièces seules » sans la pièce : refus explicite
     const vis=asmNewComp('Vis',S.id);sh.bom.lvl='parts';
     const r4=T.balloonAdd(v.x+0*v.scale,v.y-10*v.scale);

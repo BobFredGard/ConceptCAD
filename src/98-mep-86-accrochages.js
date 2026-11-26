@@ -17,8 +17,20 @@
     ['int','Intersection (même prolongée)']
   ];
   function mepSnapModeLabel(m){const r=MEP_SNAP_MODES.find(x=>x[0]===(m||null));return r?r[1]:'Automatique';}
+  /* 2026-11-26 : « Il manque aux cotes d'ordonnées la possibilité du clic droit qui existe pour la
+     cotation normale » — l'outil Ordonnées X / Y a le même menu d'accrochage ; le choix vaut pour
+     l'origine et chaque point du groupe, jusqu'à la fin du groupe (comme les 2 points d'une cote). */
+  function mepOrdTool(){return mepSt.tool==='ordx'||mepSt.tool==='ordy';}
   function mepSetSnapMode(m){
     mepSt.snapMode=m||null;mepSt.snapHov=null;mepSt.intPick=null;
+    if(mepOrdTool()){
+      const what=mepSt.ord?'les points à coter':'l’origine « 0 »';
+      mepStatus(m==='int'?('Ordonnées — intersection : cliquez une ligne ou un cercle, puis une 2ᵉ ; leur croisement donne '+what+' (clic droit pour changer).')
+        :m?('Ordonnées — accrochage '+mepSnapModeLabel(m).toLowerCase()+' : cliquez '+what+' (clic droit pour changer).')
+        :'Ordonnées — accrochage automatique.');
+      mepRender();
+      return;
+    }
     /* 2026-10-28 (2) : « coter un 1er élément, une droite, puis clic droit, et je choisis la 2nde entité
        (point, milieu, centre…) » — une droite seule pré-sélectionnée reste la 1ʳᵉ entité
        (mepSt.dimLine) : la cote ira du point imposé à cette droite, perpendiculairement. */
@@ -35,6 +47,19 @@
       :m?('Accrochage '+mepSnapModeLabel(m).toLowerCase()+' : cliquez le '+nth+' point'+(mepSt.dimLine?' (cote perpendiculaire à la droite)':'')+' (clic droit pour changer).')
       :'Accrochage automatique.');
     mepRender();
+  }
+  /* survol en accrochage imposé (outil Cote, Ordonnées) : repère du point visé, pas de surbrillance
+     d'entité (Intersection : on survole des ENTITÉS, le point s'affiche dès la 2ᵉ) ; true : à redessiner */
+  function mepSnapModeHover(sh,P){
+    let need=false;
+    const isInt=mepSt.snapMode==='int';
+    const ih=isInt?mepIntPickHit(sh,P):null;
+    const S=isInt?mepIntPoint(sh,mepSt.intPick,ih,P):mepSnapModePt(sh,P.x,P.y,mepSt.snapMode),o=mepSt.snapHov;
+    if(!!S!==!!o||(S&&(Math.abs(S.x-o.x)>1e-6||Math.abs(S.y-o.y)>1e-6)))need=true;
+    mepSt.snapHov=S;
+    const hov=ih?{vid:ih.vid,i:ih.i,sig:mepEntSig(ih.e)}:null;
+    if(!mepSameHovEnt(hov,mepSt.hovEnt)){mepSt.hovEnt=hov;need=true;}
+    return need;
   }
   /* point d'un clic en accrochage imposé (null : rien de pris, le statut le dit) */
   function mepSnapModeClick(sh,P){
@@ -307,7 +332,7 @@
   }
   /* repère du point imposé survolé (+ prolongements en aperçu) et du 1ᵉʳ point déjà choisi */
   function mepDrawSnapHov(mk){
-    if(mepSt.tool!=='dim')return;
+    if(mepSt.tool!=='dim'&&!mepOrdTool())return;
     const sh=mepSheet();if(!sh)return;
     const z=Math.max(1e-6,mepSt.zoom||1),s=3.2/z;
     const mark=(x,y,mode)=>{

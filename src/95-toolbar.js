@@ -106,7 +106,7 @@ $('btnRepeat').onclick=()=>{if(repMode)exitRepMode();else enterRepMode();};
 if($('btnMoveFace'))$('btnMoveFace').onclick=()=>{if(mvMode)exitMoveFaceMode();else{if(filMode||filModeX)exitFilletMode(true);}enterMoveFaceMode();};
 if($('btnDraft'))$('btnDraft').onclick=()=>{if(draftMode)exitDraftMode();else{if(filMode||filModeX)exitFilletMode(true);if(coqueMode)exitCoqueMode(true);}enterDraftMode();};
 if($('btnCoque'))$('btnCoque').onclick=()=>{if(coqueMode)exitCoqueMode();else{if(filMode||filModeX)exitFilletMode(true);if(draftMode)exitDraftMode(true);}enterCoqueMode();};
-$('btnFit').onclick=showAll;
+$('btnFit').onclick=()=>viewFitAll(); // V1.0.7 : la vue enregistrée du fichier est oubliée
 $('btnSelfTest').onclick=runSelfTests;
 // 2026-10-15-009 : UN SEUL bouton « ⟳ Régénérer » (remplace Recalculer, ✓ Valider et
 // ⟳⟳ Hard, redondants) : réparation du document, instances de répétition réalignées,
@@ -196,6 +196,7 @@ function docResetEmpty(){
   // V0.2.3 : remise à zéro COMPLÈTE de l'espace (modes, esquisse, FAO, sélection, caches) —
   // utilisée par « Nouveau » et avant chaque ouverture de fichier (src/97-fichiers-projets.js)
   try{exitFilletMode(true);}catch(e){}
+  viewSaved=null; // V1.0.7 : vue du fichier précédent oubliée
   if(skEdit)closeSketch(false);
   doc={name:'Sans titre',tint:0,sketches:[],features:[],cgeo:[],bodyVis:{},bodies:[],bodySeq:1,activeBody:null,mep:null};
   try{ if(typeof faoReset==='function')faoReset(); }catch(e){} // FAO : traces, posages et mode lecture à zéro
@@ -351,7 +352,7 @@ function propsCubeSync(){
     menu.onclick=ev=>ev.stopPropagation();
     addEventListener('click',close);
     addEventListener('keydown',e=>{if(e.key==='Escape')close();});
-    if($('setFit'))$('setFit').onclick=()=>{showAll();close();};
+    if($('setFit'))$('setFit').onclick=()=>{viewFitAll();close();}; // V1.0.7 : recadrer pour de bon
   }
 })();
 $('skOk').onclick=()=>closeSketch(true);$('skCancel').onclick=()=>closeSketch(false);

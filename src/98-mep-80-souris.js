@@ -14,7 +14,7 @@
     mepSt.tool=next;
     if(next==='select')mepSt.entSel=[];
     mepSt.pick=null;mepSt.dim=null;mepSt.cutPts=[];mepSt.detC=null;mepSt.hovEnt=null;mepSt.skSel=new Set();mepSt.lot=null;mepSt.vcmd=null;
-    mepSt.axisPick=[];mepSt.axisFree=null;mepSt.ord=null;mepSt.ordPt=null;mepSt.snapMode=null;mepSt.snapHov=null;
+    mepSt.axisPick=[];mepSt.axisFree=null;mepSt.axisNew=null;mepSt.axisHov=null;mepSt.ord=null;mepSt.ordPt=null;mepSt.snapMode=null;mepSt.snapHov=null;
     mepSt.intPick=null;mepSt.dimLine=null;mepSt.chain=null;
     if(ordKeep){mepSt.ord=ordKeep;mepSt.selDim=ordKeep;mepStatus('Ordonnées : cliquez les points à AJOUTER au groupe sélectionné (Entrée ou Échap pour terminer).');}
     mepToolSync();
@@ -95,7 +95,7 @@
       if(hs.length<2){mepStatus('Alignement : sélectionnez au moins 2 trous.');return false;}
       if(!mepAxisCollinear(hs,tol)){mepStatus('Alignement : les centres ne sont pas alignés.');return false;}
       mepSt.axisPick=[];
-      mepEdit('axe aligné',()=>{v.axes.push({id:mepUid('ax'),kind:'align',refs:picks});});
+      mepEdit('axe aligné',()=>{v.axes.push({id:mepAxisNewId(v),kind:'align',refs:picks});});
       mepStatus('Axe commun créé sur '+hs.length+' trous.');
       return true;
     }
@@ -104,7 +104,7 @@
       const C=mepAxisFitCircle(hs);
       if(!C||mepAxisResidual(hs,C)>Math.max(0.1,tol*2)){mepStatus('Cercle de perçage : les centres ne sont pas sur un même cercle.');return false;}
       mepSt.axisPick=[];
-      mepEdit('cercle de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'pitch',refs:picks});});
+      mepEdit('cercle de perçage',()=>{v.axes.push({id:mepAxisNewId(v),kind:'pitch',refs:picks});});
       mepStatus('Cercle de perçage créé sur '+hs.length+' trous.');
       return true;
     }
@@ -118,7 +118,7 @@
     const B={x:(b.x-v.x)/v.scale,y:(b.y-v.y)/v.scale};
     if(Math.hypot(B.x-A.x,B.y-A.y)<0.2){mepStatus('Axe libre : points confondus.');return false;}
     mepSt.axisFree=null;
-    mepEdit('axe libre',()=>{v.axes.push({id:mepUid('ax'),kind:'free',a:A,b:B});});
+    mepEdit('axe libre',()=>{v.axes.push({id:mepAxisNewId(v),kind:'free',a:A,b:B});});
     mepStatus('Axe libre créé.');
     return true;
   }
@@ -254,7 +254,7 @@
       if(!G){mepStatus('Axe de symétrie : droites dégénérées.');return;}
       if(!Array.isArray(v.axes))v.axes=[];
       const ln=e=>({x1:e.x1,y1:e.y1,x2:e.x2,y2:e.y2,k:e.k});
-      mepEdit('axe de symétrie',()=>{v.axes.push({id:mepUid('ax'),kind:'sym',l1:ln(f.e),l2:ln(hit.e)});});
+      mepEdit('axe de symétrie',()=>{v.axes.push({id:mepAxisNewId(v),kind:'sym',l1:ln(f.e),l2:ln(hit.e)});});
       mepStatus('Axe de symétrie créé — tirez ses extrémités pour l’allonger.');
       return;
     }
@@ -278,7 +278,7 @@
     const v=mepView(sh,ref.vid);if(!v)return;
     if(mode==='hole'){
       if(!Array.isArray(v.axes))v.axes=[];
-      mepEdit('axe de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'hole',ref});});
+      mepEdit('axe de perçage',()=>{v.axes.push({id:mepAxisNewId(v),kind:'hole',ref});});
       mepStatus(ref.fid?'Axe de trou créé.':'Axe créé'+(ref.ax?' sur la forme de révolution (suit le modèle).':' sur le cercle.'));
       return;
     }
@@ -303,6 +303,8 @@
       mepStatus('Cassure : glissez pour dégager la valeur (Ctrl + clic sans glisser : la retire).');
       mepSideShow();mepRender();return;
     }
+    // cadre de tolérance empilé : glisser déplace toute la pile (son 1er cadre), il reste désigné
+    if(dim.kind==='gdt'&&dim.under){const r=mepGdtStack(sh,dim)[0];if(r&&r!==dim)dim=r;}
     const w=mepDimWorld(sh,dim);
     const tp=mepDimTextPos(sh,dim);
     let labelHit=!!tp&&Math.hypot(P.x-tp.x,P.y-tp.y)<=18/(mepSt.zoom||1);
@@ -399,7 +401,7 @@
        if(bl){const v=mepView(sh,bl.view),l=mepLocal(v,bl.p),A=mepToSheet(v,l[0],l[1]);
          mepSt.selBl=bl.id;mepSt.sel=null;mepSt.selDim=null;mepSt.selAxis=null;
          mepSt.pick={kind:'blDrag',id:bl.id,ox:P.x-(A.x+(+bl.dx||0)),oy:P.y-(A.y+(+bl.dy||0)),ax:A.x,ay:A.y,px0:P.px,py0:P.py,moved:false,undoPushed:false};
-         mepStatus('Bulle : glissez pour la placer, Suppr pour la retirer.');
+         mepStatus('Bulle : glissez pour la placer — elle se cale sur le centre des autres bulles (Maj : libre) ; Suppr pour la retirer.');
          mepSideShow();mepRender();return;}
        if(mepSt.selBl){mepSt.selBl=null;}}
       // titre de vue ? → glisser le long de l'axe de la vue
@@ -533,7 +535,7 @@
     }
     if(tool==='axis'){mepAxisClick(sh,P);return;}
     if(tool==='gdt'||tool==='datum'||tool==='rough'){mepGdtClick(sh,P,tool);return;}
-    if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x');return;}
+    if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x',ev.shiftKey);return;} // Maj : cote de référence
     if(tool==='note'){
       if(mepSt.dim&&mepSt.dim.kind==='note'){ // 2ᵉ clic : place le texte, puis le saisit
         mepDimCommitDraft(sh,P);
@@ -674,7 +676,13 @@
         if(b){
           if(!pk.dragStarted){if(Math.hypot(P.px-pk.px0,P.py-pk.py0)<3)return;pk.dragStarted=true;}
           if(!pk.undoPushed){try{docPushUndo('Plan : bulle');}catch(e){}pk.undoPushed=true;}
-          b.dx=+(P.x-pk.ox-pk.ax).toFixed(2);b.dy=+(P.y-pk.oy-pk.ay).toFixed(2);pk.moved=true;
+          // V1.0.5 : centre calé sur celui d'une autre bulle (même hauteur / même verticale), 6 px
+          // à l'écran ; Maj : libre (comme la ligne de coupe)
+          let cx=P.x-pk.ox,cy=P.y-pk.oy;pk.guides=null;
+          if(!ev.shiftKey){const S=mepBalloonSnap(sh,b.id,cx,cy,6*mepPxToMm());
+            if(S.gx||S.gy){cx=S.x;cy=S.y;pk.guides={x:cx,y:cy,gx:S.gx,gy:S.gy};}}
+          b.dx=pk.guides&&pk.guides.gx?cx-pk.ax:+(cx-pk.ax).toFixed(2);
+          b.dy=pk.guides&&pk.guides.gy?cy-pk.ay:+(cy-pk.ay).toFixed(2);pk.moved=true;
           mepRender();
         }
         return;
@@ -802,16 +810,7 @@
       let need=false;
       if(mepSt.tool==='dim'&&mepSt.chain){mepChainHover(sh,P);return;}
       if(mepSt.tool==='dim'&&mepSt.snapMode&&!(mepSt.dim&&mepSt.dim.b)){
-        // accrochage imposé : repère du point visé, pas de surbrillance d'entité
-        // (Intersection : on survole des ENTITÉS, le point s'affiche dès la 2ᵉ)
-        const isInt=mepSt.snapMode==='int';
-        const ih=isInt?mepIntPickHit(sh,P):null;
-        const S=isInt?mepIntPoint(sh,mepSt.intPick,ih,P):mepSnapModePt(sh,P.x,P.y,mepSt.snapMode),o=mepSt.snapHov;
-        if(!!S!==!!o||(S&&(Math.abs(S.x-o.x)>1e-6||Math.abs(S.y-o.y)>1e-6)))need=true;
-        mepSt.snapHov=S;
-        const hov=ih?{vid:ih.vid,i:ih.i,sig:mepEntSig(ih.e)}:null;
-        if(!mepSameHovEnt(hov,mepSt.hovEnt)){mepSt.hovEnt=hov;need=true;}
-        if(need)mepRender();
+        if(mepSnapModeHover(sh,P))mepRender(); // accrochage imposé : repère du point visé (98-mep-86)
         return;
       }
       if(mepSt.snapHov){mepSt.snapHov=null;need=true;}
@@ -825,6 +824,10 @@
       if(need)mepRender();
       return;
     }
+    if(mepOrdTool()){ // ordonnées en accrochage imposé (clic droit, comme l'outil Cote) : repère du point visé
+      if(mepSt.snapMode){if(mepSnapModeHover(sh,P))mepRender();return;}
+      if(mepSt.snapHov||mepSt.hovEnt){mepSt.snapHov=null;mepSt.hovEnt=null;mepRender();}
+    }
     if(mepSt.tool==='axis'){
       if(mepSt.axisFree&&mepSt.axisFree.a){
         const snap=mepSnapPt(P.x,P.y,sh);
@@ -833,7 +836,7 @@
           mepSt.axisFree.cur={x:snap.x,y:snap.y};
           mepRender();
         }
-      }
+      }else if(mepAxisHovUpdate(sh,P))mepRender(); // traits qui serviront au clic (98-mep-74)
       return;
     }
     // survol d'esquisse (cartouche en édition, ou esquisse de planche active) : élément visé surligné
@@ -1012,10 +1015,10 @@
     if(k==='Escape'&&mepCtxEl&&mepCtxEl.style.display!=='none'){
       mepCtxHide();ev.preventDefault();ev.stopPropagation();return;
     }
+    if(k==='Escape'&&mepSt.intPick){mepIntCancel();ev.preventDefault();ev.stopPropagation();return;} // seulement l'intersection en cours (Cote, Ordonnées)
     if((k==='Escape'||k==='Enter')&&mepSt.ord){mepSt.ord=null;mepSetTool('select');mepStatus('Cotation d’ordonnées terminée.');ev.preventDefault();ev.stopPropagation();return;}
     if(k==='Escape'&&mepSt.blAdd){mepSt.blAdd=false;mepStatus('＋ Bulle terminé.');mepSideShow();ev.preventDefault();ev.stopPropagation();return;} // V0.8.2
     if(k==='Escape'){
-      if(mepSt.intPick){mepIntCancel();ev.preventDefault();ev.stopPropagation();return;} // seulement l'intersection en cours
       if(mepSt.chain){mepChainEnd();ev.preventDefault();ev.stopPropagation();return;} // fin de chaîne, l'outil Cote reste actif
       if(mepSt.alignDims){mepSt.alignDims=null;mepStatus('Alignement annulé.');ev.preventDefault();ev.stopPropagation();return;}
       if(mepSt.vcmd){mepVcmdCancel();ev.preventDefault();ev.stopPropagation();return;}
@@ -1065,7 +1068,7 @@
         mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
       }
       if(mepSt.selDim){
-        mepEdit('suppression cote',()=>{const id=mepSt.selDim;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id);mepSt.selDim=null;}); // avec ses tolérances accrochées
+        mepEdit('suppression cote',()=>{const id=mepSt.selDim,eq=(sh.dims.find(d=>d.id===id)||{}).eq;sh.dims=mepDimsWithout(sh,id).filter(d=>!(eq&&d.eq===eq));mepSt.selDim=null;}); // avec ses tolérances accrochées et les cadres empilés dessous ; cote « = » : avec sa voisine
         mepSideShow();
         ev.preventDefault();ev.stopPropagation();
         return;
@@ -1384,7 +1387,13 @@
         if(g)d1=segDist(P,g.a1.x,g.a1.y,g.b1.x,g.b1.y);
       }
       const tp=mepDimTextPos(sh,d);
-      const d2=tp?Math.hypot(sx-tp.x,sy-tp.y):1e9;
+      let d2=tp?Math.hypot(sx-tp.x,sy-tp.y):1e9;
+      // 2026-11-26 : « on doit pouvoir écarter la boîte » — un cadre de tolérance et une lettre de
+      // référence se saisissent n'importe où DANS leur boîte (pas seulement au centre ou sur un trait :
+      // zoomé, la case « A » d'un cadre était hors d'atteinte et la vue glissait). Pas la rugosité :
+      // sa boîte englobe aussi la ligne de repère.
+      const bx=d.kind==='gdt'||d.kind==='datum'?mepGdtBoxes.get(d):null;
+      if(bx&&sx>=Math.min(bx.x0,bx.x1)&&sx<=Math.max(bx.x0,bx.x1)&&sy>=Math.min(bx.y0,bx.y1)&&sy<=Math.max(bx.y0,bx.y1))d2=0;
       if(d1<bd||d2<bdTxt){
         const score=Math.min(d1/bd,d2/bdTxt);
         if(score<bestScore){bestScore=score;best=d;}
@@ -1493,11 +1502,17 @@
         add('Ø à une flèche (comme R)',!!d.dia1,()=>mepDimSetDiaOne(d,true,!!draft));
       }
     }
-    if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)){
+    if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)&&!d.eq){
       const o=d.orient||'a';
       add('Alignée (A)',o==='a',()=>mepDimSetOrient(d,'a',!!draft));
       add('Horizontale (X)',o==='h',()=>mepDimSetOrient(d,'h',!!draft));
       add('Verticale (Y)',o==='v',()=>mepDimSetOrient(d,'v',!!draft));
+    }
+    // cotes d'égalité « = » de part et d'autre de l'axe (98-mep-88)
+    if(d&&!draft&&(d.kind==='len'||d.kind==='dist')){
+      const sh=mepSheet();
+      if(d.eq)add('Retirer les cotes « = »',false,()=>mepEqRemove(sh,d));
+      else if(!sh.dims.some(x=>x.eqOf===d.id)&&mepEqFind(sh,d))add('Cotes d’égalité « = » de part et d’autre de l’axe',false,()=>mepEqAuto(d));
     }
     if(snap){
       // accrochage imposé des points de la cote (2026-10-28)
@@ -1520,6 +1535,7 @@
     if(mepSt.vcmd){mepVcmdCancel();return;}
     if(mepSt.pick&&MEP_SK_TOOLS.indexOf(mepSt.pick.kind)>=0){mepSt.pick=null;mepRender();mepStatus('Tracé terminé.');return;}
     const sh=mepSheet();if(!sh)return;
+    if(mepOrdTool()){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;} // ordonnées : accrochage imposé, comme l'outil Cote (98-mep-86)
     const canCtx=d=>d&&(d.kind==='dia'||d.kind==='rad'||d.kind==='len'||d.kind==='dist');
     const snapCtx=mepSt.tool==='dim'&&!(mepSt.dim&&mepSt.dim.kind==='dist'&&mepSt.dim._pp);
     if(mepSt.dim&&canCtx(mepSt.dim)){
@@ -1528,6 +1544,8 @@
     }
     if(snapCtx&&mepSt.chain){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;} // chaîne : accrochage seul
     const P=mepPt(ev),d=mepSt.dim?null:mepDimAt(sh,P.x,P.y);
+    if(d&&d.kind==='ord'&&!snapCtx&&!mepSt.dim){mepOrdCtx(sh,d,P,ev);return;} // valeur d'ordonnée : cote de référence, suppression (98-mep-70)
+    if(d&&d.kind==='gdt'&&!snapCtx&&!mepSt.dim){mepGdtCtx(sh,d,ev);return;} // cadre de tolérance : en empiler un autre dessous (98-mep-72)
     if(!mepSt.dim&&!snapCtx&&!canCtx(d)&&mepLocCtx(sh,P,ev))return; // coupe locale : menu de la forme
     if(snapCtx&&!canCtx(d)){mepCtxShow(ev.clientX,ev.clientY,null,false,true);return;}
     if(canCtx(d)){
