@@ -73,6 +73,26 @@
     const dx=best.x2-best.x1,dy=best.y2-best.y1,L=Math.hypot(dx,dy);
     return L>1e-9?{x:dx/L,y:dy/L}:null;
   }
+  /* 2026-11-26 : « Les tolérances géométriques devraient avoir leur flèche perpendiculaire à l'arête
+     choisie » — normale unitaire (repère de la vue, même sens que le papier) à l'élément sous la
+     pointe : la droite de l'accrochage d'abord (un sommet touche 2 arêtes), sinon la droite, le cercle
+     ou l'arc le plus proche (normale = rayon) ; null dans le vide. Sert au cadre et à la référence. */
+  function mepGdtNormal(v,q){
+    if(!v||!q)return null;
+    const g=mepGeoOf(v),els=(g&&g.els)||[],h=q.hint,tol=0.05/Math.max(v.scale,1e-9)+0.05;
+    const nL=e=>{const dx=e.x2-e.x1,dy=e.y2-e.y1,L=Math.hypot(dx,dy);return L>1e-9?{x:-dy/L,y:dx/L}:null;};
+    const nC=e=>{const dx=q.x-e.cx,dy=q.y-e.cy,L=Math.hypot(dx,dy);return L>1e-9?{x:dx/L,y:dy/L}:null;};
+    if(h&&h.t==='eln'&&h.l)return nL(h.l);
+    if(h&&h.t==='seg'&&typeof h.i==='number'){const e=els[h.i];if(e&&e.t==='L'&&mepSegDist(q,e)<tol)return nL(e);}
+    let best=null,bd=tol;
+    els.forEach(e=>{
+      let dd=Infinity;
+      if(e.t==='L')dd=mepSegDist(q,e);
+      else if(e.t==='C'||(e.t==='A'&&mepArcIn(e,Math.atan2(q.y-e.cy,q.x-e.cx))))dd=Math.abs(Math.hypot(q.x-e.cx,q.y-e.cy)-e.r);
+      if(dd<bd){bd=dd;best=e;}
+    });
+    return best?(best.t==='L'?nL(best):nC(best)):null;
+  }
   /* ----- symboles dessinés en traits ----- */
   function mepGdtSymbol(draw,k,cx,cy,H,L,F){
     const u=H*0.3,ln=(x1,y1,x2,y2)=>draw('line',Object.assign({x1:cx+x1*u,y1:cy+y1*u,x2:cx+x2*u,y2:cy+y2*u},L));
@@ -146,6 +166,18 @@
     draw('line',Object.assign({x1:x,y1:y0,x2:x,y2:y1},L));
     return{x0,x1:x0+W,y0,y1};
   }
+  /* ligne de repère d'un cadre : A = pointe (sur l'arête), S = bout de l'attache du cadre, n = normale.
+     Le dernier tronçon (flèche) suit la normale, tournée vers le cadre ; son coude K est le pied de S
+     sur cette normale : arête horizontale → descente verticale sous un trait horizontal, arête
+     verticale → flèche horizontale. Longueur mini de la flèche : 0,75 case. → {k (coude) | null} */
+  function mepGdtLeader(A,S,n,H){
+    if(!n)return{k:null}; // dans le vide : droit vers la pointe, comme avant
+    let nx=n.x,ny=n.y,t=(S.x-A.x)*nx+(S.y-A.y)*ny;
+    if(t<0){nx=-nx;ny=-ny;t=-t;} // côté du cadre (hors matière)
+    t=Math.max(t,H*0.75);
+    const k={x:A.x+nx*t,y:A.y+ny*t};
+    return{k:Math.hypot(k.x-S.x,k.y-S.y)>1e-6?k:null,n:{x:nx,y:ny}};
+  }
   const mepGdtBoxes=new WeakMap(); // cote → cadre dessiné (mm papier) : clic dedans = la saisir
   function mepDrawGdt(draw,d,sh,L,T,AR){
     if(d.kind==='rough'){mepDrawRough(draw,d,sh,L,T,AR);return;} // 98-mep-73
@@ -163,18 +195,21 @@
       const box=mepGdtFrame(draw,d,x0,w.b.y,T,L,F);mepGdtBoxes.set(d,box);
       const ax=left?box.x0:box.x1;
       // attache : petit trait horizontal hors du cadre, puis la ligne de repère vers la pointe
-      const kx=ax+(left?-H*0.5:H*0.5);
+      const kx=ax+(left?-H*0.5:H*0.5),S={x:kx,y:w.b.y};
       draw('line',Object.assign({x1:ax,y1:w.b.y,x2:kx,y2:w.b.y},L));
-      draw('line',Object.assign({x1:kx,y1:w.b.y,x2:w.a.x,y2:w.a.y,'marker-end':AR},L));
+      const G=mepGdtLeader(w.a,S,mepGdtNormal(w.v1,d.a),H);
+      if(G.k)draw('line',Object.assign({x1:S.x,y1:S.y,x2:G.k.x,y2:G.k.y},L));
+      const K=G.k||S;
+      draw('line',Object.assign({x1:K.x,y1:K.y,x2:w.a.x,y2:w.a.y,'marker-end':AR},L));
       return;
     }
     // référence : triangle noirci, attache, lettre encadrée
     const hb=H/2,side=H*0.75,ht=side*0.87;
     let n=w.u||null;
     if(!n){
-      const e=d.a?mepGdtEdgeDir(w.v1,d.a):null;
+      const e=d.a?mepGdtNormal(w.v1,d.a):null; // droite, ou cercle / arc (rayon) depuis V1.0.13
       let bx=w.b.x-w.a.x,by=w.b.y-w.a.y;const bl=Math.hypot(bx,by)||1;bx/=bl;by/=bl;
-      if(e){let nx=-e.y,ny=e.x;if(nx*bx+ny*by<0){nx=-nx;ny=-ny;}n={x:nx,y:ny};} // perpendiculaire à l'arête, côté carré
+      if(e){let nx=e.x,ny=e.y;if(nx*bx+ny*by<0){nx=-nx;ny=-ny;}n={x:nx,y:ny};} // perpendiculaire à l'arête, côté carré
       else n={x:bx,y:by};
     }
     const tx=-n.y,ty=n.x,A={x:w.a.x+n.x*ht,y:w.a.y+n.y*ht};

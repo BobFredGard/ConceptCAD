@@ -1385,7 +1385,13 @@
         if(g)d1=segDist(P,g.a1.x,g.a1.y,g.b1.x,g.b1.y);
       }
       const tp=mepDimTextPos(sh,d);
-      const d2=tp?Math.hypot(sx-tp.x,sy-tp.y):1e9;
+      let d2=tp?Math.hypot(sx-tp.x,sy-tp.y):1e9;
+      // 2026-11-26 : « on doit pouvoir écarter la boîte » — un cadre de tolérance et une lettre de
+      // référence se saisissent n'importe où DANS leur boîte (pas seulement au centre ou sur un trait :
+      // zoomé, la case « A » d'un cadre était hors d'atteinte et la vue glissait). Pas la rugosité :
+      // sa boîte englobe aussi la ligne de repère.
+      const bx=d.kind==='gdt'||d.kind==='datum'?mepGdtBoxes.get(d):null;
+      if(bx&&sx>=Math.min(bx.x0,bx.x1)&&sx<=Math.max(bx.x0,bx.x1)&&sy>=Math.min(bx.y0,bx.y1)&&sy<=Math.max(bx.y0,bx.y1))d2=0;
       if(d1<bd||d2<bdTxt){
         const score=Math.min(d1/bd,d2/bdTxt);
         if(score<bestScore){bestScore=score;best=d;}

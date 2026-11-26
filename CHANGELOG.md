@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**797 versions**, de `2026-09-28b` à `V1.0.12` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**798 versions**, de `2026-09-28b` à `V1.0.13` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8885,3 +8885,15 @@ Fred : « Il manque aux cotes d'ordonnées la possibilité du clic droit qui exi
 - mepDrawOrd : le texte de chaque valeur s'ajoute aux traits attrapables du groupe (clic pour désigner, clic droit).
 
 **Test** : `test_mep_ordonnees_accrochage` (nouveau, inscrit dans run et run-fast, 36 contrôles) : mêmes 7 choix que l'outil Cote, intersection dans le vide pour l'origine (survol, repère, prolongements, suivi quand une arête bouge), centre et point extrême X pour les points, retour à Automatique, Échap / Entrée ; Maj + clic, clic droit sur le texte d'une valeur (et non son trait), case du panneau, enregistrement. Sur V1.0.11 : échec. Dans le navigateur, sur Support Pédale : menu « Accrochage » au clic droit de l'outil Ordonnées X, repère d'extrémité au survol ; ordonnées Y avec Maj + clic → « (10.55) », clic droit sur la valeur 56 → « Cote de référence » → « (56) », case du panneau cochée ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.13 - Mise en plan : flèche des tolérances géométriques perpendiculaire à l'arête, cadre écartable
+
+Fred : « Les Tolérances géométriques devraient avoir leur flèche perpendiculaire à l'arête choisie et l'on doit pouvoir écarter la boite vers l'extérieur de la vue ».
+
+**Avant** : la ligne de repère du cadre ISO 1101 allait tout droit de l'attache du cadre à la pointe : la flèche arrivait de biais sur l'arête dès que le cadre n'était pas juste en face. Zoomé, un clic sur une case éloignée du centre du cadre (référence « A » au bout d'un cadre large) ne le saisissait pas : la vue glissait au lieu du cadre. Le triangle d'une référence posée sur un cercle suivait la direction de la corde voisine, pas le rayon.
+
+**Correctif** :
+- `src/98-mep-72-tolerances-geometriques.js` : mepGdtNormal (normale à l'élément visé : arête droite ou oblique, cercle ou arc le long du rayon ; repère d'accrochage d'abord) ; mepGdtLeader (coude au pied de la normale qui passe par la pointe, flèche d'au moins 0,75 fois la hauteur du cadre, retournée du côté du cadre) ; mepDrawGdt : ligne du cadre au coude, puis flèche le long de la normale ; pointe dans le vide : ligne droite comme avant ; le triangle d'une référence se pose à plat sur l'élément (cercle compris) ;
+- `src/98-mep-80-souris.js` mepDimAt : un clic n'importe où dans la boîte d'un cadre de tolérance ou d'une lettre de référence la saisit (pas l'état de surface, dont la boîte contient la ligne de repère) ; le cadre s'écarte aussi loin qu'on veut, la flèche reste perpendiculaire.
+
+**Test** : `test_mep_tolerances_fleche` (nouveau, inscrit dans run et run-fast, 12 contrôles) : arête verticale, horizontale, cercle, droite à 45°, pointe dans le vide, saisie dans la dernière case à zoom 8, cadre écarté loin de la vue puis passé de l'autre côté de l'arête, référence sur le haut d'un cercle. Sur V1.0.12 : 8 échecs. Dans le navigateur, sur Support Pédale : cadre posé sur l'arête gauche d'une vue (flèche horizontale avec coude), puis glissé par sa case du symbole loin sous la vue et hors d'elle : flèche toujours horizontale sur l'arête ; aucune erreur. CACHE_VER et FORMES_VER inchangés.

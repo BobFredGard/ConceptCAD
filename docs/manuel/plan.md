@@ -53,7 +53,7 @@ La planche reste fluide même chargée : pendant la molette ou le panoramique, l
   - **Après** : un trait d'axe sélectionné rallume ses traits d'origine (V1.0.10).
   - Ce soulignement ne sort jamais à l'export.
 - **Supprimer un axe automatique** (croix du centre d’un cercle, axe de trou) : Suppr ; sur un axe posé à la main, Suppr sur sa croix de centre ne retire que la croix. « Réafficher » dans le panneau de la vue les rend.
-- **Tolérances géométriques ISO 1101** (les 14 caractéristiques, Ø, modificateurs Ⓜ Ⓛ Ⓔ Ⓟ Ⓕ CZ, jusqu’à 3 références) et **références ISO 5459** (A, B, C…, sans I, O, Q) : cadre à flèche sur une arête ou sous la valeur d’une cote, triangle sur une arête ou au bout d’une cote (axe, plan médian) ; ils suivent la pièce et partent avec leur cote.
+- **Tolérances géométriques ISO 1101** (les 14 caractéristiques, Ø, modificateurs Ⓜ Ⓛ Ⓔ Ⓟ Ⓕ CZ, jusqu’à 3 références) et **références ISO 5459** (A, B, C…, sans I, O, Q) : cadre à flèche sur une arête ou sous la valeur d’une cote, triangle sur une arête ou au bout d’une cote (axe, plan médian) ; ils suivent la pièce et partent avec leur cote. La flèche du cadre arrive perpendiculaire à l’élément visé (arête droite ou oblique, cercle le long du rayon), avec un coude si besoin ; le cadre se saisit n’importe où dans sa boîte et s’écarte aussi loin qu’on veut de la vue (V1.0.13).
 - **Rugosité** (état de surface, ISO 21920-1 / ex-ISO 1302) : symbole posé sur l'arête du côté hors matière, perpendiculaire à elle.
   - Valeur « Ra 3,2 » (Ra, Rz…) sous le trait de la branche longue, lisible du bas ou de la droite du plan.
   - Si ce côté se lirait à l'envers (dessous d'une arête, droite d'une arête verticale), ou si on l'éloigne, le symbole passe par une ligne de repère à flèche.
