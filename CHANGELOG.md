@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**801 versions**, de `2026-09-28b` à `V1.0.16` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**802 versions**, de `2026-09-28b` à `V1.0.17` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8938,3 +8938,13 @@ Fred : « Normalement ce Ø4 est un M4. La vue ne montre pas le filet du cylindr
 - `src/76-filetage.js` : threadCompute garde les bouts libres et la longueur de la face (f0, f1, span) ; threadReplayStep résout aussi le filet cosmétique pendant le rejeu de fond (copie de la fonction : document, empreinte et pièce gardée intacts) ; threadGeoPut redessine les spirales 3D et le plan quand un filet apparaît ou bouge.
 
 **Test** : `test_mep_filetage_exterieur` (nouveau, inscrit dans run et run-fast, 24 contrôles) : axe M4 chanfreiné avec épaulement — 2 traits fins au Ø 3,242 de l'épaulement jusqu'au chanfrein, chanfrein posé après le filetage, grand chanfrein sans dépassement, longueur filetée 5 avec trait fort de fin, 3/4 de cercle vu du bout libre et rien de l'autre côté, filet modélisé ou masqué : rien ; cotes « M4 », « M4-6g », « 2× M4 », « M4×0,5 », « M4-LH », Ø3,2 du chanfrein, Ø6 de l'épaulement, partie lisse Ø4, cercle vu en bout ; sans géométrie du rejeu : rien et Ø4. Sur V1.0.15 : échec. Dans le navigateur, sur une copie de la pièce de Fred (hors dépôt) : fond de filet gris du chanfrein à l'épaulement dans la vue de face, cote « M4 » au lieu de « Ø4 », Ø6 inchangé ; fichier rouvert : filet en plan et spirale 3D après le seul rejeu de fond, empreinte du document et pièce gardée inchangées (contrôle 3/3) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.17 - Tests : délai de la longue suite `test_barquette_120` porté à 75 min (le « livre » ne s'arrête plus dessus)
+
+Fred, à la proposition d'allonger le délai de la longue suite : « Yes, do it »
+
+**Avant** : `test_barquette_120` (120 modifications de suite sur la Barquette) dure ~38-39 min seule (V1.0.0 comme V1.0.16) pour un délai de 40 min. Dans `ci:full`, la machine chargée, elle dépassait (« délai dépassé (2400 s) ») et arrêtait le « livre » de V1.0.16 ; il avait fallu la relancer seule, puis reprendre la livraison après les tests.
+
+**Correctif** : `tests/pool.cjs` : `SUR_P` donne 75 min à cette suite (toujours réservée aux cœurs P). Une série de 120 modifications à la suite : pas découpable en morceaux.
+
+**Test** : `npm run ci` vert (204/204). Aucun changement dans l'application. CACHE_VER et FORMES_VER inchangés.
