@@ -399,6 +399,15 @@
     });
     r=rowEl();
     {const b=mkBtn('Coter les perçages',()=>{mepAutoHoles();mepSideShow();},'Étiquette automatique de chaque fonction Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche');b.style.flex='1';r.appendChild(b);}
+    r=rowEl();
+    {const b=mkBtn('Cotes 3D : toutes',()=>{mepFrom3D();mepSideShow();},'Toutes les cotes 3D de la pièce qui se lisent en vraie grandeur dans la vue sélectionnée (sans vue choisie : toute la planche). Les autres vues ne bougent pas. Clic droit sur une vue : la même chose pour cette vue');b.style.flex='1';r.appendChild(b);}
+    {const b=mkBtn('Aucune',()=>{mepNo3D();mepSideShow();},'Retire les cotes reprises de la 3D de la vue sélectionnée (sans vue choisie : de toute la planche)');b.style.flex='1';r.appendChild(b);}
+    r=rowEl();
+    {const L=document.createElement('label');L.textContent='Écart entre cotes (mm)';L.style.flex='1';r.appendChild(L);
+      const i=document.createElement('input');i.type='number';i.id='mepC3GapIn';i.min='4';i.max='30';i.step='0.5';i.value=mepC3Gap(mepSheet());i.style.width='64px';
+      i.title='Écart entre deux étages de cotes 3D reprises (le 1er étage est à cet écart + 2 mm de la pièce). Changer la valeur range de nouveau les cotes 3D de la planche';
+      i.onchange=()=>{const sh=mepSheet();if(!sh)return;let v=parseFloat(String(i.value).replace(',','.'));if(!Number.isFinite(v))v=mepC3Gap(sh);v=Math.round(Math.min(30,Math.max(4,v))*10)/10;i.value=v;sh.c3Gap=v;mepC3Relayout(sh);};
+      r.appendChild(i);}
     h('Axes');
     r=rowEl();
     [['Trou','hole'],['Alignement','align'],['Cercle','pitch'],['Libre','free'],['Symétrie','sym']].forEach(([lab,m])=>{

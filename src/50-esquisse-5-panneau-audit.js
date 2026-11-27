@@ -38,7 +38,7 @@ function conDesc(sk,c){
 }
 function dimDesc(sk,d){
   if(d.type==='length')return'Longueur = '+d.value.toFixed(2);
-  if(d.type==='distance')return'Distance = '+d.value.toFixed(2);
+  if(d.type==='distance')return(d.ord?'Ordonnée '+(d.orient==='v'?'Y':'X'):'Distance')+' = '+d.value.toFixed(2);
   if(d.type==='diameter')return'Ø = '+d.value.toFixed(2);
   if(d.type==='radius')return'R = '+d.value.toFixed(2);
   if(d.type==='angle')return'Angle = '+(d.value*180/Math.PI).toFixed(1)+'°';

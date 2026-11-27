@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**801 versions**, de `2026-09-28b` à `V1.0.16` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**806 versions**, de `2026-09-28b` à `V1.1.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8938,3 +8938,59 @@ Fred : « Normalement ce Ø4 est un M4. La vue ne montre pas le filet du cylindr
 - `src/76-filetage.js` : threadCompute garde les bouts libres et la longueur de la face (f0, f1, span) ; threadReplayStep résout aussi le filet cosmétique pendant le rejeu de fond (copie de la fonction : document, empreinte et pièce gardée intacts) ; threadGeoPut redessine les spirales 3D et le plan quand un filet apparaît ou bouge.
 
 **Test** : `test_mep_filetage_exterieur` (nouveau, inscrit dans run et run-fast, 24 contrôles) : axe M4 chanfreiné avec épaulement — 2 traits fins au Ø 3,242 de l'épaulement jusqu'au chanfrein, chanfrein posé après le filetage, grand chanfrein sans dépassement, longueur filetée 5 avec trait fort de fin, 3/4 de cercle vu du bout libre et rien de l'autre côté, filet modélisé ou masqué : rien ; cotes « M4 », « M4-6g », « 2× M4 », « M4×0,5 », « M4-LH », Ø3,2 du chanfrein, Ø6 de l'épaulement, partie lisse Ø4, cercle vu en bout ; sans géométrie du rejeu : rien et Ø4. Sur V1.0.15 : échec. Dans le navigateur, sur une copie de la pièce de Fred (hors dépôt) : fond de filet gris du chanfrein à l'épaulement dans la vue de face, cote « M4 » au lieu de « Ø4 », Ø6 inchangé ; fichier rouvert : filet en plan et spirale 3D après le seul rejeu de fond, empreinte du document et pièce gardée inchangées (contrôle 3/3) ; aucune erreur. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.17 - Tests : délai de la longue suite `test_barquette_120` porté à 75 min (le « livre » ne s'arrête plus dessus)
+
+Fred, à la proposition d'allonger le délai de la longue suite : « Yes, do it »
+
+**Avant** : `test_barquette_120` (120 modifications de suite sur la Barquette) dure ~38-39 min seule (V1.0.0 comme V1.0.16) pour un délai de 40 min. Dans `ci:full`, la machine chargée, elle dépassait (« délai dépassé (2400 s) ») et arrêtait le « livre » de V1.0.16 ; il avait fallu la relancer seule, puis reprendre la livraison après les tests.
+
+**Correctif** : `tests/pool.cjs` : `SUR_P` donne 75 min à cette suite (toujours réservée aux cœurs P). Une série de 120 modifications à la suite : pas découpable en morceaux.
+
+**Test** : `npm run ci` vert (204/204). Aucun changement dans l'application. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.18 - Tests : la longue suite `test_barquette_120` fait 20 modifications au lieu de 120 (38 min → 4 min)
+
+Fred : « Que fait exactement le long test? Est-il vraiment pertinent de le faire aussi long et complqué? » ; puis « Oui, raccourcis »
+
+**Avant** : `test_barquette_120` changeait 120 fois de suite la largeur de la Barquette (~38-39 min seule), pour la panne de V0.66.2 (solide perdu à la 107e modification, mémoire qui monte). C'était de loin la suite la plus longue (la suivante : 11 min) : chaque `ci:full`, donc chaque « livre », l'attendait.
+
+**Correctif** : 20 modifications par défaut (`BARQ_NB=120` pour la série complète), seuil de mémoire occupée resserré de 60 à 55 Mo ; `tests/pool.cjs` : toujours sur cœur P, délai ramené de 75 à 30 min.
+
+**Test** : les deux anciennes pannes remises à la main sur une copie de la suite (pile qui descend de 80 Ko par modification, copie d'`Append_1` jamais libérée) : avec 20 modifications, 1,6 Mo de pile perdue (seuil 1 Ko) et 70,6 Mo occupés (seuil 55) → 2 échecs ; sans elles : tout passe, 44,6 Mo, 249 s. `npm run ci` vert (204/204). Aucun changement dans l'application. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.19 - La loupe (lentilles) et la pièce qui propose entrent dans ConceptCAD
+
+Fred, 27/11 : « On garde ces 2 et on les intègre dans ConceptCAD » (essayées d'abord à part, sur la branche locale `essai/lentilles` ; l'usinage en direct et la carte du projet n'ont pas été gardés)
+
+**Lentilles** (`src/91-lentilles.js`, bouton loupe de la barre de vue) : une loupe ronde posée sur la pièce, un autre regard dessous seulement — Coupe (l'intérieur, faces coupées remplies), FAO (passes de l'aperçu, fraise posée sur la passe, posage · Ø · temps de coupe de la zone ; FAO sur Coupe dans la zone commune de deux loupes), Plan (trait vif, tangent, caché, 6 cotes au plus) et Rendu (matière et reflets de l'atelier RENDU). Le repère orange « Lentilles » de la version d'essai est retiré.
+
+**La pièce qui propose** (`src/93-piece-propose.js`, bouton étincelle) : après chaque fonction seulement, la suite sur ce que l'on vient de faire, dans une bande discrète « Ensuite ? » en bas de la vue — même congé ou chanfrein sur les arêtes pareilles (ici, puis ailleurs), coins d'une poche arrondis au rayon de la plus petite fraise là où une fraise descend (axes des posages et 3+2), habitudes de la séance ; fantôme au survol, touches 1/2/3, « Non merci » / Échap retenu, une seule annulation. Menu : Proposer la suite (oui / non), Écrire une demande… (« 4 trous M6 à 10 du bord », lue sur place), Essayer une variante (A/B comparées par la masse).
+
+**Test** : `test_lentilles` et `test_piece_propose` (101 contrôles) inscrits dans `run` et `run-fast` ; une ligne de chaque dans la boucle d'image de `10-scene-3d` ; manuels Lentilles et La pièce qui propose. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.20 - Cotes 3D pilotantes : coter sur la pièce, comme dans Inventor
+
+Fred, 27/11 : « un outil de cotation dans le monde CAO, mais sur la 3D… ces cotes pilotent le 3D… un peu comme le fait Inventor… toutes les propriétés qui existent dans la mise en plan » ; essayées d'abord à part, sur la branche locale `essai/cotes-3d` (12 lots, chacun essayé par Fred), puis « tu peux commiter dans ConceptCAD »
+
+**Cotes 3D** (`src/92-cotes-3d.js`, bouton de la barre de vue, touche D hors esquisse) : on clique des faces, des arêtes ou des sommets de la pièce ; la cote lit toujours sa valeur sur la pièce et, **pilotante**, change la cote d'esquisse ou le réglage de fonction qui la fait bouger (extrusion, découpe, Perçage — toutes ses valeurs —, congé, chanfrein, coque, révolution, répétition), la pièce passant d'une valeur à l'autre. Faces retenues par leur nom unique : la cote suit la pièce. Distances couchées sur les faces le long des axes, entraxes sur les axes, Ø / R, angles, cotes posées d'office à la création d'une fonction (interrupteur au clic droit), tolérances (±, écarts, classes ISO 286), références A / B, rugosité, cadres de tolérance géométrique, cote encadrée ou d'inspection, nom (« d1 = 20 »), œil et Maj+D pour cacher, glisser et ↻ Autre face.
+
+**Cercle de trous à la norme ISO** : Ø de perçage avec cercle d'axe et tous les axes, « 6× Ø6 EQS » sur un tour complet, angle du 1er trou depuis l'axe horizontal puis angle du pas à la suite, ⌖ Localisation ISO (A = face d'entrée, au-dessus d'une fraisure ou d'un lamage ; B = alésage centré ; ⌖ Ø0,1 A B ; Ø de perçage et angles encadrés) en une annulation.
+
+**Cotes d'ordonnées** (`src/50-esquisse-98-ordonnees.js`, outil Ordonnées de l'esquisse), reprises en 3D puis dans le plan.
+
+**Mise en plan** (`src/98-mep-77-cotes-3d.js`, bouton Cotes 3D, clic droit sur une vue) : les cotes 3D reprises vue par vue, une cote dans une seule vue, rangées sans chevauchement (écart réglable), Ø d'un trou de Perçage repris en cotation de perçage complète (« 6× Ø9 ↧15 EQS / Fraisure Ø18.4 x 90° »), cadres de tolérance sous le trait souligné et calés du côté du trait, axes du cercle de trous, DXF compris.
+
+**Test** : `test_cotes_3d` (186 contrôles) inscrit dans `run` et `run-fast` ; manuels Cotes 3D, Esquisse et Plan, README. Essais dans Chromium (Playwright) à chaque lot, sans erreur. CACHE_VER et FORMES_VER inchangés (les cotes 3D sont enregistrées avec le document, hors empreinte).
+
+## V1.1.0 - Cotation automatique expliquée, avec images
+
+Fred, 27/11 : « Livre la V1.1.0 avec des explication sur la cotation automatique et images » (V1.1.0 = les cotes 3D de V1.0.20, première version publiée qui les contient)
+
+**Manuel** (`docs/manuel/cotes-3d.md`, partie *Cotation automatique*, qui remplace *Cotes posées à la création*) : quand les cotes se posent, ce qu'elles lisent et pilotent, cote de référence entre parenthèses ou encadrée, reprise des cotes d'esquisse, pièce déjà faite (« 📐 Poser ses cotes 3D »), couper l'automatique, cacher ou retirer, suite sur le plan ; trois images.
+
+**README** : partie *Cotes 3D et cotation automatique* (deux images) et annonce de V1.1.0.
+
+**Images** (`docs/captures/`, refaites par `node tools/captures.cjs docs/captures cotes3d cotes3dPiece cotes3dPlan`) : `cotes3d-creation.png` (bride faite en 4 fonctions, cotes posées toutes seules), `cotes3d-piece.png` (exemple Perçages, 19 cotes), `cotes3d-plan.png` (la bride sur une planche A3 après « Cotes 3D »).
+
+**Test** : `npm run ci` vert. Aucun changement dans le code de l'application. CACHE_VER et FORMES_VER inchangés.

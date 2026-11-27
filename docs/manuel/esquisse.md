@@ -49,6 +49,7 @@
   - nom d'une autre cote inséré d'un clic pendant la saisie (`d1`, `d2`…) ;
   - unités dans les expressions (`2 cm + 3`, `1 in`) ;
   - la barre d'état nomme ce qui détermine déjà une cote redondante.
+- **Cotes d'ordonnées** (outil **Ordonnées**, à côté de Cote) : bandeau **X / Y** en haut à gauche ; cliquez le **zéro** (point, extrémité, centre d'un cercle), puis chaque point à coter ; **Entrée** finit la famille (l'outil reste), **Échap** finit et revient à la Sélection. Toutes les valeurs d'une famille restent **alignées**, « 0 » au zéro ; glisser une valeur déplace toute la famille. Chaque valeur pilote comme une cote ordinaire (double-clic pour la changer) et passe en référence si elle est en trop. Elles passent sur la pièce (cotes 3D) puis dans la mise en plan.
 - **Solveur** qui bouge l'esquisse le moins possible :
   - une cote impossible est refusée, et la barre d'état dit pourquoi ;
   - une cote d'angle reste tenue quand une ligne change de sens en repassant par son sommet ;

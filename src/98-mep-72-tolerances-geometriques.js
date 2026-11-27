@@ -70,9 +70,26 @@
       return{x0,x1:x0+W,y0:P.y1,y1:P.y1+H,right:P.right};
     }
     const w=mepGdtWorld(sh,d);if(!w)return null;
-    if(d.on)return{x0:w.b.x-W/2,x1:w.b.x+W/2,y0:w.b.y,y1:w.b.y+H,right:false};
+    if(d.on){const o=mepGdtOnX0(sh,w,W);return{x0:o.x0,x1:o.x0+W,y0:w.b.y,y1:w.b.y+H,right:o.right};}
     const left=w.a.x<=w.b.x,x0=left?w.b.x:w.b.x-W;
     return{x0,x1:x0+W,y0:w.b.y-H/2,y1:w.b.y+H/2,right:!left};
+  }
+  /* 2026-11-27 (essai cotes 3D, Fred : « aligner les tolérances géométriques à gauche ou à droite en fonction de la
+     position de la cote ») : sous une étiquette à ligne de repère (Ø, R, perçage, note), le cadre part du bout où
+     arrive le trait — calé à droite quand le texte est à gauche du trait (ancre 'end'), à gauche sinon ; la pile
+     suit (right). Sous une cote droite, texte centré sur son trait : cadre centré sous la valeur. */
+  function mepDimCalloutEnd(sh,t){
+    if(!t||!(t.kind==='dia'||t.kind==='rad'||t.kind==='hole'||t.kind==='note'))return null;
+    const w=mepDimWorld(sh,t);if(!w||!w.b)return null;
+    let cx=w.a.x;
+    try{const e=t.a&&t.a.hint?mepEntByHint(w.v1,t.a.hint):null;if(e&&(e.t==='C'||e.t==='A'))cx=mepToSheet(w.v1,e.cx,e.cy).x;}catch(e){}
+    return w.b.x-cx<0; // même règle que le dessin du texte (ux < 0 → 'end')
+  }
+  function mepGdtOnX0(sh,w,W){
+    const end=w&&w.host?mepDimCalloutEnd(sh,w.host):null;
+    if(end===true)return{x0:w.b.x-W,right:true};
+    if(end===false)return{x0:w.b.x,right:false};
+    return{x0:w.b.x-W/2,right:false};
   }
   function mepGdtStackAdd(sh,d){
     if(!sh||!d||d.kind!=='gdt')return null;
@@ -112,6 +129,13 @@
     }
     return sh.dims.filter(x=>!gone.has(x.id)).map(x=>{if(up&&x.under===id)x.under=up;return x;});
   }
+  // hauteur (mm papier) du trait souligné d'une étiquette à ligne de repère dont le texte est posé en y
+  function mepGdtUnderY(t,y){
+    const hh=MEP_TEXT_STYLE.dimH,fs=MEP_DIM_STYLE.textHeight||7;
+    let n=1;
+    if(t.kind==='hole'||t.kind==='note')n=String(t.txt||(t.kind==='hole'?(t.holeN>1?t.holeN+'× ':'')+(t.holeText||''):'')).split('\n').length;
+    return y+hh*0.4+(n-1)*fs*1.2/2+mepDimUnderOff(hh);
+  }
   /* ancrages en mm papier : {a (pointe / pied), b (cadre / carré), v1, u (direction imposée)} */
   function mepGdtWorld(sh,d){
     const v1=mepView(sh,d.vid);if(!v1)return null;
@@ -124,7 +148,16 @@
       const t=mepGdtHost(sh,d);if(!t)return null;
       if(d.kind==='gdt'){
         const tp=mepDimTextPos(sh,t);if(!tp)return null;
-        const p={x:tp.x,y:tp.y+mepGdtTh()*0.55};
+        let p={x:tp.x,y:tp.y+mepGdtTh()*0.55};
+        // cote verticale : son texte est couché le long du trait → le cadre passe sous le bout du texte
+        // (2026-11-27, essai cotes 3D : le cadre recouvrait la moitié du texte)
+        if(t.kind==='dist'||t.kind==='len'){try{const g=mepDimLine(sh,t);if(g&&Math.abs(g.uy)>0.9){
+          const s=String(mepDimText(t,mepDimMeasure(sh,t))||''),th=MEP_DIM_STYLE.textHeight||3.5;
+          p={x:tp.x,y:tp.y+s.length*th*0.31+th*0.6};}}catch(e){}}
+        // étiquette à ligne de repère : le cadre SOUS le trait souligné, pas dessus (Fred, 27/11 : « La tolérance
+        // géométrique devrait être en-dessous le trait de cote ») — même calcul que le dessin (98-mep-70
+        // mepHoleCallout) : lignes centrées sur le point du texte, trait sous la dernière
+        if(t.kind==='dia'||t.kind==='rad'||t.kind==='hole'||t.kind==='note')p={x:tp.x,y:mepGdtUnderY(t,tp.y)+mepGdtTh()*0.3};
         return{a:p,b:p,v1,host:t};
       }
       const g=mepDimLine(sh,t);if(!g)return null;
@@ -261,9 +294,9 @@
         const B=w.box;mepGdtBoxes.set(d,mepGdtFrame(draw,d,B.x0,(B.y0+B.y1)/2,T,L,F));
         return;
       }
-      if(d.on){ // sous la valeur de la cote, centré
+      if(d.on){ // sous la valeur de la cote : centré, ou calé du côté où arrive la ligne de repère
         const s=mepGdtFrame(draw,d,0,0,T,L,F,true),W=s.x1-s.x0;
-        mepGdtBoxes.set(d,mepGdtFrame(draw,d,w.b.x-W/2,w.b.y+H/2,T,L,F));
+        mepGdtBoxes.set(d,mepGdtFrame(draw,d,mepGdtOnX0(sh,w,W).x0,w.b.y+H/2,T,L,F));
         return;
       }
       const s=mepGdtFrame(draw,d,0,0,T,L,F,true),W=s.x1-s.x0;

@@ -1144,6 +1144,13 @@
   // Géométrie d'une cote angulaire : sommet (intersection des 2 droites) + directions.
   function mepAngGeom(sh,d){
     const w=mepDimWorld(sh,d);if(!w)return null;
+    if(d.o3&&d.a&&d.b){
+      // angle par trois points (pas angulaire d'une répétition circulaire, 98-mep-77) : sommet o3, côtés vers
+      // a et b ; rappels du centre des trous jusqu'à l'arc
+      const O=d.o3,ray=p=>{const dx=p.x-O.x,dy=p.y-O.y,l=Math.hypot(dx,dy);return l>1e-9?{a:Math.atan2(dy,dx),ext:[0,l*w.v1.scale]}:null;};
+      const r1=ray(d.a),r2=ray(d.b);if(!r1||!r2)return null;
+      return mepAngSector(d,{O:mepToSheet(w.v1,O.x,O.y),a1:r1.a,a2:r2.a,ext:[r1.ext,r2.ext],w});
+    }
     const e1=d.a&&d.a.hint?mepEntByHint(w.v1,d.a.hint):null;
     const e2=d.b&&d.b.hint?mepEntByHint(d.vid2?w.v2:w.v1,d.b.hint):null;
     if(!(e1&&e1.t==='L'&&e2&&e2.t==='L'))return null;
@@ -1554,5 +1561,6 @@
       mepCtxShow(ev.clientX,ev.clientY,d,false);
       return;
     }
+    if(!d&&!mepSt.dim&&!snapCtx&&typeof mepC3Ctx==='function'&&mepC3Ctx(sh,mepViewAt(sh,P.x,P.y),ev))return; // vue : ses cotes 3D (98-mep-77)
     mepCtxHide();
   }

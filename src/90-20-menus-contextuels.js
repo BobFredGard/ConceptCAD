@@ -41,7 +41,8 @@ function showCtx(x,y,t){ctxTarget=t;$('ctxMenu').style.display='block';ctxPlace(
   try{ ctxStyleShow('ctxMenu',!!(t&&t.kind==='body')); ctxStyleSync(); }catch(e){}
   try{ asmCtxSync(t,x,y); }catch(e){} // composant depuis ce corps, déplacer vers un composant (48)
   try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}try{ bcCtxSync('ctxMenu',t); }catch(e){}try{ bmirCtxSync('ctxMenu',t); }catch(e){} // déplacer le corps (85)
-  try{ bremCtxSync(t); }catch(e){}} // retirer le corps dans la timeline (40)
+  try{ bremCtxSync(t); }catch(e){} // retirer le corps dans la timeline (40)
+  try{ if(typeof c3CtxSync==='function')c3CtxSync(t); }catch(e){}} // cotes 3D de cette fonction : cacher / montrer (92)
 function hideCtx(){$('ctxMenu').style.display='none';}
 function ctxBodyId(t){
   // Cible du clic-droit → CORPS conteneur. L'id affiché n'est PAS toujours celui

@@ -93,6 +93,7 @@ function addFeature(f){ // insertion au niveau du marqueur si actif (nouveautés
   docPushUndo('création de « '+(f.name||f.type)+' »');
   const i=tlIdx();
   if(i<0)doc.features.push(f);else doc.features.splice(i,0,f);
+  try{if(typeof c3AutoNew==='function')c3AutoNew(f);}catch(e){} // cotes 3D posées à la création (92)
   return f;
 }
 // « fraîcheur » : dur par DEFAUT — chaque modification reconstruit le modèle depuis zéro
@@ -128,6 +129,7 @@ function buildDone(){
   try{if(typeof holeThreadOverlay==='function')holeThreadOverlay();}catch(e){}
   // Paramètres mesurés entre 2 faces : relus sur le solide neuf (51-parametres-mesure)
   try{if(typeof parMesUpdate==='function')parMesUpdate();}catch(e){}
+  try{if(typeof c3AfterBuild==='function')c3AfterBuild();}catch(e){} // cotes 3D relues sur le solide neuf (92-cotes-3d)
   // FAO : le solide vient d'être (re)construit — l'Ébauche 3D embarque son empreinte
   // dans sa clé de cache. Au F5 la 1re lecture a lieu sur le REPLI MAILLAGE, avant le
   // boot du noyau exact : clé fausse, entrée rejetée, triangle rouge qui ne retombait

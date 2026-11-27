@@ -12,7 +12,9 @@ Ou installez-le depuis le site, dans Chrome ou Edge : icône d’installation de
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Version actuelle : **V1.0.16** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+Version actuelle : **V1.1.0** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+
+> **V1.1.0 : les cotes 3D et la cotation automatique.** Chaque fonction pose ses cotes sur la pièce, et chaque cote pilote la pièce ([Cotation automatique](#cotes-3d-et-cotation-automatique)).
 
 > **V1.0.0, la première version stable.** Les programmes d'usinage ont été essayés sur une vraie machine, une **Fagor 8065**. Les dernières versions n'ont corrigé que de tous petits défauts relevés pendant ces essais.
 
@@ -75,12 +77,28 @@ Manuel : [Interface](docs/manuel/interface.md) · [Souris, clavier et doigts](do
   - **répétitions** linéaires, en grille, circulaires, en symétrie ou suivant un profil.
 - **Géométrie de construction** : plans, axes, points, repères.
 - **Timeline** façon Fusion 360 : on glisse une fonction, on revient en arrière, et la pièce se recalcule en arrière-plan.
+- **Cotes 3D pilotantes**, comme dans Inventor : on cote sur la pièce, la cote change l'esquisse, l'extrusion ou le perçage ; tolérances, références, cercles de trous à la norme ISO, et reprise dans la mise en plan.
+- **La pièce qui propose** : après chaque fonction, la suite probable en une touche (« Même congé R4 sur les 3 autres coins », « Arrondir les 4 coins de la poche · R3 »), ou une demande écrite (« 4 trous M6 à 10 du bord »).
+- **Lentilles** : une loupe posée sur la pièce montre, dessous seulement, l'intérieur, les passes de la FAO, le trait coté ou la vraie matière.
 - **Échanges de fichiers** :
   - import **STEP**, **IGES** et STL ;
   - export STEP, STL, OBJ et **FreeCAD** ;
   - assemblage complet vers un dossier.
 
-Manuel : [Esquisse](docs/manuel/esquisse.md) · [Fonctions 3D](docs/manuel/fonctions-3d.md) · [Fichiers](docs/manuel/fichiers.md)
+Manuel : [Esquisse](docs/manuel/esquisse.md) · [Fonctions 3D](docs/manuel/fonctions-3d.md) · [Cotes 3D](docs/manuel/cotes-3d.md) · [La pièce qui propose](docs/manuel/piece-propose.md) · [Lentilles](docs/manuel/lentilles.md) · [Fichiers](docs/manuel/fichiers.md)
+
+## Cotes 3D et cotation automatique
+
+![L'exemple Perçages avec ses 19 cotes 3D posées automatiquement : hauteurs, entraxes, Ø de perçage, trous avec profondeur, lamage et filetage, congé et chanfrein](docs/captures/cotes3d-piece.png)
+
+- **Cotation automatique** : à chaque nouvelle fonction, ses cotes se posent toutes seules sur la pièce — hauteur d'une extrusion, trou entier d'un perçage (« 6× Ø9 ↧15 EQS / ⌵Ø18,4 × 90° »), rayon d'un congé, Ø de perçage et angles d'une répétition circulaire, cotes reprises de l'esquisse. Sur une pièce déjà faite : clic droit sur une fonction → « 📐 Poser ses cotes 3D ».
+- **Les cotes pilotent la pièce**, comme dans Inventor : double-clic sur la valeur, on tape un autre nombre, l'esquisse ou la fonction change et la pièce glisse vers sa nouvelle forme. Entre parenthèses : cote de référence, qui ne pilote rien.
+- **Tout ce que fait la mise en plan**, sur la 3D : tolérances, références A / B, rugosité, cadres de tolérance géométrique, cote encadrée ou d'inspection, cercles de trous à la norme ISO (EQS, ⌖ Localisation).
+- **Sur le plan**, un clic (« Cotes 3D ») : les cotes arrivent dans les vues où elles se lisent, rangées sans se chevaucher.
+
+![La même bride sur le plan : cotation de perçage complète avec EQS, cadre ⌖ Ø0.1 A B, Ø de perçage et angles encadrés](docs/captures/cotes3d-plan.png)
+
+Manuel : [Cotes 3D](docs/manuel/cotes-3d.md)
 
 ## Assemblage
 

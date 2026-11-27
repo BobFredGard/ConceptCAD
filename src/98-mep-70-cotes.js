@@ -17,6 +17,14 @@
     // pref : 'v' (axe vertical voulu), 'h' (horizontal), null (indifférent) — pour la migration
     if(!q||!v)return q;
     const h=q.hint;
+    if(h&&h.t==='c3'){ // cote 3D reprise (98-mep-77) : le point suit sa cote 3D
+      try{const p=typeof c3MepPt==='function'?c3MepPt(h.c,h.w,mepBasisOf(v).dir):null;if(p){const L=mepLocal(v,[p.x,p.y,p.z]);
+        // rel : texte d'une note, lettre d'une référence, symbole de rugosité — suit le déplacement de son
+        // point d'accroche, à la place où le dessinateur l'a mis (lx, ly : dernière place connue de l'accroche)
+        if(h.rel){if(h.lx!=null&&isFinite(h.lx)){q.x+=L[0]-h.lx;q.y+=L[1]-h.ly;}h.lx=L[0];h.ly=L[1];}
+        else{q.x=L[0];q.y=L[1];}}}catch(e){}
+      return q;
+    }
     if(h&&h.t==='eln'&&h.l){
       const g=mepGeoOf(v);if(!mepGeoExact(g))return q; // jamais sur le maillage de l'ouverture
       const e=mepAxisTrackLine(g,h.l,null);if(!e)return q;
@@ -136,6 +144,8 @@
   }
   function mepDimPtsRefresh(sh,d){
     const v1=mepView(sh,d.vid);if(!v1)return;
+    // angle par trois points (pas angulaire repris de la 3D, 98-mep-77) : sommet et côtés suivent la pièce
+    if(d.kind==='ang'&&d.o3){[d.o3,d.a,d.b].forEach(q=>{if(q&&q.hint)mepPtRefresh(sh,v1,q,null);});return;}
     // points accrochés par index d'entité : suivent la géométrie exacte (cote, ordonnées)
     if(d.kind==='ord'){mepIdxFollow(v1,d.o);(d.pts||[]).forEach(q=>mepIdxFollow(v1,q));}
     else{
@@ -165,6 +175,7 @@
     const ok=q=>!!(q&&(pr||d.kind!=='dist'||q.hint));
     if(ok(d.a))mepPtRefresh(sh,v1,d.a,pr);
     if(d.kind==='dist'&&ok(d.b))mepPtRefresh(sh,d.vid2?mepView(sh,d.vid2):v1,d.b,pr);
+    else if(d.b&&d.b.hint&&d.b.hint.t==='c3'&&d.b.hint.rel)mepPtRefresh(sh,v1,d.b,null); // note / référence reprise de la 3D : le texte suit
   }
   function mepDimWorld(sh,d){
     // ancrages → mm papier
@@ -711,6 +722,11 @@
     const hs=(ann.refs||[]).map(r=>mepAxisRefGeom(sh,v,r)).filter(Boolean);
     if(ann.kind==='align')return mepAxisAlignPrims(hs,v,true);
     if(ann.kind==='pitch'){
+      if(ann.c3){ // Ø de perçage repris d'une cote 3D (98-mep-77) : centre lu sur la pièce, tous les trous même à moins de 3
+        const O=typeof c3MepPt==='function'?c3MepPt(ann.c3,'O',mepBasisOf(v).dir):null;if(!O||!hs.length)return[];
+        const L=mepLocal(v,[O.x,O.y,O.z]),r=hs.reduce((s,h)=>s+Math.hypot(h.x-L[0],h.y-L[1]),0)/hs.length;
+        return r>1e-6?mepAxisPitchPrims({cx:L[0],cy:L[1],r},hs,v):[];
+      }
       if(hs.length<3)return[];
       const C=mepAxisFitCircle(hs);if(!C)return[];
       return mepAxisPitchPrims(C,hs,v);
@@ -1009,6 +1025,10 @@
   }
   function mepAxisGeoRef(sh,v,ref){
     const b=mepBasisOf(v);
+    if(ref.c3!=null){ // trou n d'un Ø de perçage repris d'une cote 3D : il suit la pièce
+      const p=typeof c3MepPt==='function'?c3MepPt(ref.c3,'H'+(+ref.i||0),b.dir):null;if(!p)return null;
+      const L=mepLocal(v,[p.x,p.y,p.z]);return{x:L[0],y:L[1],r:+p.hr>0?+p.hr:1,facing:1,dir2:[0,0]};
+    }
     if(ref.ax){
       const g=mepRevTrack(v,ref.ax);
       if(g&&mepGeoExact(mepGeoOf(v)))ref.ax={o:g.o.slice(),d:g.d.slice(),r:ref.ax.r,t0:g.t0,t1:g.t1}; // dérivé : pas d'étape d'annulation
@@ -1030,6 +1050,7 @@
   function mepAxisRefKey(r){
     if(!r)return'';
     if(r.fid)return r.fid+'|'+(r.pid||'');
+    if(r.c3!=null)return 'c3'+r.c3+'|'+r.i;
     if(r.ax)return 'x'+r.ax.o.map(x=>(+x).toFixed(2)).join(',')+'|'+r.ax.d.map(x=>(+x).toFixed(3)).join(',');
     if(r.c)return 'c'+(+r.c.cx).toFixed(2)+','+(+r.c.cy).toFixed(2)+','+(+r.c.r).toFixed(2);
     return'';
@@ -1215,10 +1236,20 @@
     const n=+v||0;
     return (n<0?'−':'+')+mepFmtNum(Math.abs(n),3);
   }
-  function mepDimTextParts(d,value){
+  /* 2026-11-27 (essai cotes 3D) : cote d'inspection — « libellé | valeur | taux » dans un ovale ;
+     cote encadrée (théoriquement exacte) — cadre autour de la valeur (mepDimDeco, dessiné par
+     mepDimDrawText pour la cote en cours de dessin) */
+  let mepDimDeco=null;
+  function mepInspWrap(d,p){
+    if(!d||!d.insp||d.kind==='hole')return p;
+    const I=d.insp,m=p.main+(p.sym?' '+p.sym:'');
+    return Object.assign({},p,{main:(I.lab?I.lab+'  |  ':'')+m+(I.rate?'  |  '+I.rate:''),sym:''});
+  }
+  function mepDimTextParts(d,value){return mepInspWrap(d,mepDimTextParts0(d,value));}
+  function mepDimTextParts0(d,value){
     const xt=mepDimThreadText(d);if(xt)return{main:xt,up:'',lo:'',sym:''}; // 2026-11-26 : Ø d'un cylindre fileté → « M4 » (98-mep-76)
     // distance entre génératrices d'un cylindre : préfixe Ø comme une cote de diamètre
-    if(d.dsym&&!d.txt&&d.kind!=='dia'&&d.kind!=='rad')return mepDimSymbolParts(Object.assign({},d,{dsym:''}),value,d.dsym);
+    if(d.dsym&&!d.txt&&d.kind!=='dia'&&d.kind!=='rad')return mepDimSymbolParts0(Object.assign({},d,{dsym:'',insp:null}),value,d.dsym);
     const pre=d.pre?String(d.pre).trim():'',post=d.post?String(d.post).trim():'';
     const join=(a,b)=>a&&b?a+' '+b:(a||b);
     const wrap=s=>join(join(pre,s),post);
@@ -1245,9 +1276,14 @@
   // écart ISO : 0 sans signe (ISO 286), sinon signé
   function mepSignedTol0(v){return Math.abs(+v||0)<1e-9?'0':mepSignedTol(v);}
   function mepDimSymbolParts(d,value,sym){
+    // la cote elle-même (pas une copie) tant qu'il n'y a pas d'inspection : le filetage se retrouve par la cote (mepDimThrLbl)
+    const xt=mepDimThreadText(d);if(xt)return mepInspWrap(d,{main:xt,up:'',lo:'',sym:''});
+    return mepInspWrap(d,mepDimSymbolParts0(d&&d.insp?Object.assign({},d,{insp:null}):d,value,sym));
+  }
+  function mepDimSymbolParts0(d,value,sym){
     const xt=mepDimThreadText(d);if(xt)return{main:xt,up:'',lo:'',sym:''}; // cercle fileté vu en bout
     const pre=d.pre?String(d.pre).trim():'',post=d.post?String(d.post).trim():'';
-    const p=mepDimTextParts(Object.assign({},d,{pre:'',post:''}),value);
+    const p=mepDimTextParts0(Object.assign({},d,{pre:'',post:''}),value);
     const join=(a,b)=>a&&b?a+' '+b:(a||b);
     const main=join(pre,sym+p.main);
     if(p.sym)return Object.assign({},p,{main,sym:join(p.sym,post)});
@@ -1288,6 +1324,14 @@
     if(transform)attrs.transform=transform;
     const t=mk('text',Object.assign(attrs,T));
     t.textContent=main;
+    if(mepDimDeco&&(mepDimDeco.box||mepDimDeco.insp)){
+      // cadre (cote encadrée) ou ovale (cote d'inspection) autour du texte
+      const th=MEP_DIM_STYLE.textHeight||7,tw=mepTxtW(t,main,th)+(sym?String(sym).length*th*0.55+th*0.3:0),x0=x-shiftEnd-(anchor==='middle'?tw/2:anchor==='end'?tw:0);
+      const h=th*1.15,pad=th*0.28,ra={x:x0-pad,y:y-th*0.88,width:tw+2*pad,height:h,fill:'none',class:'mepDimL'};
+      if(mepDimDeco.insp){ra.rx=h/2;ra.x-=h*0.25;ra.width+=h*0.5;}
+      if(transform)ra.transform=transform;
+      mk('rect',ra);
+    }
     if(sym){
       const ts=document.createElementNS(NS,'tspan');
       ts.setAttribute('font-size',String((MEP_DIM_STYLE.textHeight||7)*0.85));
@@ -1639,12 +1683,21 @@
       }
     });
   }
-  function mepDrawDim(mk,d,sh){
+  function mepDrawDim(mk,d,sh){try{return mepDrawDim0(mk,d,sh);}finally{mepDimDeco=null;}} // le cadre / l'ovale ne vaut que pour cette cote
+  function mepDrawDim0(mk,d,sh){
     const w=mepDimWorld(sh,d);
     if(!w)return;
     const gdt=mepIsTol(d.kind);
     const val=gdt?0:(d.value!=null?d.value:mepDimMeasure(sh,d));
     if(!gdt)mepDimThreadSync(sh,d);
+    mepDimDeco=(!gdt&&(d.box||d.insp))?d:null;
+    if(d.kind==='note'&&d.c3&&d.c3t&&typeof c3MepText==='function'){const s=c3MepText(d.c3);if(s)d.txt=s;} // chanfrein repris de la 3D : texte relu sur la pièce
+    if(d.c3&&d.c3nm&&typeof c3MepName==='function'){
+      // nom d'une cote 3D reprise : suit son nom en 3D, tant que le texte n'a pas été changé sur le plan
+      const cur=d.c3nm==='nom'?d.txt:d.pre;
+      if(cur!==d.c3nmv){delete d.c3nm;delete d.c3nmv;delete d.c3pre;}
+      else{const nm=c3MepName(d.c3);if(nm){const s=d.c3nm==='nom'?nm:nm+' ='+(d.c3pre?' '+d.c3pre:'');if(d.c3nm==='nom')d.txt=s;else d.pre=s;d.c3nmv=s;}}
+    }
     let txt=gdt?'':mepDimText(d,val);
     const sel=mepSt.selDim===d.id||!!(mepSt.lot&&mepSt.lot.dims.has(d.id));
     const ghost=!!d.__ghost;
@@ -1679,6 +1732,8 @@
       }
       const ht=d.kind==='hole'&&!d.txt?mepHoleTol(d):null;
       if(ht)txt=mepHoleTolText(txt,ht,mepHoleTolOn(d));
+      // trous également répartis sur un tour complet (repris d'une cote 3D) : « EQS » au bout de la 1re ligne (ISO 129-1)
+      if(d.kind==='hole'&&d.eqs&&!d.txt){const k=txt.indexOf('\n');txt=k<0?txt+' EQS':txt.slice(0,k)+' EQS'+txt.slice(k);}
       const e=mepEntByHint(w.v1,d.a.hint);
       let cx=w.a.x,cy=w.a.y,rr=0;
       if(e&&(e.t==='C'||e.t==='A')){
@@ -1761,7 +1816,7 @@
       }
       const ex=cx+rr*Math.cos(ang),ey=cy+rr*Math.sin(ang);
       const pp=mepDimSymbolParts(d,val,d.kind==='dia'?'Ø':'R');
-      const str=pp.main;
+      const str=d.ref?'('+pp.main+')':pp.main; // cote de référence entre parenthèses, comme les longueurs (2026-11-27)
       // leader du texte vers la circonférence, flèche sur l'arête
       draw('line',Object.assign({x1:tx,y1:ty+uOff,x2:ex,y2:ey,'marker-end':AR},L));
       if(d.kind==='dia'&&!d.dia1){ // V0.99.28 : d.dia1 = Ø à une flèche, dessiné comme un rayon (clic droit)
@@ -1800,8 +1855,12 @@
       const sweep=dd>0?1:0,large=Math.abs(dd)>Math.PI?1:0;
       const x1=O.x+r*Math.cos(aa),y1=O.y+r*Math.sin(aa);
       const x2=O.x+r*Math.cos(bb),y2=O.y+r*Math.sin(bb);
+      // angle par trois points (pas angulaire d'une répétition, 98-mep-77) : traits d'axe (mixtes) du centre
+      // de la répétition à travers le centre de chaque trou, jusqu'un peu au-delà de l'arc — à la place des rappels
+      if(d.o3)[aa,bb].forEach(a=>{const ov=MEP_DIM_STYLE.overrun+1.5,ux=Math.cos(a),uy=Math.sin(a);
+        draw('line',{x1:O.x,y1:O.y,x2:O.x+ux*(r+ov),y2:O.y+uy*(r+ov),class:'mepAxis'});});
       // rappels : prolongent chaque arête jusqu'à l'arc (vide au départ, dépassement après l'arc)
-      if(g.ext)[[aa,g.ext[0]],[bb,g.ext[1]]].forEach(([a,e])=>{
+      if(g.ext&&!d.o3)[[aa,g.ext[0]],[bb,g.ext[1]]].forEach(([a,e])=>{
         const ux=Math.cos(a),uy=Math.sin(a),gap=MEP_DIM_STYLE.gap,ov=MEP_DIM_STYLE.overrun;
         let s0=null,s1=null;
         if(r>e[1]+0.05){s0=e[1]+gap;s1=r+ov;}
@@ -1827,7 +1886,7 @@
         }
       }
       const pp=mepDimTextParts(d,val);
-      mepDimDrawText(draw,T,pp.main,pp.up,pp.lo,tp.bx,tp.by,'middle',null,pp.sym,pp.par,pp.post);
+      mepDimDrawText(draw,T,d.ref?'('+pp.main+')':pp.main,pp.up,pp.lo,tp.bx,tp.by,'middle',null,pp.sym,pp.par,pp.post);
       return;
     }
     /* linear (len / dist) */
