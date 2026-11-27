@@ -2,7 +2,8 @@
 // tools/livraison-outils.cjs (versions, CHANGELOG, notes de release) et de tools/cpt.cjs sur un dépôt
 // JETABLE (dépôt « GitHub » nu, dépôt principal sur main, worktree de session) : la version est rangée
 // dans main local sans tag ni push de main, la copie « sauvegarde » suit, l'essai ConceptCAD.html
-// identique est retiré, un essai différent, un numéro déjà pris ou main avancé arrêtent tout.
+// identique est retiré, un essai différent, un numéro déjà pris ou main avancé arrêtent tout ; une livraison en
+// cours aussi (V1.1.8), et tools/livrer.cjs livre le code contrôlé même si main avance.
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os'), { spawnSync } = require('child_process');
 const O = require('../tools/livraison-outils.cjs');
@@ -21,6 +22,18 @@ A(n2.titre === 'V0.99.11 — 2 nouveautés' && n2.notes.split('\n- ').length ===
 A(O.avecPied(n1.notes) === n1.notes && O.avecPied('Texte simple').endsWith('d\'elles-mêmes.'), 'bloc des installateurs ajouté une seule fois (notes écrites à la main comprises)');
 A(O.court('a '.repeat(100), 20).length <= 20 && O.court('court') === 'court', 'titres longs raccourcis');
 A(O.appVer("const APP_VER='V0.99.11';") === 'V0.99.11', 'APP_VER lu');
+
+console.log('=== tools/livrer.cjs : le code contrôlé est figé (V1.1.8) ===');
+// 27/11 : un cpt (V1.1.6) pendant les tests de la livraison de V1.1.5 → tag V1.1.5 posé sur la tête de main (code V1.1.6)
+const L = fs.readFileSync(path.join(__dirname, '..', 'tools', 'livrer.cjs'), 'utf8');
+A(/ctx\.sha = git\(\['rev-parse', 'main'\], R\)/.test(L) && /'\^\{\}'/.test(L), 'code contrôlé figé au contrôle (reprise après le tag : commit du tag sur GitHub)');
+A(/main a bougé pendant les tests/.test(L) && /rien n\\'est publié/.test(L), 'main qui bouge pendant les tests : arrêt avant toute publication');
+A(/git\(\['tag', '-a', V, '-m', ctx\.titre, S\], R\)/.test(L) && /S \+ ':refs\/heads\/main'/.test(L) && !/git\(\['push', '-q', 'origin', 'main'\]/.test(L),
+  'tag et main poussé : le code contrôlé, jamais la tête de main du moment');
+A(/'--is-ancestor', S, 'HEAD'/.test(L) && /'Merge ' \+ V, S\]/.test(L) && !/'Merge ' \+ V, 'main'\]/.test(L), 'application : fusion du code contrôlé, pas de main');
+A(/const sha = ctx\.sha;/.test(L) && /'--ref', ref\]/.test(L), 'site : passage du code contrôlé ; secours sur le tag si main a avancé');
+A(/O\.livraisonEnCours\(ctx\.racine\)/.test(L) && /verrou = O\.verrouLivraison\(ctx\.racine\)/.test(L), 'verrou commun avec tools/cpt.cjs');
+A(/O\.livraisonEnCours\(M\.path\)/.test(fs.readFileSync(path.join(__dirname, '..', 'tools', 'cpt.cjs'), 'utf8')), 'tools/cpt.cjs regarde le verrou avant d\'avancer main');
 
 console.log('=== tools/cpt.cjs sur un dépôt jetable ===');
 const T = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-livraison-'));
@@ -54,6 +67,20 @@ try {
   fs.writeFileSync(path.join(M, 'ConceptCAD.html'), "<script>const APP_VER='V0.99.80';</script>\n");
   r = cpt(W);
   A(r.status === 1 && /autre session/.test(r.stderr) && g(M, 'rev-parse', 'main') === g(M, 'rev-parse', 'V0.99.72^{commit}'), 'essai d\'une autre session dans le dépôt principal : arrêt, main intact');
+  // V1.1.8 : livraison en cours (verrou commun à tous les worktrees) → le cpt n'avance pas main
+  const VL = O.verrouLivraison(M);
+  A(VL === O.verrouLivraison(W), 'verrou de livraison commun au dépôt principal et aux worktrees');
+  fs.writeFileSync(VL, 'V0.99.72, processus 1, essai');
+  fs.copyFileSync(path.join(W, 'ConceptCAD.html'), path.join(M, 'ConceptCAD.html'));
+  r = cpt(W);
+  A(r.status === 1 && /livraison en cours/.test(r.stderr) && g(M, 'rev-parse', 'main') === g(M, 'rev-parse', 'V0.99.72^{commit}'),
+    'livraison en cours : cpt arrêté, main intact (' + r.stderr.trim().split('\n')[0].slice(0, 90) + '…)');
+  // verrou de plus de 3 h (livraison tuée) : ignoré
+  const vieux = (Date.now() - 4 * 3600000) / 1000;
+  fs.utimesSync(VL, vieux, vieux);
+  A(O.livraisonEnCours(M) === null && O.livraisonEnCours(W) === null, 'verrou de plus de 3 h ignoré');
+  fs.rmSync(VL, { force: true });
+  A(O.livraisonEnCours(M) === null, 'sans verrou : aucune livraison en cours');
   // essai identique à la version rangée : retiré puis avance
   fs.copyFileSync(path.join(W, 'ConceptCAD.html'), path.join(M, 'ConceptCAD.html'));
   r = cpt(W);

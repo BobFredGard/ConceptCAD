@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**812 versions**, de `2026-09-28b` à `V1.1.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**814 versions**, de `2026-09-28b` à `V1.1.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9122,3 +9122,46 @@ Comme les autres thèmes, rien n'est déplacé ni retiré : règles CSS sous `bo
 Vérifié dans Chromium sur l'exemple *Poche et Contour* : les quatre thèmes en CAO, l'espace PLAN en Plan vivant, le menu du clic droit en Goutte, la teinte des arêtes qui change et revient en Nuit, aucune erreur dans la console.
 
 CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.7 - La Goutte : la bulle d'actions près de la souris
+
+Fred, 27/11, après V1.1.6, à la question « laquelle des quatre interfaces reçoit d'abord son idée propre ? » : « La Goutte ».
+
+**Nouveau** (`src/97-interface-themes-goutte.js`) : l'idée de la maquette, une goutte de verre qui apparaît là où l'on vient de cliquer, avec ce qu'on peut faire à cet endroit.
+- Thème Goutte, espace CAO, interface d'ordinateur : un clic simple sur une face ou une arête de la pièce fait apparaître la goutte à côté du curseur, reliée à lui par deux perles. Jamais pendant un outil (congé, déplacement, cote 3D…), en esquisse, en assemblage, ni en tournant la vue.
+- Face plane : *Esquisse ici*, *Déplacer la face*, *Évider (coque)*, *Dépouille*, *Coter*. Face cylindrique : *Fileter*, *Déplacer la face*, *Coter*. Autre face : *Déplacer la face*, *Évider*, *Coter*. Arête : *Congé*, *Chanfrein*, *Coter*. Pour une face, *Modifier « … »* ouvre la fonction qui l'a créée (`occFaceCreator`, puis `tlbDbl` comme le double-clic de la timeline).
+- Chaque action lance la commande habituelle (même bouton, même code), puis rejoue le clic d'origine dans l'outil ouvert, comme la liste du clic long (`wirePick._up` + `mfPickForce`, 90-15). Le congé démarre donc avec l'arête prise, le déplacement avec la face. La face n'est imposée que si son maillage est encore affiché ; sinon le clic retrouve la face sous la souris. Rien de nouveau dans le document.
+- Fermée au moindre geste ailleurs : clic hors d'elle, molette, touche, `Échap`, changement d'espace ou de thème, fenêtre redimensionnée. Elle ondule tant qu'elle est ouverte, et pas du tout si l'ordinateur demande moins de mouvement.
+- *Ne plus montrer* la coupe (`minifusion_goutte_bulle`) ; menu 🎨 › *Bulle d'actions près de la souris* (thème Goutte) la remet.
+
+**Manuel** : *Interface › Apparence* (la bulle de la Goutte).
+
+**Test** : `test_interface_moderne` (+13 contrôles) : actions selon la face ou l'arête, libellés (Ø10, arc R8, 110 mm), placement dans la vue, interrupteur, bulle muette hors du thème, clic rejoué avec le forçage toujours relâché.
+
+Vérifié dans Chromium sur l'exemple *Poche et Contour* (thème Goutte) :
+- fond de poche → bulle *Face 21 · face plane · Découpe Esquisse 2* ;
+- *Déplacer la face* ouvre l'outil avec 1 face prise ;
+- arête droite de 110 mm → *Congé* ouvre le congé exact avec 1 arête prise ;
+- *Modifier « Découpe Esquisse 2 »* ouvre la poche, *Annuler* laisse la pièce intacte (4 fonctions) ;
+- rien en tournant la vue, rien en thème Nuit, aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.8 - Livraison : le code testé est celui qui est livré
+
+Fred, 27/11, après la livraison de V1.1.5 arrêtée en route : « Oui, corrige-le »
+
+**Cause** : pendant les tests de la livraison de V1.1.5 (`npm run ci:full`, dans `D:\ConceptCAD`), une autre session a rangé V1.1.6 par un cpt, qui avance main dans ce même dossier. L'étape git a ensuite posé le tag V1.1.5 sur la tête de main du moment, donc sur le code V1.1.6, et poussé main. La livraison s'est arrêtée à la fusion dans l'application (« pas en V1.1.5 »), avec le site en V1.1.6. Réparé à la main : tag V1.1.5 remis sur son commit, passage du site qu'il lançait annulé, puis V1.1.6 livrée.
+
+**Correctif** :
+- `tools/livrer.cjs` fige le code au contrôle (`ctx.sha`, le commit de main à cet instant ; en reprise après le tag, le commit du tag sur GitHub). Le tag est posé sur lui, c'est lui qui est poussé sur main (`sha:refs/heads/main`), lui qui est fusionné dans la branche de l'application, et le site attend son passage (secours sur le tag si main a avancé depuis). Si main a bougé pendant les tests, la livraison s'arrête avant de rien publier ;
+- `tools/cpt.cjs` n'avance plus main pendant une livraison : verrou commun (`O.livraisonEnCours`, `tools/livraison-outils.cjs`, ignoré au-delà de 3 h). La version reste commitée sur la branche de la session ; relancer le cpt quand la livraison est finie.
+
+**Manuel** : *Développement › Ranger une version et livrer*.
+
+**Test** : `test_livraison` passe à 30 contrôles (+11) :
+- cpt arrêté pendant une livraison, main intact ;
+- verrou de plus de 3 h ignoré ;
+- tag, main poussé, fusion et site sur le code contrôlé.
+
+Essai à blanc (`--essai`) sur le vrai dépôt : « Livraison de V1.1.7 … — code 17108eee2 ». Aucun changement dans l'application ; CACHE_VER et FORMES_VER inchangés.

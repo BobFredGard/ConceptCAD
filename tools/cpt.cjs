@@ -4,7 +4,7 @@
 //   node tools/cpt.cjs                    depuis le worktree, après `npm run ci` vert et le commit de version
 //   node tools/cpt.cjs --sans-sauvegarde  sans copie de main sur la branche « sauvegarde » de GitHub
 // Contrôles : rien d'oublié hors commit, main local déjà contenu dans la branche (sinon `git rebase main`),
-// numéro de version libre. Dans le dépôt principal : l'essai ConceptCAD.html posé pour Fred est retiré
+// numéro de version libre, aucune livraison en cours (V1.1.8). Dans le dépôt principal : l'essai ConceptCAD.html posé pour Fred est retiré
 // s'il est identique à la version rangée (sinon arrêt : essai d'une autre session), puis avance rapide
 // de main. La branche « sauvegarde » de GitHub suit main : rien n'est publié (le site et les applications
 // ne suivent que les tags), mais le travail ne vit plus seulement sur le disque du PC.
@@ -31,6 +31,11 @@ function cpt() {
   const Vmain = 'V' + JSON.parse(git(['show', 'main:package.json'], ICI)).version;
   if (O.cmpVersions(V, Vmain) <= 0) arret(V + ' est déjà pris (main est en ' + Vmain + ') : prendre le numéro suivant');
   const sha = git(['rev-parse', 'HEAD'], ICI);
+  // V1.1.8 : pas pendant une livraison — ses tests tournent dans le dépôt principal, que l'avance de main changerait
+  // (27/11 : un cpt de V1.1.6 pendant les tests de la livraison de V1.1.5 → tag V1.1.5 posé sur le code V1.1.6)
+  const enCours = O.livraisonEnCours(M.path);
+  if (enCours) arret('livraison en cours (' + enCours + ') : main ne doit pas bouger pendant ses tests ; relancer ce cpt quand elle est finie (20 à 25 min). '
+    + V + ' reste commitée sur la branche ' + branche);
 
   // Dépôt principal : l'essai de ConceptCAD.html (copié pour que Fred teste) ne doit pas bloquer l'avance.
   if (git(['diff', '--name-only', 'HEAD'], M.path).split(/\r?\n/).includes('ConceptCAD.html')) {

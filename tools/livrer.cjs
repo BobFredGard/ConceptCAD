@@ -5,16 +5,20 @@
 //   node tools/livrer.cjs --depuis <étape>    reprise après un échec corrigé (les contrôles sont refaits)
 //   --notes <fichier> --titre "<titre>"       notes et titre de la release (sinon : titres du CHANGELOG)
 // Étapes, dans l'ordre (les attentes se recouvrent : le Mac se fabrique chez GitHub pendant Windows) :
-//   controle    branche main, rien hors commit, main distant contenu dans le local, outils présents
-//   tests       npm run ci:full (rouge = rien n'est publié)
-//   git         push de main, tag annoté de la version, push du tag seul (il déclenche le site)
-//   mac-lancer  main fusionné dans la branche de l'application, poussé, fabrication du DMG lancée
+//   controle    branche main, rien hors commit, main distant contenu dans le local, outils présents ;
+//               le code contrôlé est figé (commit de main à cet instant) pour toutes les étapes suivantes
+//   tests       npm run ci:full (rouge = rien n'est publié) ; main qui a bougé pendant les tests = arrêt
+//   git         push du code contrôlé sur main, tag annoté de la version sur lui, push du tag seul (il déclenche le site)
+//   mac-lancer  code contrôlé fusionné dans la branche de l'application, poussé, fabrication du DMG lancée
 //   windows     node tauri/construire-windows.cjs (installateur signé + latest.json)
 //   site        passage Pages du tag ; en échec (fréquent, erreur GitHub) : secours --ref main, 3 fois
 //   autonome    ConceptCAD-autonome.html refait, copié sur S:\Dropbox\ConceptCAD (même lien public)
 //   mac         attente du DMG, node tauri/mac/publier-maj.cjs
 //   release     release GitHub V0.x.y avec les 5 fichiers de publication
 //   verif       latest.json en ligne = cette version, installateurs téléchargeables
+// V1.1.8 (27/11) : un cpt d'une autre session a avancé main pendant les tests de la livraison de V1.1.5 ; le tag V1.1.5
+// a été posé sur la tête de main (code V1.1.6) et la livraison s'est arrêtée à mac-lancer. Désormais le code contrôlé
+// est figé (ctx.sha), et tools/cpt.cjs n'avance plus main pendant une livraison (verrou commun, O.livraisonEnCours).
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os'), crypto = require('crypto');
 const O = require('./livraison-outils.cjs');
@@ -72,6 +76,13 @@ const FAIRE = {
       arret('main sur GitHub contient des commits absents du main local (modifié sur GitHub ?) : les fusionner d\'abord');
     ctx.dejaPublie = !!git(['ls-remote', '--tags', 'origin', 'refs/tags/' + V], R);
     if (ctx.dejaPublie && DEPUIS === 'controle') arret(V + ' est déjà livrée (tag sur GitHub). Reprise : --depuis <étape>');
+    // code contrôlé, figé : la tête de main maintenant ; en reprise après le tag, le commit du tag sur GitHub
+    ctx.sha = git(['rev-parse', 'main'], R);
+    if (ctx.dejaPublie) {
+      const l = git(['ls-remote', '--tags', 'origin', 'refs/tags/' + V, 'refs/tags/' + V + '^{}'], R).split(/\r?\n/).map(x => x.split(/\s+/));
+      const p = l.find(x => x[1] === 'refs/tags/' + V + '^{}') || l.find(x => x[1] === 'refs/tags/' + V);
+      if (p && /^[0-9a-f]{40}$/.test(p[0])) ctx.sha = p[0];
+    }
     ctx.avant = git(['for-each-ref', '--merged', 'main', '--sort=-creatordate', '--format=%(refname:short)', 'refs/tags/V*'], R)
       .split(/\r?\n/).filter(t => t && t !== V)[0] || null;
     ctx.entrees = O.entreesChangelog(fs.readFileSync(path.join(R, 'CHANGELOG.md'), 'utf8'), ctx.avant, V);
@@ -87,30 +98,36 @@ const FAIRE = {
     if (!fs.existsSync(CLE)) arret('clé de signature des mises à jour absente : ' + CLE);
     lancer('cargo', ['--version']);
     gh(['auth', 'status']);
-    console.log('Livraison de ' + V + ' (précédente : ' + (ctx.avant || '—') + ') : ' + ctx.entrees.map(e => e.v).join(', '));
+    console.log('Livraison de ' + V + ' (précédente : ' + (ctx.avant || '—') + ') : ' + ctx.entrees.map(e => e.v).join(', ') + ' — code ' + ctx.sha.slice(0, 9));
     console.log('Release « ' + ctx.titre + ' »\n' + ctx.notes.replace(/^/gm, '  | '));
     console.log('Application : ' + W.path);
   },
 
-  async tests() { lancer('npm', ['run', 'ci:full'], { cwd: ctx.racine, inherit: true }); },
+  async tests() {
+    lancer('npm', ['run', 'ci:full'], { cwd: ctx.racine, inherit: true });
+    // les tests tournent dans le dépôt principal : si main a bougé, ils ont vu un autre code (en partie au moins)
+    const m = git(['rev-parse', 'main'], ctx.racine);
+    if (m !== ctx.sha) arret('main a bougé pendant les tests (' + ctx.sha.slice(0, 9) + ' → ' + m.slice(0, 9) + ', ' + O.versionPaquet(ctx.racine)
+      + ' rangée par une autre session ?) : rien n\'est publié ; redire « livre » pour tout livrer');
+  },
 
   async git() {
-    const R = ctx.racine, V = ctx.V;
-    git(['push', '-q', 'origin', 'main'], R);
-    if (!git(['rev-parse', '-q', '--verify', 'refs/tags/' + V], R, { ok: true })) git(['tag', '-a', V, '-m', ctx.titre], R);
-    if (git(['rev-parse', V + '^{commit}'], R) !== git(['rev-parse', 'main'], R)) arret('le tag ' + V + ' ne désigne pas la tête de main');
+    const R = ctx.racine, V = ctx.V, S = ctx.sha;
+    git(['push', '-q', 'origin', S + ':refs/heads/main'], R);
+    if (!git(['rev-parse', '-q', '--verify', 'refs/tags/' + V], R, { ok: true })) git(['tag', '-a', V, '-m', ctx.titre, S], R);
+    if (git(['rev-parse', V + '^{commit}'], R) !== S) arret('le tag ' + V + ' ne désigne pas le code contrôlé (' + S.slice(0, 9) + ')');
     if (!git(['ls-remote', '--tags', 'origin', 'refs/tags/' + V], R)) git(['push', '-q', 'origin', 'refs/tags/' + V], R);
-    console.log('✓ main et ' + V + ' poussés');
+    console.log('✓ main et ' + V + ' poussés (' + S.slice(0, 9) + ')');
   },
 
   async 'mac-lancer'() {
-    const W = ctx.appli, V = ctx.V;
-    if (git(['merge-base', '--is-ancestor', 'main', 'HEAD'], W, { ok: true }) === null
-      && git(['merge', '--no-edit', '-m', 'Merge ' + V, 'main'], W, { ok: true }) === null) {
+    const W = ctx.appli, V = ctx.V, S = ctx.sha;
+    if (git(['merge-base', '--is-ancestor', S, 'HEAD'], W, { ok: true }) === null
+      && git(['merge', '--no-edit', '-m', 'Merge ' + V, S], W, { ok: true }) === null) {
       git(['merge', '--abort'], W, { ok: true });
-      arret('fusion de main dans la branche de l\'application refusée (conflit ou fichiers modifiés dans ' + W + ')');
+      arret('fusion de ' + V + ' dans la branche de l\'application refusée (conflit ou fichiers modifiés dans ' + W + ')');
     }
-    if (O.versionPaquet(W) !== V) arret('la branche de l\'application n\'est pas en ' + V);
+    if (O.versionPaquet(W) !== V) arret('la branche de l\'application n\'est pas en ' + V + ' mais en ' + O.versionPaquet(W) + ' (version plus récente déjà fusionnée ?)');
     git(['push', '-q', 'origin', O.BRANCHE_APPLI], W);
     const sha = git(['rev-parse', 'HEAD'], W);
     await pause(15000); // un push qui touche tauri/** lance déjà le passage
@@ -123,13 +140,15 @@ const FAIRE = {
   async windows() { lancer('node', ['tauri/construire-windows.cjs'], { cwd: ctx.appli, inherit: true }); },
 
   async site() {
-    const sha = git(['rev-parse', 'main'], ctx.racine);
+    const sha = ctx.sha;
+    // secours sur main s'il est encore sur le code livré, sinon sur le tag (main plus récent : pas encore livré)
+    const ref = git(['rev-parse', 'main'], ctx.racine) === sha ? 'main' : ctx.V;
     let run = await trouverRun('pages.yml', r => r.headSha === sha && r.event === 'push', 3 * 60000);
     let fin = run ? await finRun(run.databaseId, 12 * 60000) : 'pas de passage';
     for (let essai = 1; fin !== 'success' && essai <= 3; essai++) {
-      console.log('Site : ' + fin + ' — secours ' + essai + '/3 (gh workflow run pages.yml --ref main)');
+      console.log('Site : ' + fin + ' — secours ' + essai + '/3 (gh workflow run pages.yml --ref ' + ref + ')');
       const vus = new Set(ghJson(['run', 'list', '--workflow', 'pages.yml', '-L', '15', '--json', 'databaseId']).map(r => r.databaseId));
-      gh(['workflow', 'run', 'pages.yml', '--ref', 'main']);
+      gh(['workflow', 'run', 'pages.yml', '--ref', ref]);
       run = await trouverRun('pages.yml', r => !vus.has(r.databaseId), 2 * 60000);
       fin = run ? await finRun(run.databaseId, 12 * 60000) : 'pas de passage';
     }
@@ -204,8 +223,10 @@ const FAIRE = {
     await FAIRE.controle();
     if (ESSAI) { console.log('\n(essai : rien n\'a été changé)'); return; }
     // Une seule livraison à la fois, toutes sessions confondues (dossier Git commun).
-    verrou = path.resolve(ctx.racine, git(['rev-parse', '--git-common-dir'], ctx.racine), 'conceptcad-livraison.lock');
-    if (fs.existsSync(verrou) && Date.now() - fs.statSync(verrou).mtimeMs < 3 * 3600000) { const v = verrou; verrou = null; arret('livraison déjà en cours : ' + fs.readFileSync(v, 'utf8') + ' (' + v + ')'); }
+    // tools/cpt.cjs le respecte aussi : main n'avance pas pendant une livraison
+    const enCours = O.livraisonEnCours(ctx.racine);
+    if (enCours) arret('livraison déjà en cours : ' + enCours);
+    verrou = O.verrouLivraison(ctx.racine);
     fs.writeFileSync(verrou, ctx.V + ', processus ' + process.pid + ', ' + new Date().toLocaleString('fr-FR'));
     for (const e of ETAPES.slice(Math.max(1, ETAPES.indexOf(DEPUIS)))) {
       const t = Date.now();
