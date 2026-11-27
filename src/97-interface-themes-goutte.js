@@ -230,6 +230,7 @@ function gtTigeSync(R,S){
   let goutte=false;try{goutte=document.body.getAttribute('data-theme')==='goutte';}catch(e){}
   if(goutte)try{gtTigeHabille(R,S);}catch(e){} // V1.1.8 : nom et valeur de chaque étape, « + la suite »
   else if(typeof pvActif==='function'&&pvActif())try{pvFriseHabille(R,S);}catch(e){} // V1.1.11 : Plan vivant, cotes de la frise et cartouche
+  else if(typeof tbActif==='function'&&tbActif())try{tbHistHabille(R,S);}catch(e){} // V1.1.12 : Table holographique, tranches et cadran
   const neuves=goutte?gtTigeNeuves(gtTigeIds,ids):[];
   gtTigeIds=new Set(ids);
   // le bandeau est refait à chaque rejeu / sélection : l'éclosion reprend où elle en était

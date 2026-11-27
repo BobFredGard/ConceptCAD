@@ -32,7 +32,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
-  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; l'Habitacle, le Plan vivant et la Goutte changent aussi la disposition :
+  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; chacune a aussi **sa propre disposition**, celle de sa maquette (menu 🎨 › *Disposition de la maquette* décochée : disposition habituelle, couleurs gardées ; pour la Goutte, c'est la bulle qui la porte) :
     - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue. Il a **sa propre disposition**, celle de sa maquette :
       - une **visière** suspendue en haut : bandeau et ruban réunis au milieu ; les commandes deviennent des **pods** carrés (l'icône seule, le nom au survol), séparés par groupe d'un point lumineux ; **▾** à droite de chaque groupe ouvre toujours sa liste complète, avec les raccourcis ;
       - en CAO, deux **écrans inclinés** : à gauche l'**HISTORIQUE** (l'arborescence, avec le nom de la pièce en grand), à droite les **RÉGLAGES** (le panneau des paramètres, cadre orange). Ils se redressent dès que la souris y va ;
@@ -43,7 +43,14 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
       - en haut de la vue : l'espace, le nombre de fonctions et l'état (enregistrée / modifiée).
 
       FAO, PLAN, esquisse et assemblage gardent leur disposition, sous la visière. Menu 🎨 › *Disposition de la maquette* (décochée) rend la disposition habituelle en gardant les couleurs : l'arborescence et les paramètres restent alors légèrement inclinés ;
-    - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ;
+    - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ; sa disposition :
+      - la **table** : une grande ellipse lumineuse en bas de la vue, avec le nom de la pièce, sa matière, sa masse et son volume écrits sur l'anneau ;
+      - les **espaces autour de la table** : CAO devant, FAO à gauche, PLAN au fond, RENDU à droite ; un clic y va ;
+      - les **commandes sur l'arc avant** de la table (plus de ruban en CAO) : d'abord les groupes (Esquisse, Créer, Modifier…), un groupe y déroule toutes ses commandes, **‹** revient. `Ctrl+K` et les raccourcis restent ;
+      - l'**histoire de la pièce** à gauche : les fonctions empilées en tranches de cylindre, la plus ancienne en bas (une tranche fine par esquisse), nom et valeur à côté, l'étape choisie en ambre. Clic, double-clic et glisser comme dans la timeline ; **Histoire · Arbre** en haut à gauche montre l'un ou l'autre ;
+      - le **cadran** à droite : la valeur principale de la fonction choisie (profondeur, hauteur, Ø, angle) sur un arc. Après un clic sur une face de la pièce, on fait glisser le curseur ou on tape la valeur puis `Entrée` : la pièce est refaite, `Ctrl+Z` revient. Quand la fonction est ouverte dans sa fenêtre, c'est la fenêtre qui règle (OK ou Annuler) et le cadran ne fait que montrer ;
+
+      FAO, PLAN, esquisse et assemblage gardent la disposition habituelle ;
     - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ; il a **sa propre disposition**, celle d'une planche à dessin :
       - la **règle trace-formes** en haut : le ruban devient une règle de dessinateur translucide, posée de biais et graduée ; chaque commande y est une découpe, son nom au pochoir dessous ; le nom d'un groupe ouvre toujours sa liste complète ;
       - en CAO, la vue devient une **planche** : double cadre, repères de zones 1 à 6 et A à D ;

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**817 versions**, de `2026-09-28b` à `V1.1.11` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**818 versions**, de `2026-09-28b` à `V1.1.12` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9277,5 +9277,37 @@ En FAO, PLAN et RENDU, la règle reste et le bandeau garde ses espaces. Menu �
 - clic sur le fond de la poche → « DÉCOUPE · profondeur 6 mm » ; 7 puis Entrée → découpe de 7 mm (frise et cartouche suivent), Ctrl+Z → 6 ;
 - tampon FAO → espace FAO (le bandeau y retrouve ses espaces) ; double-clic sur une ligne du cartouche → la fonction s'ouvre ;
 - case décochée puis recochée, thème Nuit : disposition habituelle ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.12 - La Table holographique disposée comme sa maquette : la table, les espaces autour, l'arc des commandes, la pile, le cadran
+
+Fin de la demande de Fred du 27/11 (« J'aimerais vraiment que tu te rapproches de tes 4 façons proposées ») : après la Goutte (V1.1.9), l'Habitacle (V1.1.10) et le Plan vivant (V1.1.11), la Table holographique prend la disposition de sa maquette : la pièce posée sur une table de lumière.
+
+Thème Table holographique, espace CAO (hors esquisse, assemblage et téléphone) :
+- **la table** : une grande ellipse lumineuse en bas de la vue (anneaux, disque, pointillés), avec écrits sur l'anneau le nom de la pièce, sa matière, sa masse et son volume (relus chaque seconde, la table n'est redessinée que s'ils changent ou si la vue change de taille) ;
+- **les espaces autour de la table** : CAO devant (allumé), FAO à gauche, PLAN au fond (plus petit, plus pâle), RENDU à droite ; un clic change d'espace. Le bandeau ne les montre plus en CAO et devient transparent ;
+- **les commandes sur l'arc avant** de la table, plus grosses au milieu, de gauche à droite : d'abord les groupes du ruban (Esquisse, Créer, Construire, Modifier, Ensembles, Fichier, Composants, avec leur nombre de commandes) ; un groupe y déroule toutes ses commandes (épinglées ou non, icône et nom), « ‹ » revient. Plus de ruban en CAO ; `Ctrl+K` et les raccourcis restent ;
+- **l'histoire de la pièce** à gauche : la timeline devient une pile de tranches de cylindre, la plus ancienne en bas, une tranche fine par esquisse, nom court et réglage à côté (« Découpe · 6 mm »), l'étape choisie en ambre, le marqueur en trait ambre ; clic, double-clic et glisser comme dans la timeline (glisser vertical) ; bascule **Histoire · Arbre** en haut à gauche (gardée d'une séance à l'autre) ;
+- **le cadran** à droite : la valeur principale de la fonction choisie (profondeur, hauteur, Ø, angle de révolution ou de dépouille) sur un arc ambre de 0 à 2 × la valeur ; après un clic sur une face (la fonction est surlignée sans s'ouvrir), on fait glisser le curseur (pas de 0,5 mm, 1 mm ou 1°) ou on tape la valeur puis Entrée : c3FeatSet, la pièce est refaite au lâcher, Ctrl+Z revient. Quand la fonction est ouverte dans sa fenêtre (clic sur sa tranche), le cadran ne fait que montrer : c'est la fenêtre qui règle, avec OK ou Annuler (sinon Annuler aurait effacé un réglage fait au cadran sans qu'on le voie — vu pendant l'essai). Une formule ƒx n'est pas modifiable ici. Le cadran suit le panneau des réglages ;
+- le nom du noyau et l'aide de la commande en cours passent tout en bas à droite ;
+- aucune animation sans fin (l'anneau pointillé de la maquette ne tourne pas, la pièce ne flotte pas : la vue en veille ne fait pas souffler la carte graphique).
+
+FAO, PLAN, esquisse et assemblage gardent la disposition habituelle. Menu 🎨 › **Disposition de la maquette** décochée : disposition habituelle, couleurs gardées (V1.1.6). Les quatre interfaces du futur ont maintenant chacune la disposition de leur maquette.
+
+**Fichiers** :
+- `src/97-interface-themes-holo.js` (nouveau) : table, espaces, arc des commandes, pile, cadran, bascule ;
+- `97-interface-themes-futur` : la Table rejoint les thèmes à disposition de maquette ;
+- `97-interface-themes-goutte` : la pile est habillée à chaque rendu de la timeline (gtTigeSync).
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 12 contrôles (géométrie de la table, arc de gauche à droite plus gros au milieu, place des quatre espaces, bornes et angles du cadran, cadran réglable hors fenêtre, plus de ruban ni d'espaces dans le bandeau, pile de tranches, bascule, cadran qui suit le panneau, table sans clic, aucune animation sans fin, réglage par c3FeatSet jamais pendant la fenêtre).
+
+**Vérifié dans Chromium** (Poche et Contour, 1646 × 837 puis 1249 × 837) :
+- table « POCHE ET CONTOUR · ALU PAR DÉFAUT · MASSE 1,05 kg · 387,1 cm³ », 7 groupes sur l'arc, Créer → 9 commandes, « ‹ » → les groupes ; Modifier › Congé ouvre le congé, Échap le ferme ;
+- pile de 11 tranches (« Extrusion 30 mm », « Découpe 6 mm »…), Histoire · Arbre dans les deux sens ;
+- cadran : curseur glissé 6 → 9 mm (masse 993 g sur la table) ; fonction ouverte → cadran en lecture seule ; après un clic sur une face : 9 → 8 puis Ctrl+Z → 9 ;
+- aucune erreur dans la console.
 
 CACHE_VER et FORMES_VER inchangés.

@@ -164,7 +164,7 @@ const pc=p.c.map(k=>k.nom+' '+k.val).join(' | ');
 A(pc==='Extrusion 30 | Découpe 6 | Perçage Ø9 | Chanfrein 1 arête | Poche centrale 12 | Esquisse 2 ','Plan vivant : nom court et valeur de chaque cote, comme sur un plan (un nom donné par l’utilisateur est gardé) : '+pc);
 A(p.n.length===3&&p.n.map(x=>x.rep+':'+x.nom+':'+x.reglage).join(',')==='1:Extrusion:25 mm,2:Poche:12 mm,3:Perçage:Ø10 débouchant'&&p.n[1].sel&&p.n[2].off&&!p.n[0].sel,
   'Plan vivant, cartouche : nomenclature REP · FONCTION · RÉGLAGE sans les esquisses, ligne choisie et ligne non rejouée : '+p.n.map(x=>x.rep+':'+x.nom+':'+x.reglage).join(','));
-A(p.on.join()==='true,false','Plan vivant : disposition de la maquette par défaut (la Table holographique pas encore)');
+A(p.on.join()==='true,true','Plan vivant (et Table holographique, V1.1.12) : disposition de la maquette par défaut');
 const P0='html body.ui-modern.mq-lay[data-theme="planvivant"]:not(.mf-mobile)',PC=P0+'[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
 A(p.css.includes(P0+' #mfRibbon{position:relative;width:min(1480px')&&/transform:rotate\(-\.8deg\)/.test(p.css)&&p.css.includes(P0+' #mfRibbon::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:12px;pointer-events:none'),'Plan vivant : le ruban en règle trace-formes de biais, graduée, partout');
 A(p.css.includes(PC+' .topbar .mfWs{display:none!important}')&&/#pvCart \.pvTp button\.on\{[^}]*rotate\(-5deg\)/.test(p.css),'Plan vivant : en CAO, les espaces deviennent des tampons du cartouche (le bandeau les garde ailleurs)');
@@ -172,7 +172,37 @@ A(p.css.includes(PC+' #mfTl .tlbS{flex:1 1 0')&&p.css.includes(PC+' #mfTl::befor
 A(p.css.includes(PC+' #pvCart{display:grid;position:absolute;right:calc(18px + var(--mfPropsW,0px))')&&p.css.includes(PC+' #treeOverlay{max-height:calc(100% - 150px)!important}'),'Plan vivant : cartouche en bas à droite (suit le panneau des réglages), l’arbre s’arrête au-dessus de la frise');
 A(/#pvRefs\{[^}]*pointer-events:none/.test(p.css)&&/#pvNote\{[^}]*pointer-events:none/.test(p.css)&&!/infinite/.test(p.css),'Plan vivant : repères et ligne de rappel ne prennent aucun clic ; aucune animation sans fin');
 A(p.fn==='function,function,function,function,function,function','Plan vivant : cotes, cartouche, annotation vivante (fonctions présentes)');
-A(/pvFriseHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant'\]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'Plan vivant : la frise est habillée à chaque rendu de la timeline ; case 🎨 de la disposition');
+A(/pvFriseHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant'[,\]]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'Plan vivant : la frise est habillée à chaque rendu de la timeline ; case 🎨 de la disposition');
 const pvsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-planvivant.js'),'utf8');
 A(/c3FeatSet\(f,V\.k,v,/.test(pvsrc)&&/e\.stopPropagation\(\);\s*if\(e\.key==='Escape'\)/.test(pvsrc),'Plan vivant : la valeur de l’annotation passe par c3FeatSet (Ctrl+Z), les touches tapées ne lancent aucun raccourci');
+// V1.1.12 : la Table holographique disposée comme sa maquette (97-interface-themes-holo) — table, espaces autour, arc des commandes, pile, cadran
+const t=JSON.parse(vm.runInContext(`(function(){const o={};
+  const G=tbGeom(1600,900);o.G=G;
+  o.arc=tbArcPos(7,G);o.arc1=tbArcPos(1,G);
+  o.ws=tbWsPos(G);
+  o.dial=[tbDialMax(6),tbDialMax(30),tbDialAngle(0,15),tbDialAngle(15,15),tbDialAngle(7.5,15),Math.round(tbDialValeur(0,20)*1000)/1000,tbDialValeur(-90,20),tbDialValeur(90,20)];
+  o.ouverte=[tbFenetreOuverte({id:'zz'})];
+  let cap=null;const hd=document.head,old=hd.appendChild,gid=document.getElementById;
+  document.getElementById=()=>null;hd.appendChild=n=>{cap=n;return n;};
+  try{tbCss();}finally{document.getElementById=gid;hd.appendChild=old;}
+  o.css=(cap&&cap.textContent)||'';
+  o.fn=[typeof tbSync,typeof tbActif,typeof tbTableMaj,typeof tbArcMaj,typeof tbHistHabille,typeof tbDialMaj,typeof tbArbre].join(',');
+  return JSON.stringify(o);})()`,ctx));
+A(t.G.rx===560&&Math.abs(t.G.ry-106.4)<1e-9&&Math.abs(t.G.cy-(900-106.4*1.5-42))<1e-9,'Table : table centrée en bas, rayons bornés (560 × 106 dans une vue de 1600 × 900)');
+const a0=t.arc[0],a6=t.arc[6],a3=t.arc[3];
+A(a0.x<a3.x&&a3.x<a6.x&&Math.abs(a3.x-800)<1e-6&&a3.y>a0.y&&a3.k>a0.k&&a3.o===1&&Math.abs(t.arc1[0].x-800)<1e-6,'Table : commandes sur l’arc avant, de gauche à droite, la plus grosse au milieu');
+const wsm=Object.fromEntries(t.ws.map(w=>[w.k,w]));
+A(Math.abs(wsm.cao.x-800)<1e-6&&wsm.cao.y>t.G.cy&&wsm.fao.x<t.G.cx&&wsm.rendu.x>t.G.cx&&wsm.plan.y<t.G.cy&&wsm.cao.s>wsm.plan.s&&wsm.cao.o>wsm.plan.o,'Table : CAO devant, FAO à gauche, PLAN au fond (plus petit, plus pâle), RENDU à droite');
+A(t.dial.join()==='15,60,-70,70,0,10,0,20','Table, cadran : bornes (0 → 2 × la valeur, arrondi à 5), angle ↔ valeur, butées : '+t.dial.join());
+A(t.ouverte[0]===false,'Table : cadran réglable quand la fonction n’est pas ouverte dans sa fenêtre');
+const T0='html body.ui-modern.mq-lay[data-theme="holo"]:not(.mf-mobile)',TC=T0+'[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
+A(t.css.includes(TC+' #mfRibbon,'+TC+' #mfBrTabs{display:none!important}')&&t.css.includes(TC+' .topbar .mfWs{display:none!important}'),'Table : plus de ruban ni d’espaces dans le bandeau en CAO (ils sont sur la table)');
+A(t.css.includes(TC+' #mfTl .tlbR{order:4;flex:0 1 auto;min-height:0;flex-direction:column-reverse')&&t.css.includes(TC+' #mfTl::before{content:"HISTOIRE DE LA PIÈCE"')&&/border-radius:0 0 55px 55px \/ 0 0 12px 12px/.test(t.css),'Table : l’histoire de la pièce en pile de tranches, la plus ancienne en bas');
+A(t.css.includes(TC+':not(.tb-arbre) #treeWrap{display:none!important}')&&t.css.includes(TC+'.tb-arbre #mfTl{display:none!important}'),'Table : bascule Histoire · Arbre');
+A(/#tbDial\{[^}]*right:calc\(24px \+ var\(--mfPropsW,0px\)\)/.test(t.css)&&t.css.includes(TC+' #tbTable{display:block;position:absolute;inset:0;pointer-events:none'),'Table : le cadran suit le panneau des réglages ; la table ne prend aucun clic');
+A(!/infinite/.test(t.css),'Table : la disposition n’ajoute aucune animation sans fin (l’anneau ne tourne pas)');
+A(t.fn==='function,function,function,function,function,function,function','Table : table, arc, pile, cadran, bascule (fonctions présentes)');
+const tbsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-holo.js'),'utf8');
+A(/tbHistHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant','holo'\]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8'))&&/c3FeatSet\(f,V\.k,v,/.test(tbsrc)&&/if\(tbFenetreOuverte\(f\)\)\{err\.textContent/.test(tbsrc),
+  'Table : pile habillée à chaque rendu de la timeline ; cadran par c3FeatSet (Ctrl+Z), jamais pendant la fenêtre de la fonction');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);
