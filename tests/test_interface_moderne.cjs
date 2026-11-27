@@ -145,4 +145,34 @@ A(/#hbMasse\{display:flex;[^}]*pointer-events:none/.test(h.css)&&/#hbHud\{[^}]*p
 A(!/infinite/.test(h.css),'Habitacle : la disposition n’ajoute aucune animation sans fin');
 A(h.fn==='function,function,function,function,function','Habitacle : jauge de masse, état, lecture sous le curseur (fonctions présentes)');
 A(/mfMaquetteSync\(mfBuilt\)/.test(src)&&/Disposition de la maquette/.test(src)&&/mfMaquetteSet\(cur,!mfMaquetteOn\(cur\)\)/.test(src),'Habitacle : la disposition suit le thème ; case dans le menu 🎨');
+// V1.1.11 : le Plan vivant disposé comme sa maquette (97-interface-themes-planvivant) — règle trace-formes, cote de chaîne, cartouche, annotation
+const p=JSON.parse(vm.runInContext(`(function(){const o={};
+  const st=(kind,o2,id)=>({kind,o:o2,id:id||'x'});
+  o.c=[pvCourt(st('feature',{type:'extrude',distance:30,op:'add',name:'Extrusion Esquisse 1 30mm'})),pvCourt(st('feature',{type:'extrude',distance:-6,op:'cut',name:'Découpe Esquisse 2 (face) -6mm'})),
+    pvCourt(st('feature',{type:'hole',d:9,end:'through',name:'Perçage (4)'})),pvCourt(st('feature',{type:'xfillet',chamfer:true,edges:[{}],name:'Chanfrein exact (1 arête(s))'})),
+    pvCourt(st('feature',{type:'extrude',distance:12,op:'cut',name:'Poche centrale'})),pvCourt(st('sketch',{name:'Esquisse 2 (face)'}))];
+  o.n=pvNomenclature([st('sketch',{name:'Esquisse 1'},'s1'),st('feature',{type:'extrude',distance:25,op:'add',name:'Extrusion Esquisse 1 25mm'},'f1'),
+    st('feature',{type:'extrude',distance:-12,op:'cut',name:'Poche'},'f2'),st('feature',{type:'hole',d:10,end:'through',name:'Perçage'},'f3')],'f2',new Set(['f3']));
+  o.on=[mfMaquetteOn('planvivant'),mfMaquetteOn('holo')];
+  let cap=null;const hd=document.head,old=hd.appendChild,gid=document.getElementById;
+  document.getElementById=()=>null;hd.appendChild=n=>{cap=n;return n;};
+  try{pvCss();}finally{document.getElementById=gid;hd.appendChild=old;}
+  o.css=(cap&&cap.textContent)||'';
+  o.fn=[typeof pvSync,typeof pvActif,typeof pvFriseHabille,typeof pvCartMaj,typeof pvNoteMontrer,typeof pvPied].join(',');
+  return JSON.stringify(o);})()`,ctx));
+const pc=p.c.map(k=>k.nom+' '+k.val).join(' | ');
+A(pc==='Extrusion 30 | Découpe 6 | Perçage Ø9 | Chanfrein 1 arête | Poche centrale 12 | Esquisse 2 ','Plan vivant : nom court et valeur de chaque cote, comme sur un plan (un nom donné par l’utilisateur est gardé) : '+pc);
+A(p.n.length===3&&p.n.map(x=>x.rep+':'+x.nom+':'+x.reglage).join(',')==='1:Extrusion:25 mm,2:Poche:12 mm,3:Perçage:Ø10 débouchant'&&p.n[1].sel&&p.n[2].off&&!p.n[0].sel,
+  'Plan vivant, cartouche : nomenclature REP · FONCTION · RÉGLAGE sans les esquisses, ligne choisie et ligne non rejouée : '+p.n.map(x=>x.rep+':'+x.nom+':'+x.reglage).join(','));
+A(p.on.join()==='true,false','Plan vivant : disposition de la maquette par défaut (la Table holographique pas encore)');
+const P0='html body.ui-modern.mq-lay[data-theme="planvivant"]:not(.mf-mobile)',PC=P0+'[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
+A(p.css.includes(P0+' #mfRibbon{position:relative;width:min(1480px')&&/transform:rotate\(-\.8deg\)/.test(p.css)&&p.css.includes(P0+' #mfRibbon::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:12px;pointer-events:none'),'Plan vivant : le ruban en règle trace-formes de biais, graduée, partout');
+A(p.css.includes(PC+' .topbar .mfWs{display:none!important}')&&/#pvCart \.pvTp button\.on\{[^}]*rotate\(-5deg\)/.test(p.css),'Plan vivant : en CAO, les espaces deviennent des tampons du cartouche (le bandeau les garde ailleurs)');
+A(p.css.includes(PC+' #mfTl .tlbS{flex:1 1 0')&&p.css.includes(PC+' #mfTl::before{content:"FRISE DES FONCTIONS — COTE DE CHAÎNE"'),'Plan vivant : la frise en cote de chaîne');
+A(p.css.includes(PC+' #pvCart{display:grid;position:absolute;right:calc(18px + var(--mfPropsW,0px))')&&p.css.includes(PC+' #treeOverlay{max-height:calc(100% - 150px)!important}'),'Plan vivant : cartouche en bas à droite (suit le panneau des réglages), l’arbre s’arrête au-dessus de la frise');
+A(/#pvRefs\{[^}]*pointer-events:none/.test(p.css)&&/#pvNote\{[^}]*pointer-events:none/.test(p.css)&&!/infinite/.test(p.css),'Plan vivant : repères et ligne de rappel ne prennent aucun clic ; aucune animation sans fin');
+A(p.fn==='function,function,function,function,function,function','Plan vivant : cotes, cartouche, annotation vivante (fonctions présentes)');
+A(/pvFriseHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant'\]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'Plan vivant : la frise est habillée à chaque rendu de la timeline ; case 🎨 de la disposition');
+const pvsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-planvivant.js'),'utf8');
+A(/c3FeatSet\(f,V\.k,v,/.test(pvsrc)&&/e\.stopPropagation\(\);\s*if\(e\.key==='Escape'\)/.test(pvsrc),'Plan vivant : la valeur de l’annotation passe par c3FeatSet (Ctrl+Z), les touches tapées ne lancent aucun raccourci');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);

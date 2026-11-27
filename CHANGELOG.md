@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**816 versions**, de `2026-09-28b` à `V1.1.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**817 versions**, de `2026-09-28b` à `V1.1.11` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9244,5 +9244,38 @@ Menu 🎨 › **Disposition de la maquette** (cochée par défaut, retenue par t
 - « SOUS LE CURSEUR · Face 26 · Découpe Esquisse 2 (face) -6mm » au survol du fond de la poche ;
 - au démarrage la disposition est en place (corrigé pendant l'essai : elle attendait un changement de thème) ;
 - case décochée puis recochée, thème Nuit, FAO : disposition habituelle sous la visière ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.11 - Le Plan vivant disposé comme sa maquette : règle trace-formes, cote de chaîne, cartouche, annotation vivante
+
+Suite de la demande de Fred du 27/11 (« J'aimerais vraiment que tu te rapproches de tes 4 façons proposées ») : après la Goutte (V1.1.9) et l'Habitacle (V1.1.10), le Plan vivant prend la disposition de la planche à dessin du canevas des pistes.
+
+Thème Plan vivant, interface d'ordinateur :
+- **la règle trace-formes**, partout : le ruban devient une règle de dessinateur en plastique vert translucide, posée de biais (−0,8°), graduée sur son bord bas ; chaque commande est une découpe (icône, nom au pochoir dessous, lueur jaune au survol) ; le nom d'un groupe ouvre toujours sa liste complète ;
+- en **CAO** (hors esquisse, assemblage et téléphone) :
+  - la vue devient une **planche** : double cadre, repères de zones 1 à 6 en haut et A à D à gauche ;
+  - la **frise en cote de chaîne** en bas à gauche (titre « FRISE DES FONCTIONS — COTE DE CHAÎNE ») : chaque étape est une cote entre deux traits de rappel, flèches aux deux bouts, son nom court et sa valeur écrits à la main au-dessus (« Extrusion 30 », « Découpe 6 », « Perçage Ø9 » ; un nom donné par l'utilisateur est gardé tel quel), l'étape choisie en jaune ; clic, double-clic et glisser comme dans la timeline ;
+  - le **cartouche** en bas à droite : CONCEPTCAD et le nom de la pièce, les espaces en **tampons** (celui de l'espace en cours encré rouge, de biais ; un clic change d'espace), la nomenclature REP · FONCTION · RÉGLAGE (sans les esquisses ; un clic choisit la fonction, un double-clic l'ouvre ; ligne choisie en jaune, non rejouée pâlie), matière, masse et volume des corps affichés ; il suit le panneau des réglages ;
+  - les espaces quittent le bandeau (ils sont dans le cartouche) ; l'arborescence s'arrête au-dessus de la frise ;
+  - l'**annotation vivante** : un clic sur une face écrit, au bout d'une ligne de rappel jaune, la fonction qui l'a créée et sa valeur (« DÉCOUPE · profondeur [6] mm ») ; Entrée refait la pièce (c3FeatSet, Ctrl+Z revient), Échap, un clic ailleurs ou la molette l'efface ; une valeur donnée par une formule ƒx n'est pas modifiable ici ; rien pendant un outil ;
+- écritures à la main avec les polices du système (Segoe Print sous Windows), aucune animation sans fin.
+
+En FAO, PLAN et RENDU, la règle reste et le bandeau garde ses espaces. Menu 🎨 › **Disposition de la maquette** décochée : disposition habituelle, couleurs gardées (V1.1.6).
+
+**Fichiers** :
+- `src/97-interface-themes-planvivant.js` (nouveau) : disposition, cotes de la frise, cartouche, annotation ;
+- `97-interface-themes-futur` : le Plan vivant rejoint les thèmes à disposition de maquette ;
+- `97-interface-themes-goutte` : la frise est habillée à chaque rendu de la timeline (gtTigeSync).
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 11 contrôles (noms courts et valeurs des cotes, nomenclature du cartouche, règle de biais et graduée, tampons, cote de chaîne, cartouche et arbre placés, rien de cliquable ajouté sur la vue, valeur par c3FeatSet, touches sans raccourci).
+
+**Vérifié dans Chromium** (Poche et Contour, 1646 × 837) :
+- règle d'une seule rangée, frise « Esquisse 1 · Extrusion 30 · … · Découpe 20 », cartouche « 1 Extrusion 30 mm … », pied « ALU PAR DÉFAUT · MASSE 1,05 kg · 387,1 cm³ » ;
+- clic sur le fond de la poche → « DÉCOUPE · profondeur 6 mm » ; 7 puis Entrée → découpe de 7 mm (frise et cartouche suivent), Ctrl+Z → 6 ;
+- tampon FAO → espace FAO (le bandeau y retrouve ses espaces) ; double-clic sur une ligne du cartouche → la fonction s'ouvre ;
+- case décochée puis recochée, thème Nuit : disposition habituelle ; aucune erreur dans la console.
 
 CACHE_VER et FORMES_VER inchangés.

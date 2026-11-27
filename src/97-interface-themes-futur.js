@@ -25,13 +25,14 @@ function mfIsFutur(t){return MF_FUTUR.indexOf(t)>=0;}
    de tes 4 façons proposées ». Une interface du futur peut DÉPLACER les choses comme sur sa maquette
    (classe mq-lay sur body, règles du fichier de l'interface) ; 🎨 › « Disposition de la maquette » la
    coupe (localStorage minifusion_maquette_<thème>). La Goutte suit sa bulle (gt-lay, 97-…-goutte). */
-const MF_MAQUETTE=['habitacle'];
+const MF_MAQUETTE=['habitacle','planvivant'];
 function mfMaquetteOn(t){try{return MF_MAQUETTE.indexOf(t)>=0&&mfLS('minifusion_maquette_'+t)!=='0';}catch(e){return false;}}
 function mfMaquetteSync(refaire){
   try{
     const t=document.body.getAttribute('data-theme')||'nuit';
     document.body.classList.toggle('mq-lay',mfMaquetteOn(t));
     if(t==='habitacle'&&typeof hbSync==='function')hbSync();
+    if(t==='planvivant'&&typeof pvSync==='function')pvSync();
     if(refaire&&typeof renderTimeline==='function')renderTimeline();
   }catch(e){}
 }

@@ -32,7 +32,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
-  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; l'Habitacle et la Goutte changent aussi la disposition :
+  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; l'Habitacle, le Plan vivant et la Goutte changent aussi la disposition :
     - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue. Il a **sa propre disposition**, celle de sa maquette :
       - une **visière** suspendue en haut : bandeau et ruban réunis au milieu ; les commandes deviennent des **pods** carrés (l'icône seule, le nom au survol), séparés par groupe d'un point lumineux ; **▾** à droite de chaque groupe ouvre toujours sa liste complète, avec les raccourcis ;
       - en CAO, deux **écrans inclinés** : à gauche l'**HISTORIQUE** (l'arborescence, avec le nom de la pièce en grand), à droite les **RÉGLAGES** (le panneau des paramètres, cadre orange). Ils se redressent dès que la souris y va ;
@@ -44,7 +44,14 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 
       FAO, PLAN, esquisse et assemblage gardent leur disposition, sous la visière. Menu 🎨 › *Disposition de la maquette* (décochée) rend la disposition habituelle en gardant les couleurs : l'arborescence et les paramètres restent alors légèrement inclinés ;
     - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ;
-    - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ;
+    - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ; il a **sa propre disposition**, celle d'une planche à dessin :
+      - la **règle trace-formes** en haut : le ruban devient une règle de dessinateur translucide, posée de biais et graduée ; chaque commande y est une découpe, son nom au pochoir dessous ; le nom d'un groupe ouvre toujours sa liste complète ;
+      - en CAO, la vue devient une **planche** : double cadre, repères de zones 1 à 6 et A à D ;
+      - la **frise en cote de chaîne** en bas à gauche : chaque fonction est une cote entre deux traits de rappel, son nom et sa valeur écrits à la main au-dessus (« Extrusion 30 », « Découpe 6 »), l'étape choisie en jaune. Clic, double-clic et glisser comme dans la timeline ;
+      - le **cartouche** en bas à droite : nom de la pièce, les espaces en **tampons** (CAO, FAO, PLAN, RENDU ; celui de l'espace en cours encré de biais), la nomenclature des fonctions (REP · FONCTION · RÉGLAGE : un clic choisit la fonction, un double-clic l'ouvre), la matière, la masse et le volume ;
+      - l'**annotation vivante** : un clic sur une face écrit, au bout d'une ligne de rappel, la fonction qui l'a créée et sa valeur (« DÉCOUPE · profondeur 6 mm ») ; la changer puis `Entrée` refait la pièce, `Ctrl+Z` revient, `Échap` ou un clic ailleurs l'efface.
+
+      En FAO, PLAN et RENDU, le bandeau garde ses espaces sous la règle ; esquisse et assemblage gardent leur disposition. Menu 🎨 › *Disposition de la maquette* décochée : disposition habituelle, couleurs gardées ;
     - **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent doucement tant qu'ils sont ouverts. Et surtout **la bulle d'actions** : un clic sur une face ou une arête de la pièce (espace CAO) fait apparaître, à côté de la souris, une goutte de verre avec ce qu'on peut faire à cet endroit :
       - face plane : *Esquisse ici*, *Déplacer la face*, *Évider (coque)*, *Dépouille*, *Coter* ;
       - face cylindrique (trou, axe) : *Fileter*, *Déplacer la face*, *Coter* ;
