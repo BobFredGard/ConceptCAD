@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**819 versions**, de `2026-09-28b` à `V1.1.13` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**820 versions**, de `2026-09-28b` à `V1.2.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9342,3 +9342,11 @@ Fred, 27/11, avant la livraison : « Non car les menus FAO, Assembler/Mise en pl
 **Vérifié dans Chromium** (Poche et Contour, Test Assemblage, 1249 × 837), les quatre thèmes dans les trois espaces : listes de commandes par espace, clic dans le vide en FAO et en assemblage, marqueur de l'assemblage glissé à la verticale, rails et frises qui choisissent une opération, cartouches par espace ; Table : cercle immobile panneau ouvert, 6 groupes FAO sur une rangée, 10 commandes d'assemblage sur deux rangées, moitié arrière effacée, PLAN clair ; deux posages : seul celui de la pastille choisie dans la pile, la tige, le rail, la frise et le thème Nuit.
 
 CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.0 - Quatre interfaces du futur
+
+Fred, 27/11 : « Livre V1.2.0 ». V1.2.0 rassemble ce qui a été rangé depuis V1.1.8 : les quatre interfaces du futur (thèmes depuis V1.1.6, bulle d'actions de la Goutte en V1.1.7), chacune disposée comme sa maquette (Goutte V1.1.9, Habitacle V1.1.10, Plan vivant V1.1.11, Table holographique V1.1.12), puis dans chaque espace — FAO, assemblage, PLAN (V1.1.13).
+
+**README** : annonce de V1.2.0.
+
+Aucun changement de code par rapport à V1.1.13 ; CACHE_VER et FORMES_VER inchangés.
