@@ -7,7 +7,9 @@
      d'état en bas, cube de vue. Le mode moderne n'AJOUTE que des éléments et des règles CSS sous
      body.ui-modern : chaque bouton du ruban clique le bouton d'origine (même code, même effet) ;
      revenir en classique retire la classe — rien n'est déplacé ni détruit. */
-const MF_THEMES=[['nuit','Nuit (actuel)'],['graphite','Graphite'],['atelier','Atelier'],['clair','Clair'],['contraste','Contraste élevé']];
+const MF_THEMES=[['nuit','Nuit (actuel)'],['graphite','Graphite'],['atelier','Atelier'],['clair','Clair'],['contraste','Contraste élevé'],
+  // V1.1.6 : interfaces du futur (97-interface-themes-futur)
+  ['habitacle','Habitacle'],['holo','Table holographique'],['planvivant','Plan vivant'],['goutte','Goutte']];
 function mfLS(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){}return null;}
 function mfPickRow(input,text,mark,o){
   // V0.99.78 : une ligne de liste à cocher des fiches (opération, fonction, corps…) — case + texte
@@ -24,7 +26,8 @@ function mfPickRow(input,text,mark,o){
   if(mark){const m=document.createElement('span');m.className='mf-pick-m';m.textContent=mark;if(o.markColor)m.style.color=o.markColor;r.appendChild(m);}
   return r;
 }
-const MF_3D={nuit:[0x1c1c1e,0x141519,'#141416'],graphite:[0x202124,0x17181a,'#18191b'],atelier:[0x1c1915,0x141210,'#15130f'],clair:[0xe9ecf1,0xd7dbe2,'#e4e7ec'],contraste:[0x000000,0x050505,'#000']};
+const MF_3D={nuit:[0x1c1c1e,0x141519,'#141416'],graphite:[0x202124,0x17181a,'#18191b'],atelier:[0x1c1915,0x141210,'#15130f'],clair:[0xe9ecf1,0xd7dbe2,'#e4e7ec'],contraste:[0x000000,0x050505,'#000'],
+  habitacle:[0x08111f,0x07182a,'#08111f'],holo:[0x03080b,0x04161a,'#03080b'],planvivant:[0x0d2b4e,0x0b2645,'#0d2b4e'],goutte:[0x19161a,0x120f13,'#19161a']};
 function mf3D(t){
   // fond de la scène, sol miroir et fond du canevas assortis au thème (Clair = vue 3D claire)
   const c=MF_3D[t]||MF_3D.nuit;
@@ -36,8 +39,10 @@ function mf3D(t){
 }
 function mfTheme(t){
   t=MF_THEMES.some(x=>x[0]===t)?t:'nuit';
+  try{if(typeof mfFuturCss==='function')mfFuturCss();}catch(e){} // V1.1.6 : règles des interfaces du futur
   try{document.body.setAttribute('data-theme',t);}catch(e){}
   mf3D(t);
+  try{if(typeof mfEdgeSync==='function')mfEdgeSync();}catch(e){} // teinte des arêtes de la pièce
   mfLS('minifusion_theme',t);
   try{document.querySelectorAll('.mfThemeOpt').forEach(b=>b.classList.toggle('on',b.dataset.t===t));}catch(e){}
   try{if(typeof window.mepThemeApply==='function')window.mepThemeApply();}catch(e){} // espace PLAN : fond, papier, accent
@@ -312,10 +317,13 @@ function mfTopButtons(){
   const top=document.querySelector('.topbar');if(!top||document.getElementById('mfThemeBtn'))return;
   const box=document.createElement('div');box.className='mfTop';box.id='mfTopBox';
   const th=document.createElement('button');th.id='mfThemeBtn';th.innerHTML=mfI('theme',16);th.title='Couleurs et icônes de l’interface';
-  const SW={nuit:['#1c1c1e','#0a84ff'],graphite:['#2e2f32','#8ab4f8'],atelier:['#2a2520','#ff9f0a'],clair:['#e9ecf1','#0a6cff'],contraste:['#000','#00a8ff']};
+  const SW={nuit:['#1c1c1e','#0a84ff'],graphite:['#2e2f32','#8ab4f8'],atelier:['#2a2520','#ff9f0a'],clair:['#e9ecf1','#0a6cff'],contraste:['#000','#00a8ff'],
+    habitacle:['#0a1830','#6ff3ff'],holo:['#03100f','#38f2d0'],planvivant:['#0d2b4e','#eaf3ff'],goutte:['#2a2226','#ff7a59']};
   th.onclick=e=>{e.stopPropagation();const cur=document.body.getAttribute('data-theme')||'nuit';
     const ci=document.body.getAttribute('data-icons')||'trait',IS={trait:['#9aa0a6','#9aa0a6','#9aa0a6'],couleur:['#22c55e','#3b82f6','#f59e0b'],fusion:['#a9bfd6','#f6a623','#1e88e5'],delire:['#ff5f6d','#47e891','#b06ab3']};
-    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.map(([k,l])=>({html:'<span class="mfSw" style="background:linear-gradient(135deg,'+SW[k][0]+' 55%,'+SW[k][1]+' 55%)"></span>'+l,cls:'mfThemeOpt'+(k===cur?' on':''),data:{t:k},fn:()=>mfTheme(k)})),
+    const thIt=([k,l])=>({html:'<span class="mfSw" style="background:linear-gradient(135deg,'+SW[k][0]+' 55%,'+SW[k][1]+' 55%)"></span>'+l,cls:'mfThemeOpt'+(k===cur?' on':''),data:{t:k},fn:()=>mfTheme(k)});
+    const fut=typeof mfIsFutur==='function'?mfIsFutur:()=>false;
+    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),
       [{title:'Icônes'}],MF_ICSTYLES.map(([k,l])=>({html:'<span class="mfIcSw">'+IS[k].map(c=>'<i style="background:'+c+'"></i>').join('')+'</span>'+l,cls:'mfIconOpt'+(k===ci?' on':''),data:{i:k},fn:()=>mfIcons(k)}))));};
   box.appendChild(th);
   const pv=document.getElementById('prodVer');

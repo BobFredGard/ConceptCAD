@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**811 versions**, de `2026-09-28b` à `V1.1.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**812 versions**, de `2026-09-28b` à `V1.1.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9100,5 +9100,25 @@ Si un congé ou un chanfrein a déjà été fait pendant la séance, sa valeur e
 - la bande évite le panneau.
 
 Vérifié dans Chromium (serveur d'essai à part, le brouillon de Fred n'est pas touché) : Nouveau, esquisse, extrusion, OK → 3 propositions dès la 1re extrusion (« Arrondir les 4 arêtes verticales … · R1 », « Chanfrein 0,5 sur les 4 arêtes du dessus … ») ; 2e plot posé dessus : R1, chanfrein 0,5, « Congé R0,5 au pied » ; bande arrêtée avant le panneau ouvert, pleine largeur après OK.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.6 - Interfaces du futur : quatre thèmes de plus
+
+Fred, 27/11, devant le canevas des quatre pistes d'interface dessinées le même soir (Habitacle, Table holographique, Plan vivant, Goutte) : « Je trouve les idées géniales, on pourrait toutes les proposer en plus des thèmes existants ».
+
+**Nouveau** (`src/97-interface-themes-futur.js`) : le menu 🎨 garde ses cinq thèmes et gagne une partie **Interfaces du futur** :
+- **Habitacle** : bleu nuit, traits cyan lumineux, bandeau en visière, coins de visée sur la vue ; l'arborescence et le panneau des paramètres sont inclinés comme des écrans de cockpit et se redressent au survol ou à la frappe ;
+- **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, lignes de balayage très légères, espaces de travail sur un arc ;
+- **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (inversés quand ils sont choisis), espace PLAN sur le même bleu ;
+- **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent tant qu'ils sont ouverts.
+
+Comme les autres thèmes, rien n'est déplacé ni retiré : règles CSS sous `body[data-theme="…"]`, fond et sol de la vue 3D (`MF_3D`), bureau et accent de l'espace PLAN (`MEP_DESK`, `MEP_ACC_W`, `MEP_ACC_D`), voile décoratif sur la vue (`#vpwrap::after`, jamais cliquable). Les arêtes de la pièce prennent une teinte du thème, foncée et saturée (`mfEdgeCols`, lue par `buildEdgeOverlay` de `src/20-50-aretes-affichees.js`) ; l'aperçu des arêtes n'est refait que si la teinte change (`mfEdgeSync`). Polices du système seulement (Bahnschrift sous Windows), pour le fichier autonome hors ligne. Aucune animation sans fin au repos ; rien ne bouge si l'ordinateur demande moins de mouvement.
+
+**Manuel** : *Interface › Apparence* (les quatre interfaces du futur).
+
+**Test** : `test_interface_moderne` vérifie les 9 thèmes, la partie « Interfaces du futur » du menu, les règles de chaque thème, la teinte des arêtes et le retour aux couleurs d'origine.
+
+Vérifié dans Chromium sur l'exemple *Poche et Contour* : les quatre thèmes en CAO, l'espace PLAN en Plan vivant, le menu du clic droit en Goutte, la teinte des arêtes qui change et revient en Nuit, aucune erreur dans la console.
 
 CACHE_VER et FORMES_VER inchangés.

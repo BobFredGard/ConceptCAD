@@ -108,9 +108,12 @@
      (dans la feuille de style) sont la palette d'IMPRESSION noir sur blanc : l'export SVG et
      l'impression, hors de #mepWrap, retombent donc d'eux-mêmes sur le plan ISO.
      desk = fond autour de la planche ; papier « blanc » (défaut) ou « sombre » (confort écran). */
-  const MEP_DESK={nuit:'#2b2e34',graphite:'#303236',atelier:'#2a2622',clair:'#c9ced6',contraste:'#000000'};
-  const MEP_ACC_W={nuit:'#0a6fd8',graphite:'#1a73e8',atelier:'#c85f00',clair:'#0a6cff',contraste:'#0040ff'};
-  const MEP_ACC_D={nuit:'#4da3ff',graphite:'#8ab4f8',atelier:'#ff9f0a',clair:'#4da3ff',contraste:'#00b4ff'};
+  const MEP_DESK={nuit:'#2b2e34',graphite:'#303236',atelier:'#2a2622',clair:'#c9ced6',contraste:'#000000',
+    habitacle:'#0b1626',holo:'#061214',planvivant:'#0b2747',goutte:'#221d21'}; // V1.1.6 : interfaces du futur
+  const MEP_ACC_W={nuit:'#0a6fd8',graphite:'#1a73e8',atelier:'#c85f00',clair:'#0a6cff',contraste:'#0040ff',
+    habitacle:'#0a7ea4',holo:'#0b8a77',planvivant:'#1d5fae',goutte:'#c8502f'};
+  const MEP_ACC_D={nuit:'#4da3ff',graphite:'#8ab4f8',atelier:'#ff9f0a',clair:'#4da3ff',contraste:'#00b4ff',
+    habitacle:'#6ff3ff',holo:'#38f2d0',planvivant:'#ffd84a',goutte:'#ff9a7f'};
   const MEP_PAPER={
     white:{mepPaper:'#ffffff',mepPaperEdge:'#b9c0c9',mepInk:'#151515',mepInk2:'#6a6f76',mepHid:'#59606a',mepFrameCol:'#222222',
       mepText:'#111111',mepGridCol:'#d8dde3',mepHatchCol:'#333333',mepThreadCol:'#a4a9b0',mepAxisCol:'#ff0000',mepSkFreeCol:'#0a84ff'},
