@@ -240,7 +240,7 @@ function c3IsoLoc(d0){
   if(hole){hole.gdt=hole.gdt||[];if(!hole.gdt.some(f=>f&&f.sym==='pos'))hole.gdt.push({sym:'pos',dia:true,val:0.1,mod:'',refs:[la,lb].filter(Boolean).map(l=>({l,m:''}))});}
   if(!c3HaxOf(rp)){const x=c3HaxNew(ref,rp);if(!x.err){x.name=c3NameNext();c3List().push(x);}}
   c3List().forEach(x=>{if(x&&(x===pcd||(x.k==='angle'&&x.polar===rp.id)))x.fmt='box';});
-  try{markDirty();}catch(e){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';if(c3.hidden)c3Hide(false);
+  try{c3Dirty();}catch(e){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';if(c3.hidden)c3Hide(false);
   c3Select(hole||pcd);
   c3Say('Localisation ISO : '+(la?'référence '+la+' (face d’entrée)':'pas de face d’entrée plane')+(lb?', '+lb+' (cylindre centré sur l’axe)':'')
     +' ; ⌖ Ø0,1 '+[la,lb].filter(Boolean).join(' ')+' sur les trous ; Ø de perçage'+(c3List().some(x=>x.k==='angle'&&x.polar===rp.id)?' et angles':'')+' encadrés.');
@@ -702,12 +702,27 @@ function c3Refresh(d){const g=c3Read(d);if(g.err){d.err=g.err;}else{delete d.err
 let c3AfterT=null;
 function c3AfterBuild(){
   // fin de rejeu : toutes les cotes relues (la plus extérieure seulement, comme les paramètres mesurés)
+  try{c3.hb=typeof docHash==='function'?{v:_docVersion,h:docHash()}:null;}catch(e){c3.hb=null;} // empreinte de la pièce calculée (c3Dirty) ; gardée en mémoire, reprise par builtHash
   if(c3.autoQ&&c3.autoQ.size)c3AutoSoon();
   if(!c3List().length)return;
   if(c3AfterT)clearTimeout(c3AfterT);
   c3AfterT=setTimeout(()=>{c3AfterT=null;
     if(typeof rebuildDepth!=='undefined'&&rebuildDepth>0){c3AfterBuild();return;}
     c3List().forEach(d=>{try{c3Refresh(d);}catch(e){}});c3.cardK='';c3Wake();},0);
+}
+function c3Dirty(){
+  // V1.1.1 : une cote 3D change le document (●, annulation, enregistrement) mais pas la pièce : doc.cotes3d
+  // est hors de l'empreinte. markDirty seul laissait buildKeyUpToDate() faux jusqu'au rejeu suivant ;
+  // les cotes posées après chaque fonction le faisaient à chaque fois : la pièce qui propose attendait
+  // sans fin « la fin du calcul » (Fred, 27/11 : « n'est jamais proposé, bouton allumé »), et
+  // l'enregistrement aussi, jusqu'à 60 s, pour ne pas joindre l'image de la pièce au bout du compte.
+  // Pièce à jour avant et même empreinte que celle du dernier rejeu (c3.hb, noté par c3AfterBuild) :
+  // l'affichage et son image (pcDernier, 20-75) restent valables.
+  const hb=c3.hb;let ok=false,v0=null;
+  try{ok=!!hb&&hb.h!=='x'&&typeof buildKeyUpToDate==='function'&&buildKeyUpToDate()&&hb.v===_docVersion;v0=_docVersion;}catch(e){ok=false;}
+  try{markDirty();}catch(e){}
+  try{if(ok&&docHash()===hb.h){builtVersion=_docVersion;hb.v=_docVersion;
+    if(typeof pcDernier!=='undefined'&&pcDernier&&pcDernier.ver===v0)pcDernier.ver=_docVersion;}}catch(e){}
 }
 /* ── cotes posées toutes seules à la création d'une fonction (Fred, 27/11 : « à chaque création »,
    cotes d'esquisse comprises, « sur la pièce ») ── */
@@ -738,7 +753,7 @@ function c3AutoRun(){
   let n=0,nm='';
   ids.forEach(id=>{const f=c3Feat(id);if(!f||f.visible===false||f.suppressed)return;
     let k=0;try{k=c3AutoFeat(f);}catch(e){k=0;}if(k){n+=k;nm=f.name||f.id;}});
-  if(n){if(c3.hidden)c3Hide(false);try{markDirty();}catch(e){}c3.cardK='';
+  if(n){if(c3.hidden)c3Hide(false);try{c3Dirty();}catch(e){}c3.cardK='';
     c3Say(n+' cote'+(n>1?'s':'')+' 3D posée'+(n>1?'s':'')+(ids.length===1?' pour « '+nm+' »':'')+' — clic droit sur une cote pour la cacher.');c3Wake();}
   return n;
 }
@@ -1336,7 +1351,7 @@ function c3Add(d){
   if(!d.name&&!c3IsNote(d))d.name=c3NameNext();
   try{docPushUndo('Cote 3D');}catch(e){}
   c3List().push(d);c3Refresh(d);
-  try{markDirty();}catch(e){}
+  try{c3Dirty();}catch(e){}
   c3Select(d);
 }
 function c3Remove(d){
@@ -1344,7 +1359,7 @@ function c3Remove(d){
   try{docPushUndo('Supprimer la cote 3D');}catch(e){}
   L.splice(i,1);if(c3.sel===d)c3.sel=null;
   const el=c3.els.get(d.id);if(el){el.g.remove();el.lab.remove();c3.els.delete(d.id);}
-  try{markDirty();}catch(e){}c3.cardK='';c3Wake();
+  try{c3Dirty();}catch(e){}c3.cardK='';c3Wake();
 }
 function c3Select(d){c3.sel=d||null;c3.cardK='';c3Wake();}
 function c3SkPt(sk,id){const e=(sk.entities||[]).find(x=>x&&x.id===id);return e?(e.t==='cpoint'?e.p:(e.t==='circle'||e.t==='arc')?e.pc:null):null;}
@@ -1371,7 +1386,7 @@ function c3SetDrive(d,drv){
   try{docPushUndo('Cote 3D pilotante');}catch(e){}
   const o=drv?c3Holder(drv,d):null;if(o){o.drive=null;delete o.slope;}
   d.drive=drv||null;delete d.slope;
-  try{markDirty();}catch(e){}c3.cardK='';c3Wake();
+  try{c3Dirty();}catch(e){}c3.cardK='';c3Wake();
   return o;
 }
 /* ── l'outil ── */
@@ -1957,7 +1972,7 @@ function c3LabDown(ev,d){
     }
     c3Wake();};
   const up=()=>{removeEventListener('pointermove',mv,true);removeEventListener('pointerup',up,true);
-    if(moved){try{markDirty();}catch(x){}return;}
+    if(moved){try{c3Dirty();}catch(x){}return;}
     if(c3.sel===d&&d.drive){c3EditStart(d);return;}
     c3Select(d);};
   addEventListener('pointermove',mv,true);addEventListener('pointerup',up,true);
@@ -1973,10 +1988,10 @@ function c3Turn(d){
   else{
     const u=c3Side(d,g).u;let w=new THREE.Vector3().crossVectors(g.n,u).normalize();
     if(g.ax){ // entre trous : dans le sens des axes ↔ couchée dans le plan du dessus
-      d.flat=Math.abs(u.dot(g.ax))>0.5;d.side=null;d.off=null;d.slide=0;c3Side(d,g);try{markDirty();}catch(e){}c3Wake();return;}
+      d.flat=Math.abs(u.dot(g.ax))>0.5;d.side=null;d.off=null;d.slide=0;c3Side(d,g);try{c3Dirty();}catch(e){}c3Wake();return;}
     d.side=[+w.x.toFixed(6),+w.y.toFixed(6),+w.z.toFixed(6)];d.off=8;d.slide=c3SlideEdge(g,w);
   }
-  try{markDirty();}catch(e){}c3Wake();
+  try{c3Dirty();}catch(e){}c3Wake();
 }
 function c3EditStart(d){
   if(!d)return;
@@ -2152,7 +2167,7 @@ function c3CardClick(e){
   if(a==='iso'){c3IsoLoc(d);return;}
   if(a==='pcd'){c3MakePcd(d.a);return;}
   if(a==='hax'){c3MakeHax(d.a);return;}
-  if(a==='showall'){try{docPushUndo('affichage des cotes');}catch(x){}c3List().forEach(x=>{if(c3IsNote(x))return;if(d.show)x.show=d.show;else delete x.show;});try{markDirty();}catch(x){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';c3Wake();return;}
+  if(a==='showall'){try{docPushUndo('affichage des cotes');}catch(x){}c3List().forEach(x=>{if(c3IsNote(x))return;if(d.show)x.show=d.show;else delete x.show;});try{c3Dirty();}catch(x){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';c3Wake();return;}
   if(a==='plan'){c3Edit(d,'présentation de la cote',()=>{if(d.inplane)delete d.inplane;else d.inplane=true;});return;}
   if(a==='gadd'){c3Edit(d,'cadre de tolérance',()=>{d.gdt=d.gdt||[];d.gdt.push({sym:d.k==='dia'?'pos':'par',dia:d.k==='dia',val:0.05,mod:'',refs:[{l:'A',m:''}]});});return;}
   if(a==='gdel'){c3Edit(d,'cadre de tolérance',()=>{d.gdt.splice(+b.dataset.i,1);});return;}
@@ -2162,7 +2177,7 @@ function c3Edit(d,lab,fn){
   // une étape d'annulation seulement si la cote change vraiment (un menu envoie « input » puis « change »)
   const b=JSON.stringify(d);fn();if(JSON.stringify(d)===b)return;
   const was=JSON.parse(b);Object.keys(d).forEach(k=>{delete d[k];});Object.assign(d,was);
-  try{docPushUndo(lab);}catch(e){}fn();try{markDirty();}catch(e){}c3.cardK='';const el=c3.els.get(d.id);if(el)el.html=null;c3Wake();}
+  try{docPushUndo(lab);}catch(e){}fn();try{c3Dirty();}catch(e){}c3.cardK='';const el=c3.els.get(d.id);if(el)el.html=null;c3Wake();}
 function c3CardChange(e){
   const t=e.target,d=c3.sel;if(!t||!d)return;
   const k=t.dataset.k,gk=t.dataset.gk;
@@ -2221,7 +2236,7 @@ function c3BtnSync(){const b=c3.btn;if(!b)return;b.classList.toggle('on',!!c3Too
 function c3Eye(){
   // bouton œil / Maj+D : quelque chose de caché → tout montrer ; sinon tout cacher
   const some=c3.hidden||c3List().some(d=>d.hid);
-  if(some){let k=0;c3List().forEach(d=>{if(d.hid){delete d.hid;k++;}});if(k)try{markDirty();}catch(e){}c3Hide(false);}
+  if(some){let k=0;c3List().forEach(d=>{if(d.hid){delete d.hid;k++;}});if(k)try{c3Dirty();}catch(e){}c3Hide(false);}
   else c3Hide(true);
 }
 function c3Hide(h){
@@ -2241,7 +2256,7 @@ function c3FeatOf(d){
   }catch(e){return null;}
 }
 function c3OfFeat(fid){return c3List().filter(d=>{const f=c3FeatOf(d);return f&&f.id===fid;});}
-function c3HideSet(L,h){if(!L.length)return;L.forEach(d=>{if(h)d.hid=true;else delete d.hid;if(h&&c3.sel===d)c3.sel=null;});if(!h&&c3.hidden)c3.hidden=false;try{markDirty();}catch(e){}c3.cardK='';c3Hide(c3.hidden);}
+function c3HideSet(L,h){if(!L.length)return;L.forEach(d=>{if(h)d.hid=true;else delete d.hid;if(h&&c3.sel===d)c3.sel=null;});if(!h&&c3.hidden)c3.hidden=false;try{c3Dirty();}catch(e){}c3.cardK='';c3Hide(c3.hidden);}
 function c3Menu(ev,d){
   // clic droit sur une cote : cacher celle-ci, cacher / montrer celles de sa fonction, tout montrer, supprimer
   ev.preventDefault();ev.stopPropagation();
@@ -2270,7 +2285,7 @@ function c3CtxSync(t){
     if(!a){a=document.createElement('button');a.type='button';a.id='ctxC3a';M.appendChild(a);}
     a.textContent='📐 Poser ses cotes 3D';a.style.display='';
     a.onclick=e=>{e.stopPropagation();try{hideCtx();}catch(x){}let k=0;try{k=c3AutoFeat(fa);}catch(x){k=0;}
-      if(k){if(c3.hidden)c3Hide(false);try{markDirty();}catch(x){}c3Say(k+' cote'+(k>1?'s':'')+' 3D posée'+(k>1?'s':'')+'.');}else c3Say('Aucune cote 3D à poser pour « '+(fa.name||fa.id)+' ».',true);c3Wake();};
+      if(k){if(c3.hidden)c3Hide(false);try{c3Dirty();}catch(x){}c3Say(k+' cote'+(k>1?'s':'')+' 3D posée'+(k>1?'s':'')+'.');}else c3Say('Aucune cote 3D à poser pour « '+(fa.name||fa.id)+' ».',true);c3Wake();};
   }else if(a)a.style.display='none';
   if(!L.length){if(b)b.style.display='none';return;}
   if(!b){b=document.createElement('button');b.type='button';b.id='ctxC3';M.appendChild(b);}

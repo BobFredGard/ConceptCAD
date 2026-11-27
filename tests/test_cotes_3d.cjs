@@ -322,5 +322,19 @@ chk(/function mepGdtUnderY\(t,y\)/.test(s72)&&/p=\{x:tp\.x,y:mepGdtUnderY\(t,tp\
 chk(/kind:'hole',vid:v\.id/.test(s77)&&/holeFid:HO\.f\.id,holeText:mepHoleFeatureText\(HO\.f\)/.test(s77)&&/if\(HO\.eqs\)nd\.eqs=true/.test(s77)&&/if\(d\.kind==='hole'&&d\.eqs&&!d\.txt\)/.test(s70)&&/nd\.kind==='hole'\|\|nd\.kind==='ang'\)\)\{/.test(s77),'plan : le Ø d’un trou de Perçage repris en cotation de perçage complète (profondeur, fraisure…), « EQS » gardé, cadres dessous');
 chk(/f\.kind==='csink'&&\+f\.csD>\+f\.d\)x=\(\+f\.csD-\+f\.d\)\/2\/Math\.tan/.test(s92)&&/else if\(f&&f\.kind==='cbore'\)x=\+f\.cbH/.test(s92),'⌖ Localisation : face d’entrée A trouvée au-dessus d’une fraisure / d’un lamage');
 chk(/const LKS=\(cs,sn\)=>/.test(s77)&&/if\(hit\(fb,pb\)\)s\+=700/.test(s77)&&/segIn\(ld,\{x0:fb\.x0-1\.5/.test(s77)&&/if\(hit\(tb,pb\)\)s\+=big\?250:80/.test(s77),'rangement : texte et cadre hors de la pièce, le trait ne longe pas le cadre');
+// ── V1.1.1 : une cote ne périme pas la pièce calculée (Fred, 27/11 : la pièce qui propose « n'est jamais
+// proposé, bouton allumé » — les cotes posées après chaque fonction laissaient buildKeyUpToDate() faux) ──
+{const s92d=src('92-cotes-3d.js'),m=s92d.match(/function c3Dirty\(\)\{[\s\S]*?\n\}/),c=vm.createContext({});
+  vm.runInContext('var doc={features:[{id:"ex_1"}],cotes3d:[]},builtVersion=3,_docVersion=3,dirty=false,pcDernier={ver:3},c3={hb:{v:3,h:JSON.stringify(doc.features)}};'
+    +'function markDirty(){dirty=true;_docVersion++;}function buildKeyUpToDate(){return builtVersion===_docVersion;}'
+    +'function docHash(){return JSON.stringify(doc.features);}'+(m?m[0]:''),c);
+  const t=m?vm.runInContext('(()=>{const o=[];doc.cotes3d.push({id:"c"});c3Dirty();o.push(dirty&&_docVersion===4&&buildKeyUpToDate()&&pcDernier.ver===4);'
+    +'doc.features.push({id:"ex_2"});c3Dirty();o.push(_docVersion===5&&!buildKeyUpToDate()&&pcDernier.ver===4);'
+    +'c3Dirty();o.push(_docVersion===6&&!buildKeyUpToDate());return o;})()',c):[];
+  chk(!!t[0],'une cote 3D marque le document modifié sans périmer la pièce calculée ni son image (pièce qui propose, enregistrement)');
+  chk(!!t[1]&&!!t[2],'… une pièce vraiment changée reste à recalculer');
+  chk(/function c3AfterBuild\(\)\{[^}]*?c3\.hb=typeof docHash==='function'\?\{v:_docVersion,h:docHash\(\)\}/.test(s92d),'empreinte de la pièce notée à chaque fin de rejeu (référence de c3Dirty)');
+  chk((s92d.match(/markDirty\(\)/g)||[]).length===3&&/function c3Rebuild\(\)\{try\{markDirty\(\)/.test(s92d)&&/solveSketch\(sk\);markDirty\(\)/.test(s92d),
+    'cotes 3D : c3Dirty partout, markDirty seulement pour un réglage piloté ou une cote ajoutée à l’esquisse');}
 console.log(ko?'ÉCHEC : '+ko:'OK ('+(r.length+nchk)+' contrôles)');
 process.exit(ko?1:0);

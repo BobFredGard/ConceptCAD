@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**806 versions**, de `2026-09-28b` à `V1.1.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**807 versions**, de `2026-09-28b` à `V1.1.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8994,3 +8994,15 @@ Fred, 27/11 : « Livre la V1.1.0 avec des explication sur la cotation automatiqu
 **Images** (`docs/captures/`, refaites par `node tools/captures.cjs docs/captures cotes3d cotes3dPiece cotes3dPlan`) : `cotes3d-creation.png` (bride faite en 4 fonctions, cotes posées toutes seules), `cotes3d-piece.png` (exemple Perçages, 19 cotes), `cotes3d-plan.png` (la bride sur une planche A3 après « Cotes 3D »).
 
 **Test** : `npm run ci` vert. Aucun changement dans le code de l'application. CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.1 - La pièce qui propose propose de nouveau (cotes 3D posées sans périmer la pièce)
+
+Fred, 27/11 : « Je ne suis pas sûr que "La pièce qui propose" soit vraiment opérationnel car n'est jamais proposé, bouton allumé »
+
+**Cause** : depuis V1.0.20, les cotes 3D posées toutes seules après chaque fonction (`c3AutoRun`, `src/92-cotes-3d.js`) appelaient `markDirty()` 30 ms après la fin du rejeu. `_docVersion` avançait sans nouveau rejeu : `buildKeyUpToDate()` restait faux jusqu'à la fonction suivante, alors que `doc.cotes3d` est hors de l'empreinte de la pièce. La pièce qui propose (`ppCalm`, `src/93-piece-propose.js`) attend un affichage à jour : elle attendait sans fin et ne proposait que par chance, dans ces 30 ms. Même effet à l'enregistrement (`pcVersFichier`, `src/20-75-piece-gardee.js`) : jusqu'à 60 s d'attente de « la fin du calcul », puis le fichier partait sans l'image de la pièce (`pcDernier.ver` périmé).
+
+**Correctif** : `c3Dirty()` remplace `markDirty()` dans les 13 gestes des cotes 3D (pose automatique, ajout, suppression, cacher, tourner, glisser, pilotage, cadres…). Le document est toujours marqué modifié (●, annulation). Si la pièce était à jour et que son empreinte est celle du dernier rejeu (`c3.hb`, notée par `c3AfterBuild`), `builtVersion` et `pcDernier.ver` suivent. `markDirty()` est gardé pour `c3Rebuild` (réglage piloté) et pour la cote ajoutée à l'esquisse, qui changent la pièce.
+
+**Vérifié dans Chromium** (MERLIN-39-005) : poche → « Arrondir les 4 coins de Découpe Esquisse 6 · R3 » en 0,7 s ; touche 1 → « Même congé R3 sur 8 coins semblables » ; la cote 3D est toujours posée ; cacher une cote : document modifié, pièce à jour ; image de la pièce jointe à l'enregistrement en 10 ms (avant : toujours en attente après 8 s) ; aucune erreur.
+
+**Test** : `test_cotes_3d` (190 contrôles, +4 : une cote garde la pièce à jour, une pièce changée reste à recalculer, empreinte notée à chaque rejeu, `markDirty()` seulement pour les 2 gestes qui changent la pièce) ; `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
