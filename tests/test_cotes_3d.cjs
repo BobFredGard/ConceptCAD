@@ -295,6 +295,63 @@ chk(/\(\(doc\.mep&&doc\.mep\.sheets\)\|\|\[sh\]\)\.forEach\(s=>/.test(s77)&&/dé
  chk(q[6]===-30&&q[7]<-36,'esquisse : la valeur au bout du rappel, dans son prolongement');
  chk(q[8]==='xy'&&q[9]==='x','esquisse : bandeau « Ordonnées en » X / Y');}
 const s4=src('50-esquisse-4-dessin-cotes.js'),s60=src('60-trim-et-souris.js'),s92=src('92-cotes-3d.js');
+// ── V1.1.2 : paramètres et formules ƒx dans la valeur d'une cote 3D (Fred, 27/11 : « la cotation 3D n'accepte pas
+// les paramètres ») — vrai moteur ƒx (51-parametres.js) et vrai 92, pièce simulée : bloc ex_1 + bossage ex_2 ──
+{const sb2={console,Math,JSON,Map,Set,WeakMap,Array,Object,Number,String,Boolean,Error,RegExp,isFinite,parseFloat,
+   performance:{now:()=>0},setTimeout:f=>{f();return 1;},clearTimeout(){},
+   document:{getElementById(){return null;},head:{appendChild(){}},createElement(){return {};},activeElement:null,body:{dataset:{ws:'cao'}},addEventListener(){}}};
+ sb2.window=sb2;sb2.addEventListener=()=>{};
+ const c2=vm.createContext(sb2);
+ vm.runInContext(fs.readFileSync(path.join(racine,'threejs','three.min.js'),'utf8'),c2);
+ vm.runInContext('var doc={features:[{id:"ex_1",type:"extrude",name:"Bloc",distance:20},{id:"ex_2",type:"extrude",name:"Bossage",distance:10},{id:"ex_3",type:"extrude",name:"Pied",distance:8}],sketches:[],params:[{name:"L",expr:"30"},{name:"Rc",expr:"3"}],cotes3d:[]},'
+   +'rebuildDepth=0,builtEngine="exact",docUndoStack=[],__built=0;function docPushUndo(l){docUndoStack.push({label:l});}function markDirty(){}function viewWake(){}'
+   +'function skValsNote(){}function solveSketch(){}function rebuild(){__built++;}function repMaxCopies(n){return n;}',c2);
+ vm.runInContext(src('51-parametres.js'),c2,{filename:'51-parametres.js'});
+ vm.runInContext(src('92-cotes-3d.js'),c2,{filename:'92-cotes-3d.js'});
+ const q=vm.runInContext(String.raw`(()=>{
+   const out=[];const ok=(c,m)=>out.push([!!c,m]);
+   const F=i=>doc.features[i],P=n=>doc.params.find(p=>p.name===n);
+   c3MeshSnap=()=>null;parApplyAll();
+   // la pièce simulée : cote h = hauteur du bloc ; cote tot = bloc + bossage ; cote p = pied
+   c3Read=d=>({k:'plans',v:d.id==='tot'?Math.abs(F(0).distance)+Math.abs(F(1).distance):d.id==='p'?F(2).distance:F(0).distance});
+   const mk=(id,f)=>{const d=c3New({nom:f+'/haut'},{nom:f+'/bas'},'plans');d.id=id;d.drive={t:'feat',f,k:'distance'};doc.cotes3d.push(d);c3Refresh(d);return d;};
+   const h=mk('h','ex_1');
+   let u=docUndoStack.length;
+   ok(c3SetText(h,'L')===true&&F(0).distance===30&&F(0).expr.distance==='L'&&docUndoStack.length===u+1,'« L » tapé : distance 30, la formule reste sur l’extrusion, une annulation');
+   ok(c3FxInput(h)==='L'&&/class="fx"/.test(c3Html(h,h.v)),'champ « L », repère ƒx sur la cote');
+   parSetParam(P('L'),'40');parApplyAll();c3Refresh(h);
+   ok(F(0).distance===40&&h.v===40,'L passe à 40 : la pièce et la cote suivent (avant : le lien était perdu)');
+   ok(c3SetText(h,'H = L+5')===true&&F(0).pname.distance==='H'&&F(0).distance===45&&h.name==='H'&&c3FxInput(h)==='H = L+5','« H = L+5 » : distance nommée H (paramètre), la cote s’appelle H');
+   ok(c3SetText(h,'50')===true&&F(0).pname.distance==='H'&&!(F(0).expr&&F(0).expr.distance)&&F(0).distance===50&&c3FxInput(h)==='H = 50','un nombre garde le nom (H = 50), comme une cote d’esquisse nommée');
+   u=docUndoStack.length;const m=c3SetText(h,'abc');
+   ok(m!==true&&/inconnu/.test(m)&&F(0).distance===50&&docUndoStack.length===u,'nom inconnu refusé, rien ne change : '+m);
+   ok(/circulaire/.test(String(c3SetText(h,'H = H+1'))),'« H = H+1 » : référence circulaire refusée');
+   // un nombre sans nom remplace la formule, même si la valeur ne change pas
+   const pd=mk('p','ex_3');c3SetText(pd,'L/5');u=docUndoStack.length;
+   ok(F(2).expr.distance==='L/5'&&F(2).distance===8&&c3SetText(pd,'8')===true&&!(F(2).expr&&F(2).expr.distance)&&docUndoStack.length===u+1,'8 tapé sur « L/5 » (même valeur) : la formule part, une annulation');
+   // cote décalée : bas du bloc → haut du bossage, pilote le bossage (cote = bossage + 50)
+   const t=mk('tot','ex_2');t.slope=1;
+   ok(c3SetText(t,'T = L+30')===true&&F(1).distance===20&&P('T')&&P('T').expr==='L+30'&&F(1).expr.distance==='T - 50'&&t.fx.n==='T'&&c3FxInput(t)==='T = L+30','cote décalée « T = L+30 » : paramètre libre T, bossage = T - 50 ('+F(1).expr.distance+')');
+   parSetParam(P('L'),'50');parApplyAll();c3RefreshAll();
+   ok(F(1).distance===30&&t.v===80&&!c3FxInfo(t).err,'L = 50 : bossage 30, la cote totale vaut T = 80');
+   parSetFeat(F(0),'distance',F(0),'45');parApplyAll();c3RefreshAll();
+   ok(t.v===75&&/changé ailleurs/.test(c3FxInfo(t).err)&&/class="fx e"/.test(c3Html(t,t.v)),'bloc changé ailleurs (45) : la cote décalée le signale ⚠');
+   ok(c3SetText(t,'T = L+30')===true&&F(1).expr.distance==='T - 45'&&F(1).distance===35&&t.v===80&&!c3FxInfo(t).err,'retaper la formule recale l’écart (T - 45)');
+   ok(c3SetText(t,'90')===true&&P('T').expr==='90'&&F(1).distance===45&&c3FxInput(t)==='T = 90','un nombre sur la cote décalée nommée : T = 90');
+   P('T').name='Haut';parRename('T','Haut'); // comme la fenêtre ƒx
+   ok(t.fx.n==='Haut'&&F(1).expr.distance==='Haut - 45'&&t.name==='Haut','paramètre renommé : la formule rangée et le nom de la cote suivent');
+   ok(c3FxRenameParam(h,c3FxInfo(h),'Hb')===true&&F(0).pname.distance==='Hb'&&h.name==='Hb','nom changé dans la carte : le paramètre de la fonction suit');
+   // écriture de la formule rangée, lecture de la saisie
+   ok(c3FxAff('L',1,0)==='L'&&c3FxAff('L+5',1,20)==='(L+5) - 20'&&c3FxAff('T',-1,100)==='100 - T'&&c3FxAff('D',2,0)==='D/2'&&c3FxAff('D',0.5,-3)==='(D + 3)*2'&&c3FxAff('E',1,-2.5)==='E + 2,5',
+     'formule rangée : '+[c3FxAff('L+5',1,20),c3FxAff('T',-1,100),c3FxAff('D',0.5,-3),c3FxAff('E',1,-2.5)].join(' ; '));
+   ok(c3FxRead('Ø12,5').T===12.5&&c3FxRead('R5').T===5&&c3FxRead('Rc').T===3&&c3FxRead('Rc*2').T===6&&c3FxRead('L/2 mm').T===25,'saisie : Ø, R, nom qui commence par R (Rc), unité');
+   ok(c3FxRead('x = ').err&&c3FxRead('2*(').err,'saisie vide ou formule cassée : refusée');
+   ok(c3SetText(Object.assign({},h,{drive:null}),'L')!==true,'cote de référence : ne prend pas de formule');
+   return out;
+ })()`,c2);
+ q.forEach(([b,m])=>chk(b,'ƒx : '+m));}
+chk(/inp\._parFx=1/.test(s92)&&/K\.querySelectorAll\('input\[data-k="val"\],input\[data-k\^="hk:"\]'\)\.forEach\(i=>\{i\._parFx=1;\}\)/.test(s92)&&/const r=c3SetText\(d,txt\);c3SayFx\(d,r\)/.test(s92)&&/c3HoleSetText\(d,k,txt\)/.test(s92),'ƒx : champs de la cote, de la carte et du trou lus par la cote 3D (liste des paramètres pendant la frappe)');
+chk(/c3FxRename\(re,oldN,newN\)/.test(src('51-parametres.js'))&&/hole:typeof holeName==='function'&&!f\.kw\?holeName:null/.test(src('51-parametres.js')),'ƒx : renommer un paramètre suit dans les cotes 3D ; un Perçage piloté garde un nom juste');
 chk(/if\(d\.ord\)return skOrdSeg\(d,A,B\)/.test(s4)&&/if\(d&&d\.ord\)return skOrdTextAt\(S,d\)/.test(s4)&&/if\(d\.ord\)\{skOrdDraw\(sk,d,st\);return;\}/.test(s4)&&/if\(d\.ord\)return skOrdTextTo\(sk,d,tx,ty\)/.test(s4),'esquisse : ordonnées dessinées, déplacées en famille');
 chk(/if\(skTool==='ord'\)\{skOrdClick\(sk,wx,wy\);return;\}/.test(s60)&&/skTool==='ord'&&skOrd&&\(e\.key==='Enter'\|\|e\.key==='Escape'\)/.test(s60)&&/if\(dd\.ord\)skOrdSyncW\(sk,dd\)/.test(s60),'esquisse : clic, Entrée / Échap, glisser de la ligne');
 chk(/n\+=c3AutoOrd\(sk,free,face,used\)/.test(s92)&&/if\(d\.ord&&Array\.isArray\(d\.ordw\)[^\n]*return c3OrdGeo\(d,g\)/.test(s92)&&/c3OrdDraw\(d,g,el,col,W,H,vd\)/.test(s92),'3D : ordonnées d’esquisse reprises en famille, dessinées en ordonnées');

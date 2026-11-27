@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**807 versions**, de `2026-09-28b` à `V1.1.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**808 versions**, de `2026-09-28b` à `V1.1.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9006,3 +9006,24 @@ Fred, 27/11 : « Je ne suis pas sûr que "La pièce qui propose" soit vraiment o
 **Vérifié dans Chromium** (MERLIN-39-005) : poche → « Arrondir les 4 coins de Découpe Esquisse 6 · R3 » en 0,7 s ; touche 1 → « Même congé R3 sur 8 coins semblables » ; la cote 3D est toujours posée ; cacher une cote : document modifié, pièce à jour ; image de la pièce jointe à l'enregistrement en 10 ms (avant : toujours en attente après 8 s) ; aucune erreur.
 
 **Test** : `test_cotes_3d` (190 contrôles, +4 : une cote garde la pièce à jour, une pièce changée reste à recalculer, empreinte notée à chaque rejeu, `markDirty()` seulement pour les 2 gestes qui changent la pièce) ; `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.2 - Cotes 3D : paramètres et formules ƒx dans la valeur
+
+Fred, 27/11 : « on est sur la V1.1.0 et je viens de me rendre compte que la cotation 3D n'accepte pas les paramètres… Il faut y remédier »
+
+**Cause** : la valeur d'une cote 3D était lue comme un simple nombre. Une formule (`L`, `L/2+3`) passait par le filet ƒx global, qui la remplaçait par sa valeur : la pièce prenait cette valeur une fois, puis le lien avec le paramètre était perdu (changer L ne bougeait plus rien). `H = L+5` était refusé (« valeur illisible ») et un nom inconnu passait en silence. Même chose dans la carte et sur les nombres d'un trou de Perçage.
+
+**Correctif** (`src/92-cotes-3d.js`) : la saisie de la cote (étiquette, carte « Valeur », nombres du trou) accepte un nombre, un paramètre, une formule ou « nom = valeur », avec la liste des paramètres pendant la frappe. La formule est rangée sur ce que la cote pilote :
+- cote = réglage (cas courant) : formule et nom vont tels quels sur la cote d'esquisse ou la valeur de fonction. `H` devient un paramètre de la fonction, et la cote prend le nom `H` ;
+- cote décalée (cote = s·réglage + b, s = ±½, ±1, ±2) : la formule est rangée transformée sur le réglage (`T - 20`) et le nom devient un paramètre libre de la fenêtre ƒx. `d.fx` garde ce qui a été tapé. Si l'écart change ailleurs, la cote affiche ⚠ ; retaper la formule recale.
+
+Un nombre garde le nom ; sans nom, il remplace la formule (même à valeur égale). Renommer la cote dans sa carte renomme le paramètre partout ; renommer un paramètre dans la fenêtre ƒx suit dans les formules des cotes (crochet dans `parRename`, `src/51-parametres.js`). Un repère **ƒx** s'affiche devant la valeur (⚠ en orange si la formule ne s'évalue plus), avec la formule au survol. Le mouvement de la pièce garde la formule : positions intermédiaires en nombres, formule remise à la fin. Le message attend la fin du mouvement, pour donner le nom définitif de la fonction. Une seule annulation, et retour complet en cas de refus. Les gestes de la cote passent par `c3Dirty` (V1.1.1) : une formule rangée change l'empreinte, donc la pièce est bien à recalculer ; `d.fx` seul ne la périme pas. `src/51-parametres.js` : un Perçage dont une valeur change par un paramètre garde un nom juste (« Ø7 lamé Ø14 »).
+
+**Manuel** : *Cotes 3D › Changer une valeur › Paramètres et formules (ƒx)*, avec un lien depuis *Esquisse*.
+
+**Test** : `test_cotes_3d` passe à 211 contrôles, dont 21 nouveaux sur le vrai moteur ƒx de 51 : formule gardée et suivie, nom, nombre qui garde le nom, refus, cote décalée et son ⚠, renommages, saisie Ø / R / unité. Vérifié dans Chromium (carte graphique réelle) :
+- bloc + bossage : `L`, `H = L+5`, `50`, `abc`, `T = L` sur la hauteur totale, puis L changé ;
+- exemple Perçages : cote d'esquisse `W = E*3`, lamage `E/2` et `Dl = E`, congé de 4 arêtes `Rc = E/4` ;
+- frappe au clavier avec la liste des paramètres.
+
+CACHE_VER et FORMES_VER inchangés.
