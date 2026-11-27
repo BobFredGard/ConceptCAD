@@ -971,7 +971,9 @@ function ppPlace(){
     return q.width>0&&q.height>0&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'?q:null;};
   let left=14,bottom=14;
   const tw=vis(document.getElementById('treeWrap'));if(tw&&tw.left<lr.left+lr.width/2)left=Math.max(left,tw.right-lr.left+14);
-  ['mfTl','faceInfo','mfStatus','mfStEng','mfStMeas'].forEach(id=>{const q=vis(document.getElementById(id));if(q&&q.top<lr.bottom&&q.bottom>lr.bottom-160)bottom=Math.max(bottom,lr.bottom-q.top+8);}); // la ligne d'état déborde de son cadre : ses textes comptent
+  // V1.1.8 : bandeau des fonctions dressé en tige à gauche (disposition de la Goutte) : il compte comme l'arbre
+  const tg=vis(document.getElementById('mfTl'));const tige=!!(tg&&tg.height>tg.width*1.5&&tg.left<lr.left+lr.width/2);if(tige)left=Math.max(left,tg.right-lr.left+14);
+  [tige?'':'mfTl','faceInfo','mfStatus','mfStEng','mfStMeas'].forEach(id=>{const q=vis(document.getElementById(id));if(q&&q.top<lr.bottom&&q.bottom>lr.bottom-160)bottom=Math.max(bottom,lr.bottom-q.top+8);}); // la ligne d'état déborde de son cadre : ses textes comptent
   // V1.1.5 : ni sur le panneau des paramètres à droite (la fenêtre Extrusion : la bande cachait le champ Distance)
   let right=14;const pe=document.getElementById('props'),pw=vis(pe&&pe.closest&&pe.closest('.panel'));if(pw&&pw.left>lr.left+lr.width/2&&pw.bottom>lr.bottom-200)right=Math.max(right,lr.right-pw.left+14); // le cadre visible : une petite aide en haut ne compte pas
   const room=Math.max(260,lr.width-left-right);

@@ -44,6 +44,8 @@ function mfTheme(t){
   mf3D(t);
   try{if(typeof mfEdgeSync==='function')mfEdgeSync();}catch(e){} // teinte des arêtes de la pièce
   try{if(typeof gtCacher==='function')gtCacher();}catch(e){} // V1.1.7 : bulle de la Goutte fermée
+  try{if(typeof gtLaySync==='function')gtLaySync(mfBuilt);}catch(e){} // V1.1.9 : disposition de la Goutte (tige, sans ruban)
+  try{if(typeof mfMaquetteSync==='function')mfMaquetteSync(mfBuilt);}catch(e){} // V1.1.10 : disposition de la maquette (Habitacle…)
   mfLS('minifusion_theme',t);
   try{document.querySelectorAll('.mfThemeOpt').forEach(b=>b.classList.toggle('on',b.dataset.t===t));}catch(e){}
   try{if(typeof window.mepThemeApply==='function')window.mepThemeApply();}catch(e){} // espace PLAN : fond, papier, accent
@@ -199,6 +201,9 @@ function mfCss(){
   '#mfPosTabs button.on{background:var(--primary);border-color:var(--primary);color:#fff}',
   '#mfPosTabs button.struck{text-decoration:line-through;opacity:.55}',
   'body:not(.ui-modern) #mfPosTabs{display:none}',
+  /* V1.1.13 (Fred, 27/11 : « je préfère n'en voir qu'un à la fois quand je clique sur le posage de mon choix », « valable partout ») :
+     avec plusieurs posages, l'arbre de l'usinage ne montre que celui de la pastille choisie (97-interface-themes-futur, mfPosageFiltre) */
+  'body.ui-modern #faoTree .mfPosCache{display:none!important}',
   /* barre d'état */
   '#mfStatus{gap:16px;align-items:center;padding:5px 12px;margin-top:6px;font-size:.72rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;overflow:hidden}',
   '#mfStatus b{color:var(--text);font-weight:600}',
@@ -326,7 +331,9 @@ function mfTopButtons(){
     const fut=typeof mfIsFutur==='function'?mfIsFutur:()=>false;
     // V1.1.7 : thème Goutte → sa bulle d'actions près de la souris, à couper ou remettre (97-interface-themes-goutte)
     const gtIt=cur==='goutte'&&typeof gtOn==='function'?[{html:'<span class="mfSw" style="display:inline-flex;align-items:center;justify-content:center;font-size:11px;border-color:transparent">'+(gtOn()?'☑':'☐')+'</span>Bulle d’actions près de la souris',fn:()=>gtSetOn(!gtOn())}]:[];
-    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),gtIt,
+    // V1.1.10 : interface disposée comme sa maquette (97-interface-themes-futur, mfMaquetteOn) — à couper ou remettre
+    const mqIt=typeof MF_MAQUETTE!=='undefined'&&MF_MAQUETTE.indexOf(cur)>=0?[{html:'<span class="mfSw" style="display:inline-flex;align-items:center;justify-content:center;font-size:11px;border-color:transparent">'+(mfMaquetteOn(cur)?'☑':'☐')+'</span>Disposition de la maquette',fn:()=>mfMaquetteSet(cur,!mfMaquetteOn(cur))}]:[];
+    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),gtIt,mqIt,
       [{title:'Icônes'}],MF_ICSTYLES.map(([k,l])=>({html:'<span class="mfIcSw">'+IS[k].map(c=>'<i style="background:'+c+'"></i>').join('')+'</span>'+l,cls:'mfIconOpt'+(k===ci?' on':''),data:{i:k},fn:()=>mfIcons(k)}))));};
   box.appendChild(th);
   const pv=document.getElementById('prodVer');

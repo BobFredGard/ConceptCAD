@@ -21,6 +21,85 @@
    mouvement. */
 const MF_FUTUR=['habitacle','holo','planvivant','goutte'];
 function mfIsFutur(t){return MF_FUTUR.indexOf(t)>=0;}
+/* V1.1.10 : « Disposition de la maquette » — Fred, 27/11 : « J'aimerais vraiment que tu te rapproches
+   de tes 4 façons proposées ». Une interface du futur peut DÉPLACER les choses comme sur sa maquette
+   (classe mq-lay sur body, règles du fichier de l'interface) ; 🎨 › « Disposition de la maquette » la
+   coupe (localStorage minifusion_maquette_<thème>). La Goutte suit sa bulle (gt-lay, 97-…-goutte). */
+const MF_MAQUETTE=['habitacle','planvivant','holo'];
+function mfMaquetteOn(t){try{return MF_MAQUETTE.indexOf(t)>=0&&mfLS('minifusion_maquette_'+t)!=='0';}catch(e){return false;}}
+function mfMaquetteSync(refaire){
+  try{
+    const t=document.body.getAttribute('data-theme')||'nuit';
+    document.body.classList.toggle('mq-lay',mfMaquetteOn(t));
+    if(t==='habitacle'&&typeof hbSync==='function')hbSync();
+    if(t==='planvivant'&&typeof pvSync==='function')pvSync();
+    if(t==='holo'&&typeof tbSync==='function')tbSync();
+    if(refaire)mfMaquetteRefaire();
+  }catch(e){}
+}
+function mfMaquetteSet(t,on){try{mfLS('minifusion_maquette_'+t,on?'1':'0');}catch(e){}mfMaquetteSync(true);}
+/* V1.1.13 : FAO, assemblage et PLAN disposés comme la CAO — Fred, 27/11 : « les menus FAO,
+   Assembler/Mise en plan ne sont pas traités comme le menu CAO pour les 4 Interfaces du futur »,
+   puis « Chaque partie doit avoir le même style partout ». Chaque interface habille aussi la barre
+   de l'assemblage (48 asmTlRender) et la liste des opérations FAO (88 faoRenderTree), refaites par
+   leur propre code : ces deux crochets passent la main à celle qui est active. */
+function mfEspace(){
+  // 'cao' · 'asm' (Assembler) · 'fao' · 'plan' · 'sk' (esquisse)
+  try{
+    const b=document.body;if(!b)return 'cao';
+    if(b.classList.contains('mf-sk'))return 'sk';
+    const w=b.getAttribute('data-ws')||'cao';
+    return w==='cao'&&b.getAttribute('data-asm')==='1'?'asm':w;
+  }catch(e){return 'cao';}
+}
+function mfAsmTlSync(R,H,c){
+  try{if(typeof gtAsmHabille==='function')gtAsmHabille(R,H,c);}catch(e){}
+  try{if(typeof pvAsmHabille==='function')pvAsmHabille(R,H,c);}catch(e){}
+  try{if(typeof tbAsmHabille==='function')tbAsmHabille(R,H,c);}catch(e){}
+}
+function mfFaoArbreSync(tree){
+  try{mfPosageFiltre(tree);}catch(e){}
+  try{if(typeof gtFaoHabille==='function')gtFaoHabille(tree);}catch(e){}
+  try{if(typeof hbFaoHabille==='function')hbFaoHabille(tree);}catch(e){}
+  try{if(typeof pvFaoHabille==='function')pvFaoHabille(tree);}catch(e){}
+}
+// Pur : « Relation Coaxiale — « Bride » » → {nom:'Bride', detail:'relation coaxiale'} (étape d'assemblage)
+function mfAsmEtape(nomComplet){
+  const s=String(nomComplet||'').trim(),m=s.match(/«\s*(.*?)\s*»/);
+  const detail=s.replace(/\s*(—\s*)?«.*»\s*$/,'').replace(/\s*—\s*$/,'').trim().toLowerCase();
+  return {nom:m?m[1]:s,detail:m?detail:''};
+}
+// Pur : les opérations FAO dans l'ordre des lignes de l'arbre (posages ouverts seulement)
+function mfFaoOpsVues(root){
+  const out=[];
+  try{mfPosagesVus(root).forEach(s=>{if(s.open===false)return;(s.ops||[]).forEach((op,i)=>out.push({s,op,i}));});}catch(e){}
+  return out;
+}
+// V1.1.13 (Fred, 27/11) : un seul posage montré à la fois, celui de la pastille choisie (le posage actif) ;
+// avec un seul posage, rien ne change. Pur.
+function mfPosagesVus(root){
+  const S=(root&&root.setups)||[];
+  if(S.length<2)return S;
+  return [S.find(s=>s.id===root.activeSetupId)||S[0]];
+}
+// Arbre de l'usinage (interface moderne) : les lignes des autres posages sont marquées .mfPosCache (masquées en CSS)
+function mfPosageFiltre(tree){
+  if(!tree)return;
+  let R=null;try{R=faoRoot();}catch(e){R=null;}
+  const S=(R&&R.setups)||[],vu=new Set(mfPosagesVus(R).map(s=>s.id));
+  const moderne=document.body.classList.contains('ui-modern');
+  let i=-1;
+  [...tree.children].forEach(row=>{
+    if(row.classList.contains('fao-setup'))i++;
+    const s=S[i];
+    row.classList.toggle('mfPosCache',moderne&&S.length>1&&!!s&&!vu.has(s.id));
+  });
+}
+// Refaire les barres habillées (changement de thème, de disposition)
+function mfMaquetteRefaire(){
+  try{if(typeof renderTimeline==='function')renderTimeline();}catch(e){} // refait aussi la barre de l'assemblage (41 → 48)
+  try{if(typeof faoRenderTree==='function'&&document.getElementById('faoTree'))faoRenderTree();}catch(e){}
+}
 // arêtes de la pièce [vives, tangentes] en RVB 0..1 — teintes foncées et saturées, lisibles sur
 // les pièces claires comme sur les sombres ; null = couleurs d'origine (noir / gris doux)
 function mfEdgeCols(){
@@ -180,7 +259,22 @@ function mfFuturCss(){
     B(G,'#treeOverlay','padding-left:14px;padding-right:14px'),
     B(G,'#mfBrTabs,#viewbar','border-radius:999px!important'),
     B(G,'#mfTl','border-radius:999px!important;padding-left:14px;padding-right:14px'),
-    B(G,'#mfTl .tlbS.sel','background:var(--fx)!important;border-color:var(--fx)!important;color:#1a0d08!important'),
+    // V1.1.8 : la tige — l'historique pousse comme une plante (éclosion : gtTigeSync, 97-interface-themes-goutte)
+    B(G,'#mfTl .tlbR','gap:9px;padding:6px 10px 5px;background:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 16%27%3E%3Cpath d=%27M0 8C10 3 10 3 20 8S30 13 40 8%27 fill=%27none%27 stroke=%27%23968a7d%27 stroke-width=%272.2%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") repeat-x 0 50%/40px 16px local'),
+    B(G,'#mfTl .tlbS','min-width:32px;height:32px;padding:0 5px;border:1px solid rgba(255,250,242,.55);background:radial-gradient(circle at 34% 28%,#fffaf2 0%,#e9e1d5 52%,#bfb4a6 100%);box-shadow:0 3px 8px rgba(0,0,0,.35);color:#1a1614'),
+    B(G,'#mfTl .tlbS.sk','min-width:26px;height:26px;padding:0 3px;border-radius:70% 0 70% 0 / 70% 0 70% 0!important;border-color:rgba(205,240,218,.7);background:linear-gradient(135deg,#d6f2e1 0%,#9fd8b8 55%,#5fa883 100%)'),
+    B(G,'#mfTl .tlbS.cg','border-style:dashed;background:radial-gradient(circle at 34% 28%,#fff7da,#e8d9a6 70%)'),
+    B(G,'#mfTl .tlbS:hover','border-color:#ff9a7f;box-shadow:0 0 0 3px rgba(255,122,89,.25),0 3px 8px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbS.sel','background:radial-gradient(circle at 34% 28%,#ffc4b2 0%,#ff7a59 60%,#d9573a 100%)!important;border-color:#ffb39f!important;color:#1a0d08!important;box-shadow:0 0 0 4px rgba(255,122,89,.28),0 3px 10px rgba(0,0,0,.4)'),
+    B(G,'#mfTl .tlbS.warn','border-color:#ff453a;box-shadow:inset 0 0 0 1px #ff453a,0 3px 8px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbS.rsrc,#mfTl .tlbS.rsrc.rcand','background:radial-gradient(circle at 34% 28%,#c9f7d6,#30d158 75%)'),
+    B(G,'#mfTl .tlbS.rcand','background:rgba(48,209,88,.12)'),
+    // le marqueur temps = la pousse verte au bout de la tige
+    B(G,'#mfTl .tlbM','width:13px;height:26px;margin:0 4px;border-radius:0 100% 0 100%;background:linear-gradient(135deg,#e2f7ea,#7fc9a0 55%,#4f9a74);box-shadow:0 2px 6px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbM::before','display:none'),
+    B(G,'#mfTl .tlbM.on','box-shadow:0 0 0 3px rgba(159,216,184,.45),0 2px 6px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbS.gtNeuf','animation:gtEclot .9s cubic-bezier(.3,1.5,.5,1) both'),
+    '@keyframes gtEclot{0%{transform:scale(0) translateY(12px);opacity:0}55%{transform:scale(1.25);opacity:1}75%{transform:scale(.94)}100%{transform:none}}',
     B(G,'.ovlTitle,.panel-title','color:#e9e1d6!important;font-weight:600'),
     B(G,'input,select,textarea','border-radius:12px'),
     // menus ouverts = gouttes : forme irrégulière qui ondule tant qu'elles sont ouvertes
@@ -191,7 +285,7 @@ function mfFuturCss(){
     B(G,'#vpwrap::after','content:"";position:absolute;inset:0;pointer-events:none;z-index:1;border-radius:inherit;'+
       'background:radial-gradient(70% 60% at 42% 38%,rgba(255,220,190,.05),transparent 70%),radial-gradient(130% 95% at 50% 50%,transparent 62%,rgba(10,6,8,.42))'),
     '@keyframes mfGoutte{0%,100%{border-radius:22px 28px 24px 30px / 26px 22px 30px 24px}50%{border-radius:30px 22px 28px 24px / 22px 30px 24px 28px}}',
-    '@media (prefers-reduced-motion:reduce){html body[data-theme="goutte"] :is('+M+'){animation:none!important}html body[data-theme="habitacle"] :is(#treeOverlay,#propsWrap>.right>.panel){transition:none}}'
+    '@media (prefers-reduced-motion:reduce){html body[data-theme="goutte"] :is('+M+'){animation:none!important}html body[data-theme="habitacle"] :is(#treeOverlay,#propsWrap>.right>.panel){transition:none}html body[data-theme="goutte"] #mfTl .tlbS.gtNeuf{animation:none!important}}'
   );
   st.textContent=R.join('\n');
   document.head.appendChild(st);

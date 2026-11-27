@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**814 versions**, de `2026-09-28b` à `V1.1.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**820 versions**, de `2026-09-28b` à `V1.2.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9165,3 +9165,188 @@ Fred, 27/11, après la livraison de V1.1.5 arrêtée en route : « Oui, corrige-
 - tag, main poussé, fusion et site sur le code contrôlé.
 
 Essai à blanc (`--essai`) sur le vrai dépôt : « Livraison de V1.1.7 … — code 17108eee2 ». Aucun changement dans l'application ; CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.9 - La Goutte disposée comme sa maquette : sans ruban, l'historique en tige
+
+Fred, 27/11, devant les quatre interfaces du futur (V1.1.6) : « Pour le moment, les interfaces sont proches de l'agencement de l'interface de ConceptCAD actuel. J'aimerais vraiment que tu te rapproches de tes 4 façons proposées. » Une interface à la fois ; d'abord la Goutte, disposée comme sur le canevas des pistes.
+
+Thème Goutte avec sa bulle d'actions, espace CAO (hors esquisse, assemblage et téléphone) :
+- **plus de ruban** : la pièce prend toute la hauteur. Les commandes viennent dans la goutte :
+  - sur une face ou une arête, ce qu'on peut y faire (V1.1.7) ;
+  - dans le vide quand rien n'est sélectionné, ou sur **« + la suite »** au bout de la tige : toutes les commandes de la CAO, rangées en galets (les groupes du ruban : Esquisse, Créer, Construire, Modifier, Ensembles, Fichier, Assembler ; épinglées ou non). Un galet ouvre ses commandes, « ‹ Toutes les commandes » revient ;
+  - `Ctrl+K` et les raccourcis restent ;
+- **l'historique pousse en tige** verticale à gauche, de bas en haut :
+  - bourgeons ronds pour les fonctions, feuilles vertes pour les esquisses, la tige ondule de l'un à l'autre ;
+  - à côté de chaque bourgeon, son nom et sa valeur (« découpe 6 mm », « Ø9 débouchant », « chanfrein · 1 arête ») ;
+  - la pousse verte du haut est le marqueur temps : la glisser vers le bas rejoue la pièce plus tôt (« rejouée jusqu'ici ») ;
+  - on glisse toujours une fonction pour la réordonner, clic et double-clic comme avant ;
+  - la fonction qui vient d'être créée éclot (son bourgeon pousse en grossissant, moins de 1 s ; rien si l'ordinateur demande moins de mouvement, rien à l'ouverture d'un fichier) ;
+  - bulle coupée : la timeline revient en bas, en tige ondulée horizontale ;
+- **l'arbre se range** : bascule **Tige · Arbre** en haut à gauche de la vue (gardée d'une séance à l'autre) ;
+- **la bulle d'une face** montre la valeur de la fonction qui l'a créée, réglable sur place : profondeur d'une découpe, hauteur d'une extrusion, Ø d'un perçage, angle d'une révolution ou d'une dépouille. Entrée applique, Ctrl+Z annule ; une valeur donnée par une formule ƒx n'est pas écrasée ;
+- **en haut** : logo et nom de la pièce à gauche, les espaces CAO · FAO · PLAN · RENDU en galets au milieu, des orbes à droite (annuler, rétablir, enregistrer ; nouveau, ouvrir, récents, enregistrer sous, dossier et pilotage sortent au survol). La recherche est un galet court qui s'allonge quand on y tape.
+
+FAO, PLAN, esquisse et assemblage gardent leur ruban. *Ne plus montrer* (bulle) ou 🎨 › *Bulle d'actions* décoché : la disposition habituelle revient, ruban compris. Les autres thèmes ne changent pas.
+
+**Fichiers** :
+- `src/97-interface-themes-goutte-disposition.js` (nouveau) : disposition, goutte de toutes les commandes, noms de la tige, valeur dans la bulle ;
+- `97-interface-themes-goutte` : clic dans le vide, valeur, tige habillée ;
+- `41-bandeau-timeline` : `tlbVert`, glisser et défiler en hauteur quand la rangée est verticale ;
+- `97-interface-moderne` : la disposition suit le thème ;
+- `93-piece-propose` : la tige compte comme l'arbre (la bande « Ensuite ? » reste en bas, à droite de la tige).
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 13 contrôles (noms et valeurs de la tige, valeur de la bulle, plus de ruban en CAO seulement, tige verticale, bascule, espaces au milieu, aucune animation sans fin, clics qui traversent le vide autour de la tige, glisser vertical).
+
+**Vérifié dans Chromium** (Poche et Contour, 1440 × 900) :
+- ruban absent en CAO, présent en FAO ; tige de 7 étapes, la plus ancienne en bas ;
+- « + la suite » → 7 galets, Créer → 9 commandes ; Modifier › Congé ouvre le congé, Échap le ferme ;
+- clic dans le vide : le 1er désélectionne, le 2e ouvre toutes les commandes ;
+- profondeur de la découpe 6 → 7 dans la bulle, puis Ctrl+Z → 6 ;
+- pousse glissée vers le bas → pièce rejouée après l'extrusion, puis remise au bout ;
+- Arbre / Tige, thème Nuit et bulle coupée : disposition habituelle ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.10 - L'Habitacle disposé comme sa maquette : visière, écrans inclinés, frise, jauge de masse, gyroscope
+
+Suite de la demande de Fred du 27/11 (« J'aimerais vraiment que tu te rapproches de tes 4 façons proposées ») : après la Goutte (V1.1.9), l'Habitacle prend la disposition du poste de pilotage dessiné sur le canevas des pistes.
+
+Thème Habitacle, interface d'ordinateur :
+- **la visière**, partout : bandeau et ruban réunis au milieu en haut, suspendus, coins bas arrondis ;
+  - les commandes deviennent des **pods** carrés de 40 px (l'icône seule ; le nom et la fiche illustrée au survol) ;
+  - les groupes sont séparés par un point lumineux ; **▾** à droite de chaque groupe ouvre toujours sa liste complète (commandes non épinglées et raccourcis compris) ;
+  - la recherche de commandes garde sa largeur ;
+- en **CAO** (hors esquisse, assemblage et téléphone) :
+  - **écrans inclinés** plus marqués : à gauche l'**HISTORIQUE** (l'arborescence, le nom de la pièce en grand, la ligne choisie en orange), à droite les **RÉGLAGES** (panneau des paramètres, cadre et titre orange) ; ils se redressent au survol ou quand on y tape ;
+  - la **frise des fonctions** en bas au milieu : un rail cyan, un point par étape (plus petit pour une esquisse, orange et plus gros pour l'étape choisie, rouge si elle est en défaut) ; elle se recentre dans la place laissée par le panneau des réglages ;
+  - la **jauge de masse** en bas à gauche : masse, volume et matière des corps affichés (aluminium quand un corps n'a pas de matière, et c'est écrit) ; l'anneau = remplissage de la boîte englobante. Recalculée seulement quand la pièce change (relue chaque seconde) ;
+  - le **gyroscope** en bas à droite : le cube de vue dans un cercle, ceint de ses anneaux X (rouge) et Y (vert) ; il suit l'ouverture du panneau des réglages, la barre de vue et ⚙ aussi ;
+  - **sous le curseur** : la face survolée est nommée près de la souris (« Face 26 · Découpe Esquisse 2 (face) -6mm »), avec un trait orange ; lecture du noyau seulement quand la face change, cachée au clic, à la molette ou en tournant la vue ;
+  - en haut de la vue : « ESPACE CAO · PIÈCE », le nombre de fonctions et l'état (● enregistrée / ● modifiée) ;
+- jauge, état et lecture sous le curseur ne prennent aucun clic ; aucune animation sans fin.
+
+Menu 🎨 › **Disposition de la maquette** (cochée par défaut, retenue par thème) : décochée, l'Habitacle reprend la disposition habituelle avec ses couleurs (V1.1.6). Les autres thèmes ne changent pas ; la case est prévue pour le Plan vivant et la Table holographique.
+
+**Fichiers** :
+- `src/97-interface-themes-habitacle.js` (nouveau) : disposition, jauge de masse, état, lecture sous le curseur ;
+- `97-interface-themes-futur` : préférence « disposition de la maquette » commune (`MF_MAQUETTE`, classe `mq-lay`) ;
+- `97-interface-moderne` : la disposition suit le thème, case du menu 🎨.
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 11 contrôles (masse, volume, matière et remplissage de la jauge, case du menu, visière et pods, écrans inclinés, frise et gyroscope qui suivent le panneau, rien de cliquable ajouté sur la vue, aucune animation sans fin).
+
+**Vérifié dans Chromium** (Poche et Contour, 1646 × 837) :
+- visière de 1240 px avec ses pods, ▾ de Créer → 27 entrées ; jauge « 1,05 kg · 387,1 cm³ · alu par défaut », anneau 84 % ;
+- panneau des réglages ouvert : gyroscope et barre de vue décalés de sa largeur, frise recentrée ;
+- « SOUS LE CURSEUR · Face 26 · Découpe Esquisse 2 (face) -6mm » au survol du fond de la poche ;
+- au démarrage la disposition est en place (corrigé pendant l'essai : elle attendait un changement de thème) ;
+- case décochée puis recochée, thème Nuit, FAO : disposition habituelle sous la visière ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.11 - Le Plan vivant disposé comme sa maquette : règle trace-formes, cote de chaîne, cartouche, annotation vivante
+
+Suite de la demande de Fred du 27/11 (« J'aimerais vraiment que tu te rapproches de tes 4 façons proposées ») : après la Goutte (V1.1.9) et l'Habitacle (V1.1.10), le Plan vivant prend la disposition de la planche à dessin du canevas des pistes.
+
+Thème Plan vivant, interface d'ordinateur :
+- **la règle trace-formes**, partout : le ruban devient une règle de dessinateur en plastique vert translucide, posée de biais (−0,8°), graduée sur son bord bas ; chaque commande est une découpe (icône, nom au pochoir dessous, lueur jaune au survol) ; le nom d'un groupe ouvre toujours sa liste complète ;
+- en **CAO** (hors esquisse, assemblage et téléphone) :
+  - la vue devient une **planche** : double cadre, repères de zones 1 à 6 en haut et A à D à gauche ;
+  - la **frise en cote de chaîne** en bas à gauche (titre « FRISE DES FONCTIONS — COTE DE CHAÎNE ») : chaque étape est une cote entre deux traits de rappel, flèches aux deux bouts, son nom court et sa valeur écrits à la main au-dessus (« Extrusion 30 », « Découpe 6 », « Perçage Ø9 » ; un nom donné par l'utilisateur est gardé tel quel), l'étape choisie en jaune ; clic, double-clic et glisser comme dans la timeline ;
+  - le **cartouche** en bas à droite : CONCEPTCAD et le nom de la pièce, les espaces en **tampons** (celui de l'espace en cours encré rouge, de biais ; un clic change d'espace), la nomenclature REP · FONCTION · RÉGLAGE (sans les esquisses ; un clic choisit la fonction, un double-clic l'ouvre ; ligne choisie en jaune, non rejouée pâlie), matière, masse et volume des corps affichés ; il suit le panneau des réglages ;
+  - les espaces quittent le bandeau (ils sont dans le cartouche) ; l'arborescence s'arrête au-dessus de la frise ;
+  - l'**annotation vivante** : un clic sur une face écrit, au bout d'une ligne de rappel jaune, la fonction qui l'a créée et sa valeur (« DÉCOUPE · profondeur [6] mm ») ; Entrée refait la pièce (c3FeatSet, Ctrl+Z revient), Échap, un clic ailleurs ou la molette l'efface ; une valeur donnée par une formule ƒx n'est pas modifiable ici ; rien pendant un outil ;
+- écritures à la main avec les polices du système (Segoe Print sous Windows), aucune animation sans fin.
+
+En FAO, PLAN et RENDU, la règle reste et le bandeau garde ses espaces. Menu 🎨 › **Disposition de la maquette** décochée : disposition habituelle, couleurs gardées (V1.1.6).
+
+**Fichiers** :
+- `src/97-interface-themes-planvivant.js` (nouveau) : disposition, cotes de la frise, cartouche, annotation ;
+- `97-interface-themes-futur` : le Plan vivant rejoint les thèmes à disposition de maquette ;
+- `97-interface-themes-goutte` : la frise est habillée à chaque rendu de la timeline (gtTigeSync).
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 11 contrôles (noms courts et valeurs des cotes, nomenclature du cartouche, règle de biais et graduée, tampons, cote de chaîne, cartouche et arbre placés, rien de cliquable ajouté sur la vue, valeur par c3FeatSet, touches sans raccourci).
+
+**Vérifié dans Chromium** (Poche et Contour, 1646 × 837) :
+- règle d'une seule rangée, frise « Esquisse 1 · Extrusion 30 · … · Découpe 20 », cartouche « 1 Extrusion 30 mm … », pied « ALU PAR DÉFAUT · MASSE 1,05 kg · 387,1 cm³ » ;
+- clic sur le fond de la poche → « DÉCOUPE · profondeur 6 mm » ; 7 puis Entrée → découpe de 7 mm (frise et cartouche suivent), Ctrl+Z → 6 ;
+- tampon FAO → espace FAO (le bandeau y retrouve ses espaces) ; double-clic sur une ligne du cartouche → la fonction s'ouvre ;
+- case décochée puis recochée, thème Nuit : disposition habituelle ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.12 - La Table holographique disposée comme sa maquette : la table, les espaces autour, l'arc des commandes, la pile, le cadran
+
+Fin de la demande de Fred du 27/11 (« J'aimerais vraiment que tu te rapproches de tes 4 façons proposées ») : après la Goutte (V1.1.9), l'Habitacle (V1.1.10) et le Plan vivant (V1.1.11), la Table holographique prend la disposition de sa maquette : la pièce posée sur une table de lumière.
+
+Thème Table holographique, espace CAO (hors esquisse, assemblage et téléphone) :
+- **la table** : une grande ellipse lumineuse en bas de la vue (anneaux, disque, pointillés), avec écrits sur l'anneau le nom de la pièce, sa matière, sa masse et son volume (relus chaque seconde, la table n'est redessinée que s'ils changent ou si la vue change de taille) ;
+- **les espaces autour de la table** : CAO devant (allumé), FAO à gauche, PLAN au fond (plus petit, plus pâle), RENDU à droite ; un clic change d'espace. Le bandeau ne les montre plus en CAO et devient transparent ;
+- **les commandes sur l'arc avant** de la table, plus grosses au milieu, de gauche à droite : d'abord les groupes du ruban (Esquisse, Créer, Construire, Modifier, Ensembles, Fichier, Composants, avec leur nombre de commandes) ; un groupe y déroule toutes ses commandes (épinglées ou non, icône et nom), « ‹ » revient. Plus de ruban en CAO ; `Ctrl+K` et les raccourcis restent ;
+- **l'histoire de la pièce** à gauche : la timeline devient une pile de tranches de cylindre, la plus ancienne en bas, une tranche fine par esquisse, nom court et réglage à côté (« Découpe · 6 mm »), l'étape choisie en ambre, le marqueur en trait ambre ; clic, double-clic et glisser comme dans la timeline (glisser vertical) ; bascule **Histoire · Arbre** en haut à gauche (gardée d'une séance à l'autre) ;
+- **le cadran** à droite : la valeur principale de la fonction choisie (profondeur, hauteur, Ø, angle de révolution ou de dépouille) sur un arc ambre de 0 à 2 × la valeur ; après un clic sur une face (la fonction est surlignée sans s'ouvrir), on fait glisser le curseur (pas de 0,5 mm, 1 mm ou 1°) ou on tape la valeur puis Entrée : c3FeatSet, la pièce est refaite au lâcher, Ctrl+Z revient. Quand la fonction est ouverte dans sa fenêtre (clic sur sa tranche), le cadran ne fait que montrer : c'est la fenêtre qui règle, avec OK ou Annuler (sinon Annuler aurait effacé un réglage fait au cadran sans qu'on le voie — vu pendant l'essai). Une formule ƒx n'est pas modifiable ici. Le cadran suit le panneau des réglages ;
+- le nom du noyau et l'aide de la commande en cours passent tout en bas à droite ;
+- aucune animation sans fin (l'anneau pointillé de la maquette ne tourne pas, la pièce ne flotte pas : la vue en veille ne fait pas souffler la carte graphique).
+
+FAO, PLAN, esquisse et assemblage gardent la disposition habituelle. Menu 🎨 › **Disposition de la maquette** décochée : disposition habituelle, couleurs gardées (V1.1.6). Les quatre interfaces du futur ont maintenant chacune la disposition de leur maquette.
+
+**Fichiers** :
+- `src/97-interface-themes-holo.js` (nouveau) : table, espaces, arc des commandes, pile, cadran, bascule ;
+- `97-interface-themes-futur` : la Table rejoint les thèmes à disposition de maquette ;
+- `97-interface-themes-goutte` : la pile est habillée à chaque rendu de la timeline (gtTigeSync).
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 12 contrôles (géométrie de la table, arc de gauche à droite plus gros au milieu, place des quatre espaces, bornes et angles du cadran, cadran réglable hors fenêtre, plus de ruban ni d'espaces dans le bandeau, pile de tranches, bascule, cadran qui suit le panneau, table sans clic, aucune animation sans fin, réglage par c3FeatSet jamais pendant la fenêtre).
+
+**Vérifié dans Chromium** (Poche et Contour, 1646 × 837 puis 1249 × 837) :
+- table « POCHE ET CONTOUR · ALU PAR DÉFAUT · MASSE 1,05 kg · 387,1 cm³ », 7 groupes sur l'arc, Créer → 9 commandes, « ‹ » → les groupes ; Modifier › Congé ouvre le congé, Échap le ferme ;
+- pile de 11 tranches (« Extrusion 30 mm », « Découpe 6 mm »…), Histoire · Arbre dans les deux sens ;
+- cadran : curseur glissé 6 → 9 mm (masse 993 g sur la table) ; fonction ouverte → cadran en lecture seule ; après un clic sur une face : 9 → 8 puis Ctrl+Z → 9 ;
+- aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.13 - Les quatre interfaces du futur dans chaque espace : FAO, assemblage et PLAN traités comme la CAO
+
+Fred, 27/11, avant la livraison : « Non car les menus FAO, Assembler/Mise en plan ne sont pas traité comme le menu CAO pour les 4 Interfaces du futur », puis « Chaque partie doit avoir le même style partout ». Pendant les essais : « le cercle penché est trop devant sur sa partie arrière et cache la pièce », « Ne pas décaler le cercle vers la gauche ou la droite quand les menus s'ouvrent » (« valable pour toutes les nouvelles interfaces »), « je préfère n'en voir qu'un [posage] à la fois quand je clique sur le posage de mon choix » (« valable partout »), « les icônes sont en vrac ? ».
+
+**Goutte** : plus de ruban en assemblage, FAO et PLAN non plus. Assemblage : tige de l'assemblage (bourgeons par étape, nom de la pièce et nature de l'étape, pousse = marqueur qu'on glisse), Tige · Arbre, goutte des commandes de l'assemblage d'un clic dans le vide. FAO : tige de l'usinage (posage en nœud de bois, opérations en bourgeons avec leur icône, esquisses et corps en feuilles, pastilles des posages au pied), goutte des commandes FAO d'un clic dans le vide ou sur « + la suite ». PLAN : « + la suite » sur la planche, planches en galets.
+
+**Habitacle** : écran incliné ASSEMBLAGE et frise des étapes ; écran incliné USINAGE (nom du posage) et rail des opérations (une puce par posage, un point par opération du posage choisi) ; panneau de la planche incliné ; jauge et état propres à chaque espace (pièces / étapes / relations / liaisons ; opérations à jour ; vues et cotes de la planche).
+
+**Plan vivant** : cote de chaîne de l'assemblage et de l'usinage (opérations avec leur outil « T6 Ø25 »), planches en cote de chaîne ; cartouche REP · PIÈCE · QTÉ, REP · OPÉRATION · OUTIL, REP · PLANCHE · FORMAT (un clic choisit), en bas à gauche de la planche en PLAN.
+
+**Table holographique** : table, espaces et arc dans chaque espace (groupes de la FAO, du PLAN ; commandes de l'assemblage directement) ; piles de l'assemblage (pièce et nature de l'étape à côté), de l'usinage (posage en socle ambré, opérations en tranches), des planches ; anneau qui compte ce que contient l'espace ; cadran gardé en CAO. Moitié arrière du cercle effacée (masque en dégradé) : la pièce n'est plus cachée ; table claire sur le papier du PLAN. Les commandes de l'arc rangées côte à côte selon leur largeur le long du bord de la table, deux rangées alignées quand elles sont nombreuses (assemblage : 10).
+
+**Dans les quatre** : rien ne glisse quand le panneau des réglages s'ouvre (cercle de la Table, frise et rail de l'Habitacle, frises et cartouche du Plan vivant, gyroscope, textes de la vue) ; les commandes de la Table se rangent dans la partie de l'arc restée visible, et seulement si le panneau descend jusqu'à elles. L'esquisse et le téléphone gardent la disposition habituelle.
+
+**Un seul posage montré** (interface moderne, tous les thèmes) : avec plusieurs posages, l'arbre de l'usinage, la tige, la pile, le rail et les frises ne montrent que le posage de la pastille choisie ; les autres restent accessibles par leur pastille (et leur puce / cote dans l'Habitacle et le Plan vivant).
+
+**Fichiers** :
+- `97-interface-themes-futur` : `mfEspace`, `mfAsmTlSync`, `mfFaoArbreSync`, `mfAsmEtape`, `mfFaoOpsVues`, `mfPosagesVus`, `mfPosageFiltre`, `mfMaquetteRefaire` ;
+- `97-interface-themes-goutte-disposition`, `97-interface-themes-goutte`, `97-interface-themes-habitacle`, `97-interface-themes-planvivant`, `97-interface-themes-holo` : dispositions de l'assemblage, de la FAO et du PLAN ;
+- `48-assemblage-historique` : la barre de l'assemblage habillée à chaque rendu, glisser du marqueur à la verticale ;
+- `88-fao-80-interface` : l'arbre de l'usinage habillé à chaque rendu ;
+- `97-interface-moderne` : lignes des autres posages masquées.
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 17 contrôles (habillages présents, étape d'assemblage lue, un seul posage, jauges FAO et assemblage, cartouches assemblage et PLAN, arc limité à la partie visible, rangées côte à côte, deux rangées alignées, plus de ruban en FAO / assemblage / PLAN, tige, frise, rail, piles, rien ne glisse, aucune animation sans fin, moitié arrière effacée, lignes masquées) ; 2 contrôles adaptés (frise et gyroscope de l'Habitacle, cartouche du Plan vivant immobiles).
+
+**Vérifié dans Chromium** (Poche et Contour, Test Assemblage, 1249 × 837), les quatre thèmes dans les trois espaces : listes de commandes par espace, clic dans le vide en FAO et en assemblage, marqueur de l'assemblage glissé à la verticale, rails et frises qui choisissent une opération, cartouches par espace ; Table : cercle immobile panneau ouvert, 6 groupes FAO sur une rangée, 10 commandes d'assemblage sur deux rangées, moitié arrière effacée, PLAN clair ; deux posages : seul celui de la pastille choisie dans la pile, la tige, le rail, la frise et le thème Nuit.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.0 - Quatre interfaces du futur
+
+Fred, 27/11 : « Livre V1.2.0 ». V1.2.0 rassemble ce qui a été rangé depuis V1.1.8 : les quatre interfaces du futur (thèmes depuis V1.1.6, bulle d'actions de la Goutte en V1.1.7), chacune disposée comme sa maquette (Goutte V1.1.9, Habitacle V1.1.10, Plan vivant V1.1.11, Table holographique V1.1.12), puis dans chaque espace — FAO, assemblage, PLAN (V1.1.13).
+
+**README** : annonce de V1.2.0.
+
+Aucun changement de code par rapport à V1.1.13 ; CACHE_VER et FORMES_VER inchangés.

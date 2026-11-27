@@ -304,17 +304,24 @@ function tlbHost(){
   };
   // la vue 3D ne doit ni tourner ni zoomer sous le bandeau ; molette = défilement horizontal
   ['pointerdown','mousedown','dblclick'].forEach(t=>d.addEventListener(t,e=>{try{e.stopPropagation();}catch(_){}}));
-  d.addEventListener('wheel',e=>{try{e.stopPropagation();if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){R.scrollLeft+=e.deltaY;e.preventDefault();}}catch(_){}},{passive:false});
+  d.addEventListener('wheel',e=>{try{e.stopPropagation();if(!tlbVert()&&Math.abs(e.deltaY)>Math.abs(e.deltaX)){R.scrollLeft+=e.deltaY;e.preventDefault();}}catch(_){}},{passive:false}); // tige verticale : défilement ordinaire
   d.addEventListener('contextmenu',e=>{try{e.stopPropagation();}catch(_){}});
   window.addEventListener('pointermove',tlbDragMove);
   window.addEventListener('pointerup',tlbDragEnd);
   vp.appendChild(d);tlbEl=d;
   return d;
 }
-function tlbGapAt(x){
-  // Interstice sous l'abscisse x : nombre d'étapes dont le centre est à gauche
-  const L=tlbEl?tlbEl._steps:[];let g=0;
-  for(const el of L){const r=el.getBoundingClientRect();if(x>r.left+r.width/2)g++;else break;}
+// V1.1.8 : rangée verticale (la tige de la Goutte, 97-interface-themes-goutte-disposition) — 0 : en ligne,
+// 1 : de haut en bas, -1 : de bas en haut (la plus ancienne en bas, la tige pousse vers le haut)
+function tlbVert(){
+  try{const R=tlbEl&&tlbEl._row;if(!R)return 0;const f=getComputedStyle(R).flexDirection;return f==='column-reverse'?-1:f==='column'?1:0;}catch(e){return 0;}
+}
+function tlbGapAt(x,y){
+  // Interstice sous le pointeur : nombre d'étapes déjà passées (à gauche, ou dessus / dessous en vertical)
+  const L=tlbEl?tlbEl._steps:[];let g=0;const V=tlbVert();
+  for(const el of L){const r=el.getBoundingClientRect();
+    const passe=V===0?x>r.left+r.width/2:V<0?y<r.top+r.height/2:y>r.top+r.height/2;
+    if(passe)g++;else break;}
   return g;
 }
 function tlbPlaceAt(node,g){
@@ -324,11 +331,11 @@ function tlbPlaceAt(node,g){
 }
 function tlbDragMove(e){
   const D=tlbDrag;if(!D||!tlbEl)return;
-  if(!D.on){if(Math.abs(e.clientX-D.x0)<5)return;D.on=true;
+  if(!D.on){if((tlbVert()?Math.abs(e.clientY-(D.y0||0)):Math.abs(e.clientX-D.x0))<5)return;D.on=true;
     if(D.t==='feat'){D.node=document.createElement('div');D.node.className='tlbD';(D.els||[]).forEach(el=>{if(el)el.className+=' drag';});}
     else D.node.className='tlbM on';
   }
-  D.gap=tlbGapAt(e.clientX);
+  D.gap=tlbGapAt(e.clientX,e.clientY);
   tlbPlaceAt(D.node,D.gap);
 }
 function tlbDragEnd(){
@@ -359,7 +366,7 @@ function tlbDragStart(S,i,e){
   // le groupe glissé : la fonction et les esquisses qu'elle consomme (estompées ensemble)
   const els=[];
   S.forEach((s,k)=>{if(k===fi||(s.kind==='sketch'&&tlbDragFeatOf(s)===f))els.push(tlbEl._steps[k]);});
-  tlbDrag={t:'feat',id:f.id,x0:e.clientX,on:false,gap:fi,els};
+  tlbDrag={t:'feat',id:f.id,x0:e.clientX,y0:e.clientY,on:false,gap:fi,els};
 }
 function renderTimeline(){
   try{if(typeof asmTlRender==='function')asmTlRender();}catch(e){} // bandeau de l'assemblage (48-assemblage-historique)
@@ -387,7 +394,7 @@ function renderTimeline(){
   const mk=()=>{
     const M=document.createElement('div');M.className='tlbM';
     M.title=mOn?'⏱ Marqueur temps — glisser pour rejouer jusqu’à une autre étape (au-delà : grisé, hors rejeu)':'⏱ Marqueur temps (fin du fil) — glisser vers la gauche pour revenir en arrière dans l’historique';
-    M.onpointerdown=e=>{if(e.button)return;tlbDrag={t:'mark',x0:e.clientX,on:false,gap:mg,node:M};try{e.preventDefault();}catch(_){}};
+    M.onpointerdown=e=>{if(e.button)return;tlbDrag={t:'mark',x0:e.clientX,y0:e.clientY,on:false,gap:mg,node:M};try{e.preventDefault();}catch(_){}};
     M.ondblclick=()=>tlbSetMark(null);
     return M;
   };
@@ -397,6 +404,7 @@ function renderTimeline(){
     const vis=s.o.visible!==false;
     d.className='tlbS '+(s.kind==='feature'?'ft':(s.kind==='sketch'?'sk':'cg'))+(tlbIsSel(s)?' sel':'')+(vis?'':' hid')+(s.off?' off':'')+(s.warn?' warn':'')+repCls(s);
     d.innerHTML='<span>'+tlbIcon(s)+'</span>'+(s.warn?'<span class="w">⚠</span>':'');
+    d.dataset.id=s.id; // V1.1.8 : la tige de la Goutte repère l'étape qui vient de naître (97-interface-themes-goutte)
     const perdu=s.warn&&(s.kind==='sketch'||(s.o&&((s.o._perdues&&s.o._perdues.length)||(s.o._m&&s.o._m.m<s.o._m.t))));
     const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:
       (perdu?' — ⚠ '+(s.kind==='sketch'?lpResume(s.o)+' : double-clic pour les réparer':'face ou arête perdue : double-clic pour la resélectionner'):(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
@@ -412,17 +420,18 @@ function renderTimeline(){
   if(!S.length){const e=document.createElement('span');e.className='tlbE';e.textContent='Fil vide — créez une esquisse puis une extrusion.';R.appendChild(e);}
   const nF=S.filter(s=>s.kind==='feature').length,nA=S.filter(s=>s.kind==='feature'&&!s.off).length;
   h._cnt.textContent=nF?(mOn?nA+' / '+nF:nF)+' fonction(s)':'';
+  try{if(typeof gtTigeSync==='function')gtTigeSync(R,S);}catch(e){} // V1.1.8 : un bourgeon qui pousse (thème Goutte)
   // V0.23.26 : sélection changée → l'étape choisie, hors de vue, vient au centre du bandeau (42)
   const k=selRevealKey();
   tlbBarSync();
-  if(k!==tlbRevealLast){const el=R.querySelector('.tlbS.sel');if(!el||el.offsetParent){tlbRevealLast=k;if(el)try{selRevealIn(R,el,true);}catch(e){}}}
+  if(k!==tlbRevealLast){const el=R.querySelector('.tlbS.sel');if(!el||el.offsetParent){tlbRevealLast=k;if(el)try{selRevealIn(R,el,!tlbVert());}catch(e){}}}
 }
 let tlbRevealLast='';
 function tlbBarSync(){
   // Curseur de la barre fondue : position et longueur proportionnelles au défilement de la rangée
   const h=tlbEl;if(!h||!h._bar)return;
   const R=h._row,B=h._bar,sw=R.scrollWidth,cw=R.clientWidth;
-  if(!(sw>cw+1)){B.classList.remove('on');return;}
+  if(!(sw>cw+1)||tlbVert()){B.classList.remove('on');return;}
   const w=Math.max(24,cw*cw/sw),x=R.offsetLeft+(cw-w)*R.scrollLeft/Math.max(1,sw-cw);
   B.style.left=x+'px';B.style.width=w+'px';B.classList.add('on');
 }
