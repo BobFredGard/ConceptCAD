@@ -772,6 +772,8 @@ function animate(){
   try{if(typeof holeThreadVisSync==='function')holeThreadVisSync();}catch(e){} // filets taraudés : cachés avec leur corps (76)
   try{if(typeof clipTick==='function')clipTick();}catch(e){} // coupe : remplissage des faces coupées (91)
   renderer.render(RS,camera);
+  try{if(typeof ppRender==='function')ppRender(RS);}catch(e){} // la pièce qui propose : la suite probable en fantôme (93-piece-propose)
+  try{if(typeof lensRender==='function')lensRender(RS);}catch(e){} // lentilles : loupes posées sur la vue (91-lentilles)
   try{if(film&&film.rec)filmFrame();}catch(e){} // film de construction enregistré : image recopiée tant que le tampon est lisible (98-film)
 }
 // Sol miroir, lampe et plan d'ombre (98-rendu-vue) suivent la scène dessinée : celle de la pièce,

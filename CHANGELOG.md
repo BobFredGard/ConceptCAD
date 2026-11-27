@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**803 versions**, de `2026-09-28b` à `V1.0.18` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**804 versions**, de `2026-09-28b` à `V1.0.19` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8958,3 +8958,13 @@ Fred : « Que fait exactement le long test? Est-il vraiment pertinent de le fair
 **Correctif** : 20 modifications par défaut (`BARQ_NB=120` pour la série complète), seuil de mémoire occupée resserré de 60 à 55 Mo ; `tests/pool.cjs` : toujours sur cœur P, délai ramené de 75 à 30 min.
 
 **Test** : les deux anciennes pannes remises à la main sur une copie de la suite (pile qui descend de 80 Ko par modification, copie d'`Append_1` jamais libérée) : avec 20 modifications, 1,6 Mo de pile perdue (seuil 1 Ko) et 70,6 Mo occupés (seuil 55) → 2 échecs ; sans elles : tout passe, 44,6 Mo, 249 s. `npm run ci` vert (204/204). Aucun changement dans l'application. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.19 - La loupe (lentilles) et la pièce qui propose entrent dans ConceptCAD
+
+Fred, 27/11 : « On garde ces 2 et on les intègre dans ConceptCAD » (essayées d'abord à part, sur la branche locale `essai/lentilles` ; l'usinage en direct et la carte du projet n'ont pas été gardés)
+
+**Lentilles** (`src/91-lentilles.js`, bouton loupe de la barre de vue) : une loupe ronde posée sur la pièce, un autre regard dessous seulement — Coupe (l'intérieur, faces coupées remplies), FAO (passes de l'aperçu, fraise posée sur la passe, posage · Ø · temps de coupe de la zone ; FAO sur Coupe dans la zone commune de deux loupes), Plan (trait vif, tangent, caché, 6 cotes au plus) et Rendu (matière et reflets de l'atelier RENDU). Le repère orange « Lentilles » de la version d'essai est retiré.
+
+**La pièce qui propose** (`src/93-piece-propose.js`, bouton étincelle) : après chaque fonction seulement, la suite sur ce que l'on vient de faire, dans une bande discrète « Ensuite ? » en bas de la vue — même congé ou chanfrein sur les arêtes pareilles (ici, puis ailleurs), coins d'une poche arrondis au rayon de la plus petite fraise là où une fraise descend (axes des posages et 3+2), habitudes de la séance ; fantôme au survol, touches 1/2/3, « Non merci » / Échap retenu, une seule annulation. Menu : Proposer la suite (oui / non), Écrire une demande… (« 4 trous M6 à 10 du bord », lue sur place), Essayer une variante (A/B comparées par la masse).
+
+**Test** : `test_lentilles` et `test_piece_propose` (101 contrôles) inscrits dans `run` et `run-fast` ; une ligne de chaque dans la boucle d'image de `10-scene-3d` ; manuels Lentilles et La pièce qui propose. CACHE_VER et FORMES_VER inchangés.

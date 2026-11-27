@@ -38,6 +38,8 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Vue en veille** : à l'arrêt, la vue 3D ne se redessine plus en continu (la carte graphique d'un portable souffle, même avec une pièce lourde) ; elle repart à pleine vitesse au moindre geste. `?sansveille` dans l'adresse garde l'ancien affichage continu.
 - **Modification d'une grosse pièce** : seules les faces neuves ou modifiées sont remaillées et leurs arêtes reclassées, le reste est repris tel quel (mêmes triangles, mêmes arêtes). `?sansfacettes` dans l'adresse redonne le calcul complet, `?sansindex` l'ancienne recherche de la face sous la souris.
 - **Coupe X / Y / Z** (⚙ › Coupe) : plan de coupe glissé ou saisi au mm, côté inversable, faces coupées remplies.
+- **Lentilles** (bouton loupe de la barre de vue) : une loupe ronde posée sur la pièce montre, dessous, l'intérieur (Coupe), les passes, la fraise et le temps de coupe de la zone (FAO), la pièce au trait cotée (Plan) ou sa vraie matière (Rendu) ; le reste de la vue ne bouge pas. Voir [Lentilles](lentilles.md).
+- **La pièce qui propose** (bouton étincelle de la barre de vue) : après chaque fonction, la suite probable dans une bande discrète en bas de la vue. Voir [La pièce qui propose](piece-propose.md).
 - **Rendu direct** (bouton de la barre de vue) : la vue CAO ou FAO prend les matériaux, reliefs et patine de l'atelier RENDU, son ambiance et son fond, en temps réel.
 - **Journal d’erreurs** : les plantages sont notés sur l’ordinateur, sans aucun envoi ni contenu de la pièce. Dans l’**Aide** (F1 hors esquisse) : enregistrer, copier ou vider le journal, pour faire analyser les pannes.
 
