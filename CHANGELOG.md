@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**813 versions**, de `2026-09-28b` à `V1.1.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**814 versions**, de `2026-09-28b` à `V1.1.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9146,3 +9146,22 @@ Vérifié dans Chromium sur l'exemple *Poche et Contour* (thème Goutte) :
 - rien en tournant la vue, rien en thème Nuit, aucune erreur dans la console.
 
 CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.8 - Livraison : le code testé est celui qui est livré
+
+Fred, 27/11, après la livraison de V1.1.5 arrêtée en route : « Oui, corrige-le »
+
+**Cause** : pendant les tests de la livraison de V1.1.5 (`npm run ci:full`, dans `D:\ConceptCAD`), une autre session a rangé V1.1.6 par un cpt, qui avance main dans ce même dossier. L'étape git a ensuite posé le tag V1.1.5 sur la tête de main du moment, donc sur le code V1.1.6, et poussé main. La livraison s'est arrêtée à la fusion dans l'application (« pas en V1.1.5 »), avec le site en V1.1.6. Réparé à la main : tag V1.1.5 remis sur son commit, passage du site qu'il lançait annulé, puis V1.1.6 livrée.
+
+**Correctif** :
+- `tools/livrer.cjs` fige le code au contrôle (`ctx.sha`, le commit de main à cet instant ; en reprise après le tag, le commit du tag sur GitHub). Le tag est posé sur lui, c'est lui qui est poussé sur main (`sha:refs/heads/main`), lui qui est fusionné dans la branche de l'application, et le site attend son passage (secours sur le tag si main a avancé depuis). Si main a bougé pendant les tests, la livraison s'arrête avant de rien publier ;
+- `tools/cpt.cjs` n'avance plus main pendant une livraison : verrou commun (`O.livraisonEnCours`, `tools/livraison-outils.cjs`, ignoré au-delà de 3 h). La version reste commitée sur la branche de la session ; relancer le cpt quand la livraison est finie.
+
+**Manuel** : *Développement › Ranger une version et livrer*.
+
+**Test** : `test_livraison` passe à 30 contrôles (+11) :
+- cpt arrêté pendant une livraison, main intact ;
+- verrou de plus de 3 h ignoré ;
+- tag, main poussé, fusion et site sur le code contrôlé.
+
+Essai à blanc (`--essai`) sur le vrai dépôt : « Livraison de V1.1.7 … — code 17108eee2 ». Aucun changement dans l'application ; CACHE_VER et FORMES_VER inchangés.

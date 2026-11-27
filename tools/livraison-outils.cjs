@@ -74,7 +74,16 @@ function appVerFichier(f) {
   finally { fs.closeSync(fd); }
 }
 const versionPaquet = dir => 'V' + JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).version;
+// Verrou d'une livraison en cours, dans le dossier Git commun (toutes sessions, tous worktrees). V1.1.8 : un cpt le
+// respecte aussi — le 27/11, un cpt (V1.1.6) a avancé main pendant les tests de la livraison de V1.1.5 : le tag
+// V1.1.5 a été posé sur le code V1.1.6. Plus de 3 h : verrou oublié (processus tué), ignoré.
+const verrouLivraison = cwd => path.resolve(cwd, lancer('git', ['rev-parse', '--git-common-dir'], { cwd }), 'conceptcad-livraison.lock');
+function livraisonEnCours(cwd) {
+  const v = verrouLivraison(cwd);
+  try { return Date.now() - fs.statSync(v).mtimeMs < 3 * 3600000 ? (fs.readFileSync(v, 'utf8') || '?') + ' (' + v + ')' : null; }
+  catch { return null; }
+}
 const duree = ms => ms < 60000 ? Math.round(ms / 1000) + ' s' : Math.round(ms / 60000) + ' min';
 
 module.exports = { ID, BRANCHE_APPLI, SAUVEGARDE, Arret, arret, lancer, git, cmpVersions, entreesChangelog, court,
-  notesRelease, avecPied, worktrees, appVer, appVerFichier, versionPaquet, duree };
+  notesRelease, avecPied, worktrees, appVer, appVerFichier, versionPaquet, duree, verrouLivraison, livraisonEnCours };
