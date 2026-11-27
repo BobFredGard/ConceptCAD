@@ -153,7 +153,43 @@ const r=vm.runInContext(String.raw`(async()=>{
        Ep([50,-10,5],[50,-10,15],'g'),Ep([50,10,5],[50,10,15],'h')])}];                                    // bouche : saillantes
   const RC=cote(),F9={id:'ex_9',type:'extrude',op:'cut',name:'Poche de côté'};doc.features=[F1,F9];
   ok(RC[0].edges[12].frac>0.62&&!ppReach(st2,RC[0].edges[12],[[0,0,1]],ppBox(RC)),'30 : fond d’une poche ouverte sur le côté : creux, mais aucune fraise verticale n’y descend');
-  ok(!ppSuggestCtx(RC,{f:F9,nouv:true},null).length&&/Aucune arête vive dans les coins intérieurs/.test(ppReqItems(ppParse('congés dans les coins intérieurs'),RC).err),'31 : ni proposé, ni accepté dans une demande écrite');
+  const S31=ppSuggestCtx(RC,{f:F9,nouv:true},null);
+  ok(!S31.some(s=>s.key.indexOf('coins:')===0)&&S31.length===1&&S31[0].key==='plot:ex_9:vert'&&S31[0].lines.every(P=>P.every(q=>q[0]===50))&&/Aucune arête vive dans les coins intérieurs/.test(ppReqItems(ppParse('congés dans les coins intérieurs'),RC).err),'31 : coins du fond ni proposés ni acceptés dans une demande écrite ; seulement les 2 arêtes verticales de la bouche (V1.1.3) ('+S31.map(s=>s.title)+')');
+  { // ── V1.1.3 : après un plot (Fred, 27/11 : « une esquisse une extrusion » → « rien ») ──
+    const F0=doc.features,H0=pp.habits;pp.habits=[];pp.refus.clear();
+    const lit=(L,s)=>{const C=ppOwnerCtx();L.forEach(e=>{e.own=ppOwners(e.nom,C);});return [{id:'b1',st:s||(p=>inBox(p)?1:0),faces:[],edges:L}];};
+    doc.features=[F1];
+    let S4=ppSuggestCtx(lit(bloc()),{f:F1,nouv:true},null);
+    const kv=S4.find(s=>s.key==='plot:ex_1:vert'),kh=S4.find(s=>s.key==='plot:ex_1:haut');
+    ok(S4.length===2&&kv&&kh&&S4[0]===kv&&kv.lines.length===4&&kh.lines.length===4&&kh.lines.every(P=>P.every(q=>q[2]===20)),
+      '101b : bloc seul : arrondir ses 4 arêtes verticales, chanfrein sur les 4 arêtes du dessus (pas celles du dessous) ('+S4.map(s=>s.title)+')');
+    const cv=kv.cmds(),ch=kh.cmds();
+    ok(/^Arrondir les 4 arêtes verticales de Extrusion Esquisse 1 · R6$/.test(kv.title)&&cv[0].op==='fillet'&&cv[0].radius===6&&cv[0].edges.length===4
+      &&/^Chanfrein 1 sur les 4 arêtes du dessus de Extrusion Esquisse 1$/.test(kh.title)&&ch[0].op==='chamfer'&&ch[0].distance===1,
+      '101c : R6 = valeur ronde du dixième de la largeur (60 mm) ; chanfrein 1 (pièce de plus de 80 mm)');
+    // plot posé sur le bloc : ex_5, x −10..10, y −10..10, z 20..30
+    const F5={id:'ex_5',type:'extrude',name:'Extrusion Esquisse 5 10mm',sketchId:'s5',distance:10};doc.features=[F1,F5];
+    const inP=p=>p[0]>-10&&p[0]<10&&p[1]>-10&&p[1]<10&&p[2]>=20&&p[2]<30,sp=p=>inBox(p)||inP(p)?1:0;
+    const Q=[[-10,-10],[10,-10],[10,10],[-10,10]],LP=[];
+    for(let i=0;i<4;i++){const a=Q[i],b=Q[(i+1)%4];
+      LP.push(N([a[0],a[1],30],[b[0],b[1],30],0.25,'ex_5/e'+i+'/flanc|ex_5/haut'),N([a[0],a[1],20],[b[0],b[1],20],0.75,'ex_5/e'+i+'/flanc|ex_1/haut'),
+        N([a[0],a[1],20],[a[0],a[1],30],0.25,'ex_5/e'+((i+3)%4)+'/flanc|ex_5/e'+i+'/flanc'));}
+    S4=ppSuggestCtx(lit(bloc().concat(LP),sp),{f:F5,nouv:true},null);
+    ok(S4.map(s=>s.key).join()==='plot:ex_5:vert,plot:ex_5:haut,plot:ex_5:pied'&&/· R2$/.test(S4[0].title)&&S4[1].lines.every(P=>P.every(q=>q[2]===30))
+      &&/^Congé R1 au pied de Extrusion Esquisse 5 \(4 arêtes\)$/.test(S4[2].title)&&S4[2].lines.every(P=>P.every(q=>q[2]===20)),
+      '101d : plot sur la pièce : ses arêtes verticales (R2), le dessus du plot seulement, le congé au pied ('+S4.map(s=>s.title)+')');
+    // perçage : 2 trous débouchants Ø6 dans le bloc
+    const Fh={id:'h1',type:'hole',name:''};doc.features=[F1,Fh];
+    const rim=(cx,z,k)=>{const P=ppCircle([cx,0,z],[0,0,1],3,24);return {mid:P[6],pts:P,len:2*Math.PI*3,line:false,dir:null,frac:0.25,nom:'h1/c'+k+'/s1/f2|ex_1/'+(z>0?'haut':'bas')};};
+    S4=ppSuggestCtx(lit(bloc().concat([rim(-20,20,0),rim(20,20,1),rim(-20,0,0),rim(20,0,1)])),{f:Fh,nouv:true},null);
+    ok(S4.length===1&&S4[0].key==='plot:h1:haut'&&/^Chanfrein 1 à l’entrée des 2 trous de Perçage$/.test(S4[0].title)&&S4[0].lines.length===2,
+      '101e : perçage : chanfrein à l’entrée des trous seulement ('+S4.map(s=>s.title)+')');
+    // une habitude sur ces arêtes passe avant (ici : chanfrein 0,5 sur le dessus) : rien de plus
+    doc.features=[F1];pp.habits=[{k:'out flat int c',c:{conv:'out',ori:'flat',role:'int'},cham:true,v:0.5,from:'Bride'}];
+    S4=ppSuggestCtx(lit(bloc()),{f:F1,nouv:true},null);
+    ok(S4.length===1&&S4[0].key.indexOf('hab:')===0&&/^Chanfrein 0,5 sur les 8 arêtes du bord de Extrusion Esquisse 1$/.test(S4[0].title),'101f : habitude de la séance : elle seule ('+S4.map(s=>s.title)+')');
+    doc.features=F0;pp.habits=H0;pp.refus.clear();
+  }
   doc.fao.setups[0].ops=[{id:'o1',type:'pocket',name:'Poche de côté',frame:{z:'+X',x:'-Z'}}];
   const AX2=ppAxes();
   ok(AX2.length===2&&AX2[0][2]===1&&Math.abs(AX2[1][0]-1)<1e-9,'32 : axe 3+2 de l’opération ajouté après celui du posage ('+JSON.stringify(AX2)+')');

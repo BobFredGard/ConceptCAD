@@ -13,7 +13,7 @@ On dessine l'esquisse comme d'habitude, puis on cote **sur la pièce 3D**, comme
 Ce qu'il faut savoir :
 
 - **Chaque cote lit sa valeur sur la pièce**, jamais une copie : si la pièce change, la cote change avec elle.
-- **Elle pilote** ce qui l'a faite : double-clic sur la valeur, on tape un autre nombre, la pièce suit (voir *Changer une valeur*). La cote modifie pour cela la cote d'esquisse ou le réglage de la fonction.
+- **Elle pilote** ce qui l'a faite : double-clic sur la valeur, on tape un autre nombre, un paramètre ou une formule, la pièce suit (voir *Changer une valeur*). La cote modifie pour cela la cote d'esquisse ou le réglage de la fonction.
 - **Entre parenthèses**, « (60°) », c'est une cote **de référence** : elle renseigne mais ne pilote rien (rien ne la fait bouger, ou elle découle d'un autre réglage — l'angle entre 6 trous sur un tour complet vient du nombre de trous). **Encadrée**, « [Ø80] », c'est une cote théoriquement exacte (ISO 1101), posée par la *Localisation ISO*.
 - Une cote d'esquisse n'est reprise que si la pièce mesure exactement la même valeur ; **rien n'est posé deux fois** pour le même réglage.
 - Les cotes se placent **à côté de leurs faces**, couchées le long des axes de la pièce ; on les glisse ensuite où l'on veut (elles restent accrochées à leurs faces).
@@ -28,7 +28,7 @@ Ce qui se pose, fonction par fonction :
 - **Révolution** de moins de 360° : l'angle entre sa face de départ et sa face de fin (jusqu'à 359°, l'arc fait le grand tour au-delà de 180°).
 - **Répétition linéaire** : le pas, entre la source et le premier exemplaire (entraxe de deux cylindres de préférence) ; sur deux directions, aussi le **pas 2**.
 - **Répétition circulaire** : le **Ø de perçage** et l'**angle du 1er trou depuis l'axe horizontal** (s'il n'est pas sur un axe ; voir *Cercle de trous (ISO)*), puis le **pas angulaire** entre la source et le premier exemplaire (de référence, entre parenthèses, sur un tour complet) — pour des trous, l'angle autour de l'axe de la répétition, avec l'arc qui passe par les centres des trous (60° pour 6 trous). Changer ce pas change l'angle de la répétition (6 trous à 45° couvrent 225°). À la main : coter l'entraxe de deux trous de la répétition, puis **Angle autour de l'axe** dans la bande « Qu'est-ce qui bouge ? » — la cote devient l'angle entre ces deux trous (120° entre la source et le 2e exemplaire) et pilote l'angle de la répétition.
-- **Cotes de l'esquisse**, reprises sur la pièce : écart de deux flancs parallèles, Ø d'un cercle, entraxe, axe ↔ flanc. La cote 3D pilote la cote d'esquisse ; elle n'est gardée que si elle mesure exactement la même valeur.
+- **Cotes de l'esquisse**, reprises sur la pièce : écart de deux flancs parallèles, Ø d'un cercle, entraxe, axe ↔ flanc. La cote 3D pilote la cote d'esquisse ; elle n'est gardée que si elle mesure exactement la même valeur. Une cote d'esquisse **à formule** (`dd1/2`) est reprise aussi, avec sa formule (**ƒx**) : on peut la changer à tout moment, et elle suit quand `dd1` change. Avant la V1.1.4, seules les cotes tapées en nombre étaient reprises.
 
 **Une pièce déjà faite** (fichier ouvert, pièce d'avant V1.0.20) : clic droit sur une fonction dans l'arbre → **📐 Poser ses cotes 3D** ; à refaire sur chaque fonction voulue. Sur l'exemple *Perçages*, les 10 fonctions donnent 19 cotes : hauteurs, entraxes, Ø de perçage, tous les trous avec leur profondeur, leur lamage ou leur filetage, le congé R4,2 et le chanfrein 1 × 45°.
 
@@ -83,6 +83,20 @@ Un réglage n'est piloté que par **une seule** cote 3D. S'il est déjà tenu, l
 - Si la valeur est impossible (poche plus profonde que la plaque, esquisse qui refuse, réglage sans effet), tout revient comme avant et la raison est dite.
 - Une seule annulation (`Ctrl+Z`) défait le changement.
 
+### Paramètres et formules (ƒx)
+
+La valeur d'une cote pilotante se tape **comme partout ailleurs dans ConceptCAD** : sur la cote, dans sa carte (« Valeur ») et sur chaque nombre d'un trou de Perçage.
+
+- **Un paramètre** : `L`. **Une formule** : `L/2 + 3`, `E*2`, `max(L ; 40)`. Dès la 1re lettre, la liste des paramètres s'ouvre ; `Entrée` insère le nom sans valider.
+- **Nommer la valeur** : `H = L+5` ou `H = 50`. `H` devient un paramètre, utilisable partout (fenêtre ƒx, autres cotes, fonctions, FAO, plan). La cote prend aussi le nom `H`.
+- **La formule est gardée.** Elle est rangée sur ce que la cote pilote (la cote d'esquisse ou la valeur de la fonction). Quand un paramètre change, la pièce suit et la cote aussi. Avant la V1.1.2, la formule n'était lue qu'une fois, puis le lien était perdu ; et `H = …` était refusé.
+- Rouvrir la saisie montre la formule (`H = L+5`). Un petit **ƒx** devant la valeur rappelle qu'elle suit des paramètres (survol : la formule).
+- Un **nombre** tapé sur une valeur nommée garde le nom (`H = 60`), comme une cote d'esquisse nommée. Sans nom, il remplace la formule.
+- Changer le **nom de la cote** dans sa carte renomme le paramètre partout où il sert.
+- **Cote d'esquisse à formule** (rectangle : `dd1 = 150` et `dd1/2`) : les deux cotes arrivent sur la pièce, la seconde avec **ƒx** et sa formule. On peut taper une autre formule (`dd1/4`) ou un nombre (`70`, la formule est alors retirée). Sur une pièce faite avant la V1.1.4, clic droit sur la fonction → **📐 Poser ses cotes 3D** ajoute la cote qui manquait.
+- **Cote décalée de ce qu'elle pilote** (hauteur totale bloc + bossage, qui pilote le bossage ; Ø d'une cote de rayon) : la formule est rangée transformée sur le réglage, par exemple `T - 20` avec `T = L` comme paramètre de la fenêtre ƒx. L'écart (ici 20) est celui du moment. Si une autre fonction le change, la cote affiche **⚠ƒx** : retaper la formule recale l'écart.
+- Un nom inconnu, une formule cassée ou une référence circulaire (`H = H+1`) sont refusés, la raison est dite, rien ne change.
+
 ## Trous de la fonction Perçage
 
 La cote Ø d'un trou de Perçage dit **tout le trou**, une ligne par Ø, comme la cotation de perçage de la mise en plan :
@@ -94,7 +108,7 @@ La cote Ø d'un trou de Perçage dit **tout le trou**, une ligne par Ø, comme l
 
 « 2× » vient du nombre de centres de perçage de l'esquisse. Seule la ligne pilotée porte la tolérance. Taraudage, fraisure (⌵ × 90°), alésage et avant-trou ont aussi leur ligne.
 
-**Toutes les valeurs du trou se pilotent** : double-clic sur un nombre de la cote (Ø de perçage, Ø du lamage, profondeur du lamage, profondeur, angle de fraisure…), on tape, `Entrée`. La carte de la cote liste aussi toutes ces valeurs (« Le trou »). Chacune change la fonction Perçage, et la pièce passe à la nouvelle valeur.
+**Toutes les valeurs du trou se pilotent** : double-clic sur un nombre de la cote (Ø de perçage, Ø du lamage, profondeur du lamage, profondeur, angle de fraisure…), on tape un nombre, un paramètre ou une formule (`E/2`, `Dl = E`), `Entrée`. La carte de la cote liste aussi toutes ces valeurs (« Le trou »). Chacune change la fonction Perçage, et la pièce passe à la nouvelle valeur.
 
 La cote est **déportée** comme une planéité : flèche sur le bord du trou, trait en biais vers le haut de l'écran, petit palier, texte. Glisser le texte le place où l'on veut ; la flèche suit, sur le bord du trou du côté du texte.
 

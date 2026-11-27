@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**806 versions**, de `2026-09-28b` à `V1.1.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**810 versions**, de `2026-09-28b` à `V1.1.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8994,3 +8994,82 @@ Fred, 27/11 : « Livre la V1.1.0 avec des explication sur la cotation automatiqu
 **Images** (`docs/captures/`, refaites par `node tools/captures.cjs docs/captures cotes3d cotes3dPiece cotes3dPlan`) : `cotes3d-creation.png` (bride faite en 4 fonctions, cotes posées toutes seules), `cotes3d-piece.png` (exemple Perçages, 19 cotes), `cotes3d-plan.png` (la bride sur une planche A3 après « Cotes 3D »).
 
 **Test** : `npm run ci` vert. Aucun changement dans le code de l'application. CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.1 - La pièce qui propose propose de nouveau (cotes 3D posées sans périmer la pièce)
+
+Fred, 27/11 : « Je ne suis pas sûr que "La pièce qui propose" soit vraiment opérationnel car n'est jamais proposé, bouton allumé »
+
+**Cause** : depuis V1.0.20, les cotes 3D posées toutes seules après chaque fonction (`c3AutoRun`, `src/92-cotes-3d.js`) appelaient `markDirty()` 30 ms après la fin du rejeu. `_docVersion` avançait sans nouveau rejeu : `buildKeyUpToDate()` restait faux jusqu'à la fonction suivante, alors que `doc.cotes3d` est hors de l'empreinte de la pièce. La pièce qui propose (`ppCalm`, `src/93-piece-propose.js`) attend un affichage à jour : elle attendait sans fin et ne proposait que par chance, dans ces 30 ms. Même effet à l'enregistrement (`pcVersFichier`, `src/20-75-piece-gardee.js`) : jusqu'à 60 s d'attente de « la fin du calcul », puis le fichier partait sans l'image de la pièce (`pcDernier.ver` périmé).
+
+**Correctif** : `c3Dirty()` remplace `markDirty()` dans les 13 gestes des cotes 3D (pose automatique, ajout, suppression, cacher, tourner, glisser, pilotage, cadres…). Le document est toujours marqué modifié (●, annulation). Si la pièce était à jour et que son empreinte est celle du dernier rejeu (`c3.hb`, notée par `c3AfterBuild`), `builtVersion` et `pcDernier.ver` suivent. `markDirty()` est gardé pour `c3Rebuild` (réglage piloté) et pour la cote ajoutée à l'esquisse, qui changent la pièce.
+
+**Vérifié dans Chromium** (MERLIN-39-005) : poche → « Arrondir les 4 coins de Découpe Esquisse 6 · R3 » en 0,7 s ; touche 1 → « Même congé R3 sur 8 coins semblables » ; la cote 3D est toujours posée ; cacher une cote : document modifié, pièce à jour ; image de la pièce jointe à l'enregistrement en 10 ms (avant : toujours en attente après 8 s) ; aucune erreur.
+
+**Test** : `test_cotes_3d` (190 contrôles, +4 : une cote garde la pièce à jour, une pièce changée reste à recalculer, empreinte notée à chaque rejeu, `markDirty()` seulement pour les 2 gestes qui changent la pièce) ; `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.2 - Cotes 3D : paramètres et formules ƒx dans la valeur
+
+Fred, 27/11 : « on est sur la V1.1.0 et je viens de me rendre compte que la cotation 3D n'accepte pas les paramètres… Il faut y remédier »
+
+**Cause** : la valeur d'une cote 3D était lue comme un simple nombre. Une formule (`L`, `L/2+3`) passait par le filet ƒx global, qui la remplaçait par sa valeur : la pièce prenait cette valeur une fois, puis le lien avec le paramètre était perdu (changer L ne bougeait plus rien). `H = L+5` était refusé (« valeur illisible ») et un nom inconnu passait en silence. Même chose dans la carte et sur les nombres d'un trou de Perçage.
+
+**Correctif** (`src/92-cotes-3d.js`) : la saisie de la cote (étiquette, carte « Valeur », nombres du trou) accepte un nombre, un paramètre, une formule ou « nom = valeur », avec la liste des paramètres pendant la frappe. La formule est rangée sur ce que la cote pilote :
+- cote = réglage (cas courant) : formule et nom vont tels quels sur la cote d'esquisse ou la valeur de fonction. `H` devient un paramètre de la fonction, et la cote prend le nom `H` ;
+- cote décalée (cote = s·réglage + b, s = ±½, ±1, ±2) : la formule est rangée transformée sur le réglage (`T - 20`) et le nom devient un paramètre libre de la fenêtre ƒx. `d.fx` garde ce qui a été tapé. Si l'écart change ailleurs, la cote affiche ⚠ ; retaper la formule recale.
+
+Un nombre garde le nom ; sans nom, il remplace la formule (même à valeur égale). Renommer la cote dans sa carte renomme le paramètre partout ; renommer un paramètre dans la fenêtre ƒx suit dans les formules des cotes (crochet dans `parRename`, `src/51-parametres.js`). Un repère **ƒx** s'affiche devant la valeur (⚠ en orange si la formule ne s'évalue plus), avec la formule au survol. Le mouvement de la pièce garde la formule : positions intermédiaires en nombres, formule remise à la fin. Le message attend la fin du mouvement, pour donner le nom définitif de la fonction. Une seule annulation, et retour complet en cas de refus. Les gestes de la cote passent par `c3Dirty` (V1.1.1) : une formule rangée change l'empreinte, donc la pièce est bien à recalculer ; `d.fx` seul ne la périme pas. `src/51-parametres.js` : un Perçage dont une valeur change par un paramètre garde un nom juste (« Ø7 lamé Ø14 »).
+
+**Manuel** : *Cotes 3D › Changer une valeur › Paramètres et formules (ƒx)*, avec un lien depuis *Esquisse*.
+
+**Test** : `test_cotes_3d` passe à 211 contrôles, dont 21 nouveaux sur le vrai moteur ƒx de 51 : formule gardée et suivie, nom, nombre qui garde le nom, refus, cote décalée et son ⚠, renommages, saisie Ø / R / unité. Vérifié dans Chromium (carte graphique réelle) :
+- bloc + bossage : `L`, `H = L+5`, `50`, `abc`, `T = L` sur la hauteur totale, puis L changé ;
+- exemple Perçages : cote d'esquisse `W = E*3`, lamage `E/2` et `Dl = E`, congé de 4 arêtes `Rc = E/4` ;
+- frappe au clavier avec la liste des paramètres.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.3 - La pièce qui propose : une suite après un plot ou un perçage
+
+Fred, 27/11, après V1.1.1 : « rien » — en V1.1.1, après « une esquisse une extrusion »
+
+**Cause** : la suite n'était proposée qu'après une poche (coins vifs creux à arrondir), un congé ou un chanfrein (le même sur les arêtes pareilles), ou quand une habitude de la séance s'appliquait. Après un plot (extrusion qui ajoute de la matière, sans coin creux), rien n'était proposé.
+
+**Correctif** (`src/93-piece-propose.js`, partie 4 de `ppSuggestCtx`) : quand ni les coins ni les habitudes n'ont rien à proposer, les arêtes vives de ce que l'on vient de faire sont proposées :
+- **arrondir les arêtes verticales** (saillantes, dans l'axe d'outil) : rayon du dernier congé (10 mm au plus), sinon valeur ronde du dixième de la largeur (`ppNice`, `ppExtent`) ;
+- **chanfrein sur les arêtes du dessus** (ou du bord, ou **à l'entrée des trous** après un Perçage) : dernier chanfrein (2 mm au plus), sinon 0,5 sur une pièce de moins de 80 mm, 1 au-delà ;
+- **congé au pied** d'un plot posé sur la pièce : dernier congé (5 mm au plus), sinon valeur ronde du vingtième de la largeur.
+
+Une poche ne propose toujours que ses coins : la bande ne devient pas plus envahissante.
+
+**Vérifié dans Chromium** (MERLIN-39-005, brouillon remis tel quel après l'essai) : esquisse, Extrusion, hauteur 3, OK → en 0,45 s « Arrondir les 4 arêtes verticales de Extrusion Esquisse 4 · R1 », « Chanfrein 0,5 sur les 4 arêtes du dessus de Extrusion Esquisse 4 », « Congé R0,5 au pied de Extrusion Esquisse 4 (4 arêtes) » ; aucune erreur.
+
+**Manuel** : `docs/manuel/piece-propose.md`, tableau *La suite après chaque fonction* (plot, perçage).
+
+**Test** : `test_piece_propose` (106 contrôles, +5 : bloc seul, plot sur la pièce, perçage, habitude prioritaire ; le 31 dit maintenant que la poche de côté propose seulement les arêtes verticales de sa bouche) ; `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.4 - Cotes 3D : les cotes d'esquisse à formule sont reprises aussi
+
+Fred, 27/11 : « Si j'ai un esquisse avec un rectangle, donc 2 cotes, la cote horizontale s'appelle dd1 et est égale à 150 et la cote verticale = dd1/2, alors, on ne voit que la cote horizontale alors que l'on peut à tous moments vouloir changer la valeur… »
+
+**Cause** : à la création d'une fonction, la reprise des cotes de l'esquisse sur la pièce (`c3AutoSketch`) écartait toute cote d'esquisse qui porte une formule (`dm.expr`). Elle était vue comme « tenue par la formule ». Seule `dd1 = 150` arrivait donc sur la pièce, et la verticale `dd1/2` ne se voyait nulle part en 3D. Le même filtre servait au choix de « Qu'est-ce qui bouge ? » (`c3SkSlopesM`).
+
+**Correctif** (`src/92-cotes-3d.js`) :
+- les cotes d'esquisse à formule sont candidates comme les autres. La cote 3D garde la formule : repère **ƒx**, saisie qui montre `dd1/2`. Changer `dd1` (sur sa cote 3D ou ailleurs) fait suivre la verticale ;
+- on peut taper une autre formule (`dd1/4`) ou un nombre (`70`, qui retire la formule) à tout moment ;
+- **pièce déjà faite** : le clic droit sur une fonction qui a déjà des cotes 3D propose maintenant **📐 Poser les cotes 3D qui manquent**. Avant, le menu n'apparaissait que si la fonction n'en avait aucune. Rien n'est posé deux fois (`c3AutoHas`) ; s'il ne manque rien, le message le dit ;
+- le message après le mouvement de la pièce relit la cote d'abord. Sans cela, après un mouvement par pas (`70` → `dd1/2`), il disait « cote 75 » sans « — ƒx dd1/2 ».
+
+**Manuel** : *Cotes 3D › Cotation automatique* (cotes d'esquisse à formule) et *Paramètres et formules (ƒx)* (cas dd1 / dd1/2, pièce d'avant V1.1.4).
+
+**Test** : `test_cotes_3d` passe à 215 contrôles (+4) :
+- cote d'esquisse à formule candidate (pente 1) ;
+- reprise à la création ;
+- menu « qui manquent » ;
+- message relu.
+
+Vérifié dans Chromium (carte graphique réelle) sur l'exemple *Perçages*, avec l'esquisse de la plaque en `dd1 = 150` et `dd1/2` :
+- les deux cotes sont posées, la verticale avec ƒx ;
+- `160` sur dd1 met la verticale à 80 ; `dd1/4` donne 40 ; `70` retire la formule ;
+- une pièce où seule l'horizontale était posée reçoit la verticale par le clic droit, et un second clic ne pose rien.
+
+CACHE_VER et FORMES_VER inchangés.

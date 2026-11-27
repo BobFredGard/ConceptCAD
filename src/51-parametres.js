@@ -191,7 +191,8 @@ function parApplyAll(){
   todo.forEach(sk=>{if((doc.sketches||[]).indexOf(sk)>=0){try{solveSketch(sk);}catch(e){}}});
   // fonctions 3D dont une valeur ƒx a changé : nom à jour + instances de répétition resynchronisées
   (doc.features||[]).forEach(f=>{if(!f||!f._fxDirty)return;delete f._fxDirty;
-    try{const nm=({extrude:typeof extName==='function'?extName:null,revolve:typeof revolveName==='function'?revolveName:null,xmove:typeof mvName==='function'?mvName:null,xdraft:typeof draftName==='function'?draftName:null})[f.type];if(nm)f.name=nm(f);}catch(e){}
+    // V1.1.2 : un Perçage piloté par un paramètre ou une cote 3D garde un nom juste (« Ø7 lamé Ø14 »)
+    try{const nm=({extrude:typeof extName==='function'?extName:null,revolve:typeof revolveName==='function'?revolveName:null,xmove:typeof mvName==='function'?mvName:null,xdraft:typeof draftName==='function'?draftName:null,hole:typeof holeName==='function'&&!f.kw?holeName:null})[f.type];if(nm)f.name=nm(f);}catch(e){}
     try{if(typeof repSyncForFeature==='function'&&!f.repeatId)repSyncForFeature(f);}catch(e){}});
   // V0.95.0 : une valeur FAO ou de mise en plan liée à un paramètre a changé : brut, parcours périmés, feuille
   if(r.kinds&&r.kinds.has('fao')){try{if(typeof faoStock==='function')faoStock();}catch(e){}try{if(typeof faoChanged==='function')faoChanged();}catch(e){}}
@@ -214,6 +215,7 @@ function parRename(oldN,newN){
   (doc.params||[]).forEach(p=>{if(p&&p.expr)p.expr=String(p.expr).replace(re,newN);});
   (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{if(d&&d.expr)d.expr=String(d.expr).replace(re,newN);}));
   parHolders().forEach(({h})=>{if(h.expr)Object.keys(h.expr).forEach(k=>{h.expr[k]=String(h.expr[k]).replace(re,newN);});});
+  try{if(typeof c3FxRename==='function')c3FxRename(re,oldN,newN);}catch(e){} // V1.1.2 : formules tapées sur les cotes 3D (92)
 }
 function parFxSet(h,k,txt){
   // Saisie « [nom =] valeur|expression » sur une valeur de fonction 3D. Retour {ok,v}|{ok:false,msg}.

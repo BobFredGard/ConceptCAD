@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.1.0';
+const APP_VER='V1.1.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -37018,7 +37018,8 @@ function parApplyAll(){
   todo.forEach(sk=>{if((doc.sketches||[]).indexOf(sk)>=0){try{solveSketch(sk);}catch(e){}}});
   // fonctions 3D dont une valeur ƒx a changé : nom à jour + instances de répétition resynchronisées
   (doc.features||[]).forEach(f=>{if(!f||!f._fxDirty)return;delete f._fxDirty;
-    try{const nm=({extrude:typeof extName==='function'?extName:null,revolve:typeof revolveName==='function'?revolveName:null,xmove:typeof mvName==='function'?mvName:null,xdraft:typeof draftName==='function'?draftName:null})[f.type];if(nm)f.name=nm(f);}catch(e){}
+    // V1.1.2 : un Perçage piloté par un paramètre ou une cote 3D garde un nom juste (« Ø7 lamé Ø14 »)
+    try{const nm=({extrude:typeof extName==='function'?extName:null,revolve:typeof revolveName==='function'?revolveName:null,xmove:typeof mvName==='function'?mvName:null,xdraft:typeof draftName==='function'?draftName:null,hole:typeof holeName==='function'&&!f.kw?holeName:null})[f.type];if(nm)f.name=nm(f);}catch(e){}
     try{if(typeof repSyncForFeature==='function'&&!f.repeatId)repSyncForFeature(f);}catch(e){}});
   // V0.95.0 : une valeur FAO ou de mise en plan liée à un paramètre a changé : brut, parcours périmés, feuille
   if(r.kinds&&r.kinds.has('fao')){try{if(typeof faoStock==='function')faoStock();}catch(e){}try{if(typeof faoChanged==='function')faoChanged();}catch(e){}}
@@ -37041,6 +37042,7 @@ function parRename(oldN,newN){
   (doc.params||[]).forEach(p=>{if(p&&p.expr)p.expr=String(p.expr).replace(re,newN);});
   (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{if(d&&d.expr)d.expr=String(d.expr).replace(re,newN);}));
   parHolders().forEach(({h})=>{if(h.expr)Object.keys(h.expr).forEach(k=>{h.expr[k]=String(h.expr[k]).replace(re,newN);});});
+  try{if(typeof c3FxRename==='function')c3FxRename(re,oldN,newN);}catch(e){} // V1.1.2 : formules tapées sur les cotes 3D (92)
 }
 function parFxSet(h,k,txt){
   // Saisie « [nom =] valeur|expression » sur une valeur de fonction 3D. Retour {ok,v}|{ok:false,msg}.
@@ -90089,7 +90091,7 @@ function c3IsoLoc(d0){
   if(hole){hole.gdt=hole.gdt||[];if(!hole.gdt.some(f=>f&&f.sym==='pos'))hole.gdt.push({sym:'pos',dia:true,val:0.1,mod:'',refs:[la,lb].filter(Boolean).map(l=>({l,m:''}))});}
   if(!c3HaxOf(rp)){const x=c3HaxNew(ref,rp);if(!x.err){x.name=c3NameNext();c3List().push(x);}}
   c3List().forEach(x=>{if(x&&(x===pcd||(x.k==='angle'&&x.polar===rp.id)))x.fmt='box';});
-  try{markDirty();}catch(e){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';if(c3.hidden)c3Hide(false);
+  try{c3Dirty();}catch(e){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';if(c3.hidden)c3Hide(false);
   c3Select(hole||pcd);
   c3Say('Localisation ISO : '+(la?'référence '+la+' (face d’entrée)':'pas de face d’entrée plane')+(lb?', '+lb+' (cylindre centré sur l’axe)':'')
     +' ; ⌖ Ø0,1 '+[la,lb].filter(Boolean).join(' ')+' sur les trous ; Ø de perçage'+(c3List().some(x=>x.k==='angle'&&x.polar===rp.id)?' et angles':'')+' encadrés.');
@@ -90203,7 +90205,8 @@ function c3Html(d,v){
   }
   if(d.k==='rough')return '<span class="v">'+c3RghSvg(d.r)+'<span class="m">'+c3Esc(c3RghLabel(d.r))+'</span>'+(d.r&&d.r.txt?'<span class="t">'+c3Esc(d.r.txt)+'</span>':'')+'</span>';
   const p=c3TextParts(d,v);
-  let h='<span class="m">'+c3Esc(p.main)+'</span>';
+  const FX=d.drive&&d.drive.t?c3FxInfo(d):null; // valeur liée à un paramètre ou à une formule (V1.1.2)
+  let h=(FX?'<span class="fx'+(FX.err?' e':'')+'">'+(FX.err?'⚠':'')+'ƒx</span>':'')+'<span class="m">'+c3Esc(p.main)+'</span>';
   if(p.sym)h+='<span class="t">'+c3Esc(p.sym)+'</span>';
   if(p.up||p.lo)h+=(p.par?'<span class="t">(</span>':'')+'<span class="k"><i>'+c3Esc(p.up)+'</i><i>'+c3Esc(p.lo)+'</i></span>'+(p.par?'<span class="t">)</span>':'');
   if(p.post&&(p.sym||p.up||p.lo))h+='<span class="m">'+c3Esc(p.post)+'</span>';
@@ -90551,12 +90554,27 @@ function c3Refresh(d){const g=c3Read(d);if(g.err){d.err=g.err;}else{delete d.err
 let c3AfterT=null;
 function c3AfterBuild(){
   // fin de rejeu : toutes les cotes relues (la plus extérieure seulement, comme les paramètres mesurés)
+  try{c3.hb=typeof docHash==='function'?{v:_docVersion,h:docHash()}:null;}catch(e){c3.hb=null;} // empreinte de la pièce calculée (c3Dirty) ; gardée en mémoire, reprise par builtHash
   if(c3.autoQ&&c3.autoQ.size)c3AutoSoon();
   if(!c3List().length)return;
   if(c3AfterT)clearTimeout(c3AfterT);
   c3AfterT=setTimeout(()=>{c3AfterT=null;
     if(typeof rebuildDepth!=='undefined'&&rebuildDepth>0){c3AfterBuild();return;}
     c3List().forEach(d=>{try{c3Refresh(d);}catch(e){}});c3.cardK='';c3Wake();},0);
+}
+function c3Dirty(){
+  // V1.1.1 : une cote 3D change le document (●, annulation, enregistrement) mais pas la pièce : doc.cotes3d
+  // est hors de l'empreinte. markDirty seul laissait buildKeyUpToDate() faux jusqu'au rejeu suivant ;
+  // les cotes posées après chaque fonction le faisaient à chaque fois : la pièce qui propose attendait
+  // sans fin « la fin du calcul » (Fred, 27/11 : « n'est jamais proposé, bouton allumé »), et
+  // l'enregistrement aussi, jusqu'à 60 s, pour ne pas joindre l'image de la pièce au bout du compte.
+  // Pièce à jour avant et même empreinte que celle du dernier rejeu (c3.hb, noté par c3AfterBuild) :
+  // l'affichage et son image (pcDernier, 20-75) restent valables.
+  const hb=c3.hb;let ok=false,v0=null;
+  try{ok=!!hb&&hb.h!=='x'&&typeof buildKeyUpToDate==='function'&&buildKeyUpToDate()&&hb.v===_docVersion;v0=_docVersion;}catch(e){ok=false;}
+  try{markDirty();}catch(e){}
+  try{if(ok&&docHash()===hb.h){builtVersion=_docVersion;hb.v=_docVersion;
+    if(typeof pcDernier!=='undefined'&&pcDernier&&pcDernier.ver===v0)pcDernier.ver=_docVersion;}}catch(e){}
 }
 /* ── cotes posées toutes seules à la création d'une fonction (Fred, 27/11 : « à chaque création »,
    cotes d'esquisse comprises, « sur la pièce ») ── */
@@ -90587,7 +90605,7 @@ function c3AutoRun(){
   let n=0,nm='';
   ids.forEach(id=>{const f=c3Feat(id);if(!f||f.visible===false||f.suppressed)return;
     let k=0;try{k=c3AutoFeat(f);}catch(e){k=0;}if(k){n+=k;nm=f.name||f.id;}});
-  if(n){if(c3.hidden)c3Hide(false);try{markDirty();}catch(e){}c3.cardK='';
+  if(n){if(c3.hidden)c3Hide(false);try{c3Dirty();}catch(e){}c3.cardK='';
     c3Say(n+' cote'+(n>1?'s':'')+' 3D posée'+(n>1?'s':'')+(ids.length===1?' pour « '+nm+' »':'')+' — clic droit sur une cote pour la cacher.');c3Wake();}
   return n;
 }
@@ -90757,7 +90775,9 @@ function c3AutoSketch(f){
   // l'écart de deux flancs parallèles, un Ø, un entraxe ou un axe ↔ flanc devient une cote 3D qui la pilote
   const sk=f.sketchId?c3Sk(f.sketchId):null;if(!sk||!Array.isArray(sk.dims)||!sk.dims.length)return 0;
   if(f.type!=='extrude'&&f.type!=='hole'&&f.type!=='revolve')return 0;
-  const free=sk.dims.filter(dm=>dm&&!dm.ref&&!(dm.expr!=null&&String(dm.expr).trim()!=='')&&dm.type!=='angle'&&isFinite(parDimUser(dm)));
+  // V1.1.4 : une cote d'esquisse à formule (« dd1/2 ») est reprise aussi (Fred, 27/11 : avec dd1 = 150 et la verticale = dd1/2,
+  // « on ne voit que la cote horizontale ») — la cote 3D garde la formule (ƒx) et peut la changer à tout moment
+  const free=sk.dims.filter(dm=>dm&&!dm.ref&&dm.type!=='angle'&&isFinite(parDimUser(dm)));
   if(!free.length)return 0;
   const E=id=>(sk.entities||[]).find(e=>e&&e.id===id);
   // faces par entité : « fid/eN/flanc » (extrusion) ; « ho/cI/… » cylindre du centre I (perçage)
@@ -90865,7 +90885,7 @@ function c3SkSlopesM(sk,M,wrap){
   // même chose pour une mesure quelconque M(esquisse) ; wrap : angle en degrés (écart ramené dans ±180)
   const m0=M(sk),out=[];
   (sk.dims||[]).forEach(dm=>{
-    if(!dm||dm.ref||(dm.expr!=null&&String(dm.expr).trim()!==''))return;
+    if(!dm||dm.ref)return; // V1.1.4 : une cote à formule aussi (la cote 3D la garde, ƒx)
     const u=parDimUser(dm);if(!isFinite(u))return;
     const du=dm.type==='angle'?1:Math.max(0.1,Math.abs(u)*0.02);
     let s=null;
@@ -91025,23 +91045,25 @@ function c3Secant(o){
 }
 /* ── la pièce glisse d'une valeur à l'autre : quelques vrais rejeux intermédiaires, image par image ── */
 let c3Anim=null;
-function c3AnimStart(drv,p0,p1,dt,S0){
+function c3AnimKeep(A){const k=A&&A.keep;if(!k)return;A.keep=null;try{k();parApplyAll();}catch(e){}}
+function c3AnimStart(drv,p0,p1,dt,S0,keep){
   // 1) même maillage avant / après : la forme glisse d'un coup d'image à l'autre (fluide, sans rejeu) ;
   // 2) sinon quelques vrais rejeux intermédiaires. dt = durée d'un rejeu (ms) ; > 350 ms : on saute.
+  // keep (V1.1.2) : le réglage porte une formule ƒx — les positions intermédiaires sont des nombres, la formule revient à la fin
   if(!(isFinite(p0)&&isFinite(p1))||Math.abs(p1-p0)<1e-6)return false;
   if(S0&&c3Morph(S0,Math.abs(p1-p0)))return true;
   if(!(dt>=0)||dt>350)return false;
   try{if(typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches)return false;}catch(e){}
   if(typeof requestAnimationFrame!=='function')return false;
   const N=Math.max(3,Math.min(14,Math.floor(650/(dt+16)))),ease=k=>1-Math.pow(1-k,3);
-  const A={drv,p0,p1,N,i:1,last:null};c3Anim=A;
+  const A={drv,p0,p1,N,i:1,last:null,keep:keep||null};c3Anim=A;
   const step=()=>{
     if(c3Anim!==A)return;
     // quelqu'un d'autre a touché le réglage (annulation, saisie) : on s'arrête là, sans rien forcer
     if(A.last!=null&&Math.abs(c3DrvGet(drv)-A.last)>1e-6){c3Anim=null;return;}
-    if(A.i>=N){c3Anim=null;c3AnimSet(drv,p1);return;}
+    if(A.i>=N){c3Anim=null;c3AnimSet(drv,p1);c3AnimKeep(A);return;}
     const v=+(p0+(p1-p0)*ease(A.i/N)).toFixed(4);A.i++;
-    if(!c3AnimSet(drv,v)){c3Anim=null;c3AnimSet(drv,p1);return;}
+    if(!c3AnimSet(drv,v)){c3Anim=null;c3AnimSet(drv,p1);c3AnimKeep(A);return;}
     A.last=v;requestAnimationFrame(step);
   };
   step(); // 1re position tout de suite : l'image suivante ne montre pas déjà la valeur finale
@@ -91143,11 +91165,12 @@ function c3Morph(S0,dv){
   return true;
 }
 function c3AnimSet(drv,v){const r=c3DrvSet(drv,v);if(r!==true)return false;return c3Rebuild();}
-function c3AnimEnd(){const A=c3Anim;if(!A)return;if(A.morph){if(A.fin)A.fin();c3Anim=null;return;}c3Anim=null;try{if(A.last==null||Math.abs(c3DrvGet(A.drv)-A.last)<1e-6)c3AnimSet(A.drv,A.p1);}catch(e){}}
+function c3AnimEnd(){const A=c3Anim;if(!A)return;if(A.morph){if(A.fin)A.fin();c3Anim=null;return;}c3Anim=null;try{if(A.last==null||Math.abs(c3DrvGet(A.drv)-A.last)<1e-6){c3AnimSet(A.drv,A.p1);c3AnimKeep(A);}}catch(e){}}
 function c3Round(p){const q=Math.round(p*1e4)/1e4;return Math.abs(q-p)<1e-6?q:p;}
 function c3Rebuild(){try{markDirty();}catch(e){}try{rebuild();}catch(e){return false;}return typeof builtEngine==='undefined'||builtEngine==='exact';}
-function c3SetValue(d,T){
+function c3SetValue(d,T,o){
   // → true | message ; une seule annulation ; le réglage revient en cas d'échec
+  // o (formules ƒx) : o.pushed = une annulation posée ; o.noAnim : le mouvement est rendu dans o.anim, pas lancé
   if(!d.drive)return 'cote de référence : elle suit la pièce';
   if(!(T>0))return 'tape une valeur positive';
   c3AnimEnd();
@@ -91157,7 +91180,7 @@ function c3SetValue(d,T){
   const S0=c3MeshSnap();
   const n0=typeof docUndoStack!=='undefined'?docUndoStack.length:0;
   try{docPushUndo('Cote 3D '+c3Num(T));}catch(e){}
-  const pushed=typeof docUndoStack!=='undefined'&&docUndoStack.length>n0;
+  const pushed=typeof docUndoStack!=='undefined'&&docUndoStack.length>n0;if(o)o.pushed=pushed;
   let dt=0;
   const apply=p=>{
     p=c3Round(p);
@@ -91167,13 +91190,257 @@ function c3SetValue(d,T){
   };
   const R=c3Secant({p0,v0:g0.v,T,s0:d.slope||null,apply});
   if(R.ok){d.slope=R.s;c3Refresh(d);c3List().forEach(x=>{if(x!==d)try{c3Refresh(x);}catch(e){}});c3.cardK='';
-    try{c3AnimStart(d.drive,p0,c3DrvGet(d.drive),dt,S0);}catch(e){}
+    if(o&&o.noAnim)o.anim={p0,p1:c3DrvGet(d.drive),dt,S0};
+    else try{c3AnimStart(d.drive,p0,c3DrvGet(d.drive),dt,S0);}catch(e){}
     return true;}
   // retour à l'état d'avant
   try{c3DrvSet(d.drive,p0);c3Rebuild();}catch(e){}
   try{if(pushed&&docUndoStack.length>n0){docUndoStack.pop();if(typeof docBaseSync==='function')docBaseSync(docSnap());if(typeof docUndoUI==='function')docUndoUI();}}catch(e){}
   c3List().forEach(x=>{try{c3Refresh(x);}catch(e){}});c3.cardK='';
   return R.msg;
+}
+/* ── paramètres et formules ƒx dans une cote 3D (V1.1.2 ; Fred, 27/11 : « la cotation 3D n'accepte pas les paramètres ») ──
+   La valeur d'une cote pilotante se tape comme partout ailleurs : nombre, paramètre (L), formule (L/2 + 3) ou
+   « nom = valeur ». La formule est rangée sur le réglage piloté (cote d'esquisse, valeur de la fonction) : la pièce,
+   donc la cote, suit les paramètres. Avant, la formule n'était lue qu'une fois (le lien était perdu) et « nom = » refusé.
+   • cote = réglage (le cas courant) : formule et nom y vont tels quels — « H = L+5 » nomme la distance d'extrusion ;
+   • cote décalée du réglage (cote = s·réglage + b, s = ±½, ±1, ±2 : face décalée, Ø d'une cote de rayon…) : le réglage
+     reçoit la formule transformée (« (L+5) - 10 »), et le nom devient un paramètre libre de la fenêtre ƒx ;
+     d.fx = {n, e, w} garde ce qui a été tapé (n, e) et le texte rangé sur le réglage (w) — w changé ailleurs : d.fx ignoré.
+   Un nombre tapé garde le nom (comme une cote d'esquisse nommée) ; sans nom, il remplace la formule. */
+const C3_FX_PENTES=[1,-1,2,-2,0.5,-0.5];
+function c3FxH(drv){ // porteurs ƒx du réglage piloté : la cote d'esquisse, ou la fonction / les arêtes d'un congé
+  const R=c3DrvFind(drv);if(!R)return null;
+  if(drv.t==='dim')return {dm:R.dm,sk:R.sk};
+  const H=Array.isArray(drv.e)?drv.e.map(i=>(R.f.edges||[])[i]).filter(Boolean):[R.f];
+  return H.length?{H,k:drv.k,f:R.f}:null;
+}
+function c3FxDrv(drv){
+  // formule du réglage piloté : {n (nom), e (formule, '' si nombre), err} ou null
+  const X=c3FxH(drv);if(!X)return null;
+  if(X.dm){const dm=X.dm,e=dm.expr!=null&&String(dm.expr).trim()!==''?String(dm.expr):'';return (e||dm.name)?{n:dm.name||'',e,err:dm.exprErr||''}:null;}
+  const h=X.H[0],k=X.k,e=h.expr&&h.expr[k]!=null&&String(h.expr[k]).trim()!==''?String(h.expr[k]):'',n=(h.pname&&h.pname[k])||'';
+  return (e||n)?{n,e,err:(h.exprErr&&h.exprErr[k])||''}:null;
+}
+function c3FxSame(d){ // la cote vaut le réglage qu'elle pilote (pente 1, sans décalage)
+  if(!d||!d.drive)return false;const p=c3DrvGet(d.drive),v=+d.v;
+  return isFinite(p)&&isFinite(v)&&Math.abs(p-v)<1e-4*Math.max(1,Math.abs(v))&&(d.slope==null||Math.abs(d.slope-1)<1e-3);
+}
+function c3FxParam(n){return n&&typeof doc!=='undefined'&&doc?(doc.params||[]).find(p=>p&&p.name===n)||null:null;}
+function c3FxInfo(d){
+  // formule que montre la cote : {n, e, err, aff (rangée transformée)} ou null
+  if(!d||!d.drive)return null;
+  let D=null;try{D=c3FxDrv(d.drive);}catch(e){return null;}
+  if(d.fx&&d.fx.w&&D&&D.e===d.fx.w&&!D.n){
+    // l'écart rangé (cote = s·réglage + b) a changé ailleurs (une autre fonction modifiée) : ⚠, retaper la formule recale
+    let dec='';if(isFinite(d.fx.s)&&isFinite(d.fx.b)){const p=c3DrvGet(d.drive);if(isFinite(p)&&isFinite(+d.v)&&Math.abs(d.fx.s*p+d.fx.b-d.v)>1e-3)dec='la pièce a changé ailleurs : la cote ne suit plus sa formule, retape-la pour recaler';}
+    if(!d.fx.n)return {n:'',e:String(d.fx.e||''),err:D.err||dec,aff:true};
+    const p=c3FxParam(d.fx.n);if(p)return {n:p.name,e:p.expr!=null?String(p.expr):'',err:p.err||D.err||dec,aff:true};
+  }
+  return D&&c3FxSame(d)?D:null;
+}
+function c3FxShow(I,v){return I?(I.n?I.n+' = ':'')+(I.e!==''?I.e:c3Num(v)):c3Num(v);}
+function c3FxInput(d){return c3FxShow(c3FxInfo(d),d.v);}
+function c3FxTip(I){return I?'ƒx '+(I.n?I.n+' = ':'')+(I.e||'')+(I.err?' ⚠ '+I.err:''):'';}
+function c3FxRead(txt){
+  // « [nom =] nombre | paramètre | formule » → {n, e, T, num} | {err}
+  const s=String(txt==null?'':txt).trim();
+  const mm=/^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.*)$/.exec(s);
+  const n=mm?mm[1]:'',e=(mm?mm[2]:s).trim().replace(/\s*(mm|°|deg)\s*$/i,'').replace(/^[Øø∠]\s*/,'').replace(/^R\s*(?=[\d.,(])/,'').trim();
+  if(!e)return {err:'valeur vide'};
+  const num=parIsNumber(e);let T;
+  if(num)T=parseFloat(e.replace(',','.'));
+  else{try{T=parEval(e,parValueNow);}catch(x){return {err:'formule : '+x.message};}}
+  if(!isFinite(T))return {err:'formule : valeur non finie'};
+  return {n,e,T,num};
+}
+function c3FxSave(drv){
+  // → fonction qui remet les formules et noms du réglage (pas sa valeur)
+  const X=c3FxH(drv);if(!X)return ()=>{};
+  const cl=o=>o===undefined?undefined:JSON.parse(JSON.stringify(o));
+  const put=(o,k,v)=>{if(v===undefined)delete o[k];else o[k]=v;};
+  if(X.dm){const dm=X.dm,S={name:dm.name,expr:dm.expr,exprErr:dm.exprErr};return ()=>{for(const k in S)put(dm,k,S[k]);};}
+  const S=X.H.map(h=>({h,expr:cl(h.expr),pname:cl(h.pname),exprErr:cl(h.exprErr)}));
+  return ()=>S.forEach(o=>{put(o.h,'expr',o.expr);put(o.h,'pname',o.pname);put(o.h,'exprErr',o.exprErr);});
+}
+function c3DrvSetTxt(drv,txt,rest){
+  // comme c3DrvSet, avec le texte tapé (« nom = formule ») ; arêtes d'un congé : la 1re reçoit le texte, les autres rest
+  const R=c3DrvFind(drv);if(!R)return 'le réglage piloté n’existe plus';
+  let r;
+  if(drv.t==='dim')r=parSetDim(R.sk,R.dm,txt);
+  else if(Array.isArray(drv.e)){r=true;drv.e.forEach((i,j)=>{if(r!==true)return;const h=(R.f.edges||[])[i];if(!h){r='arête du congé introuvable';return;}r=parSetFeat(h,drv.k,R.f,j?rest:txt);});
+    if(r===true)try{if(typeof repSyncForFeature==='function')repSyncForFeature(R.f);}catch(e){}}
+  else r=parSetFeat(R.f,drv.k,R.f,txt);
+  if(r===true)try{parApplyAll();}catch(e){}
+  return r;
+}
+function c3UndoMark(lab){const n0=typeof docUndoStack!=='undefined'?docUndoStack.length:0;try{docPushUndo(lab);}catch(e){}return {n0,pushed:typeof docUndoStack!=='undefined'&&docUndoStack.length>n0};}
+function c3UndoDrop(m){try{if(m&&m.pushed&&docUndoStack.length>m.n0){docUndoStack.pop();if(typeof docBaseSync==='function')docBaseSync(docSnap());if(typeof docUndoUI==='function')docUndoUI();}}catch(e){}}
+function c3RefreshAll(){c3List().forEach(x=>{try{c3Refresh(x);}catch(e){}});c3.cardK='';}
+function c3FxNameCote(d,n){if(n&&!c3List().some(x=>x!==d&&c3Name(x)===n))d.name=n;} // la cote porte le nom du paramètre
+function c3FxDirect(drv,n,F,lab,lire,d){
+  // la formule (et le nom) vont tels quels sur le réglage ; lire() = la valeur obtenue → true | message | 'pas-egal'
+  const p0=c3DrvGet(drv);if(!isFinite(p0))return 'le réglage piloté n’existe plus';
+  c3AnimEnd();
+  const D0=c3FxDrv(drv),back=c3FxSave(drv),S0=c3MeshSnap(),m=c3UndoMark(lab);
+  const t0=c3Now();
+  let r=c3DrvSetTxt(drv,(n?n+' = ':'')+F.e,n||F.e);
+  if(r===true&&Math.abs(c3DrvGet(drv)-p0)>1e-9&&!c3Rebuild())r='la pièce ne se reconstruit pas avec ce réglage';
+  if(r===true){const g=lire();if(g.err)r=g.err;else if(!(Math.abs(g.v-F.T)<1e-3))r='pas-egal';}
+  if(r!==true){
+    try{if(n&&D0&&D0.n&&D0.n!==n)parRename(n,D0.n);}catch(e){}
+    try{c3DrvSet(drv,p0);back();parApplyAll();c3Rebuild();}catch(e){}
+    c3UndoDrop(m);c3RefreshAll();return r;
+  }
+  const dt=c3Now()-t0;
+  if(d){delete d.fx;if(n)c3FxNameCote(d,n);}
+  try{c3Dirty();}catch(e){}c3RefreshAll();
+  try{c3AnimStart(drv,p0,c3DrvGet(drv),dt,S0,c3FxSave(drv));}catch(e){}
+  return true;
+}
+function c3FxProbe(d){
+  // pente inconnue (la valeur était déjà juste) : un petit pas du réglage lu sur la pièce, puis retour
+  const drv=d.drive,p0=c3DrvGet(drv),v0=+d.v;if(!isFinite(p0))return NaN;
+  const back=c3FxSave(drv);let s=NaN;
+  for(const k of [1,-1]){const dp=k*Math.max(0.05,Math.abs(p0)*0.01);
+    try{if(c3DrvSet(drv,p0+dp)===true&&c3Rebuild()){const g=c3Read(d);if(!g.err&&isFinite(g.v)){s=(g.v-v0)/dp;break;}}}catch(e){}}
+  try{c3DrvSet(drv,p0);back();parApplyAll();c3Rebuild();}catch(e){}
+  try{c3Refresh(d);}catch(e){}
+  return s;
+}
+function c3FxAff(base,s,b){
+  // réglage = (formule − b) / s, écrit simplement
+  const t=String(base).trim(),B=/^([A-Za-z_][A-Za-z0-9_]*|[+-]?[\d.,]+)$/.test(t)?t:'('+t+')';
+  const f=x=>String(+(+x).toFixed(6)).replace('.',','),sb=b>0?' - '+f(b):' + '+f(-b);
+  if(s===1)return b===0?t:B+sb;
+  if(s===-1)return b===0?'-'+B:f(b)+' - '+B;
+  const num=b===0?B:'('+B+sb+')';
+  return (s<0?'-':'')+num+(Math.abs(s)===2?'/2':'*2');
+}
+function c3FxAffine(d,n,F,I){
+  // la cote ne vaut pas le réglage : valeur atteinte par la recherche habituelle, puis formule transformée sur le réglage
+  const drv=d.drive,old=I&&I.aff&&I.n?c3FxParam(I.n):null;
+  let P=n?c3FxParam(n):null;
+  if(n){
+    if(P&&P!==old)return 'le nom « '+n+' » est déjà utilisé';
+    if(!P){const ok=parNameCheck(n,null,old);if(ok!==true)return String(ok).replace(/\.$/,'');}
+  }
+  const o={noAnim:true};const r=c3SetValue(d,F.T,o);if(r!==true)return r;
+  const A=o.anim;
+  const go=()=>{if(A)try{c3AnimStart(drv,A.p0,A.p1,A.dt,A.S0,c3FxSave(drv));}catch(e){}};
+  let s=d.slope;if(!(isFinite(s)&&Math.abs(s)>1e-6))s=c3FxProbe(d);
+  const sn=C3_FX_PENTES.find(c=>Math.abs(s-c)<2e-3*Math.max(1,Math.abs(c)));
+  const p1=c3DrvGet(drv),v1=+d.v;
+  if(sn==null||!isFinite(p1)||!isFinite(v1)){c3.fxWarn='Formule non gardée : cette cote ne suit pas son réglage de façon proportionnelle (valeur '+c3Num(F.T)+' appliquée).';go();return true;}
+  let b=v1-sn*p1;b=Math.abs(b)<1e-6?0:+b.toFixed(6);
+  const m=o.pushed?null:c3UndoMark('Cote 3D ƒx '+(n?n+' = ':'')+F.e);
+  const back=c3FxSave(drv),pBack=P?{p:P,expr:P.expr,name:P.name}:null;let Pnew=null,ren=null;
+  const undo=msg=>{
+    try{if(ren)parRename(ren[1],ren[0]);}catch(e){}
+    if(Pnew){const i=doc.params.indexOf(Pnew);if(i>=0)doc.params.splice(i,1);}
+    if(pBack){pBack.p.expr=pBack.expr;pBack.p.name=pBack.name;}
+    if(ren&&old)old.name=ren[0];
+    try{c3DrvSet(drv,p1);back();parApplyAll();c3Rebuild();}catch(e){}
+    c3UndoDrop(m);c3RefreshAll();c3.fxWarn='Formule non gardée : '+msg+' (valeur '+c3Num(F.T)+' appliquée).';go();return true;
+  };
+  if(n){
+    if(old&&!P){const ok=parNameCheck(n,null,old);if(ok!==true)return undo(String(ok).replace(/\.$/,''));ren=[old.name,n];parRename(old.name,n);old.name=n;P=old;}
+    if(P)P.expr=F.e;else{if(!Array.isArray(doc.params))doc.params=[];P={name:n,expr:F.e,value:F.T};doc.params.push(P);Pnew=P;}
+    try{parApplyAll();}catch(e){}
+    if(P.err)return undo(P.err);
+  }
+  const w=c3FxAff(n||F.e,sn,b);
+  const r2=c3DrvSetTxt(drv,w,w);if(r2!==true)return undo(r2);
+  if(Math.abs(c3DrvGet(drv)-p1)>1e-9&&!c3Rebuild())return undo('la pièce ne se reconstruit pas avec cette formule');
+  const g=c3Read(d);if(g.err||!(Math.abs(g.v-F.T)<1e-3))return undo(g.err||'la cote ne suit pas son réglage de façon proportionnelle');
+  d.fx={n:n||'',e:n?'':F.e,w,s:sn,b};if(n)c3FxNameCote(d,n);
+  try{c3Dirty();}catch(e){}c3RefreshAll();go();
+  return true;
+}
+function c3SetText(d,txt){
+  // saisie d'une cote pilotante (champ sur la cote, carte) → true | message ; c3.fxWarn : formule non gardée
+  c3.fxWarn='';
+  if(!d||!d.drive)return 'cote de référence : elle suit la pièce';
+  const F=c3FxRead(txt);if(F.err)return F.err;
+  if(!(F.T>0))return 'tape une valeur positive';
+  const I=c3FxInfo(d);
+  let n=F.n;if(!n&&I&&I.n)n=I.n; // le nom reste (comme une cote d'esquisse nommée)
+  if(!n&&F.num){ // nombre seul : comme avant ; une formule qui était là laisse la place au nombre
+    const o={};const r=c3SetValue(d,F.T,o);if(r!==true)return r;
+    if(I&&I.e){if(!o.pushed){c3UndoMark('Cote 3D '+c3Num(F.T));try{c3DrvSet(d.drive,c3DrvGet(d.drive));}catch(e){}} // valeur déjà juste : la formule part quand même
+      delete d.fx;try{c3Dirty();}catch(e){}c3RefreshAll();}
+    return true;
+  }
+  if(!(I&&I.aff)&&c3FxSame(d)){
+    const r=c3FxDirect(d.drive,n,F,'Cote 3D '+(n?n+' = ':'')+F.e,()=>c3Read(d),d);
+    if(r!=='pas-egal')return r;
+  }
+  return c3FxAffine(d,n,F,I);
+}
+function c3AfterAnim(fn){
+  // le message attend la fin du mouvement de la pièce : nom de la fonction et formule y sont alors définitifs
+  let n=0;const w=()=>{if(c3Anim&&!c3Anim.morph&&++n<500){setTimeout(w,40);return;}fn();};w(); // 20 s au plus (pièce lourde : un rejeu par image)
+}
+function c3SayFx(d,r){
+  if(r!==true){c3Say('Refusé : '+r+'.',true);return;}
+  const warn=c3.fxWarn;c3.fxWarn='';
+  // V1.1.4 : la cote est relue d'abord — à la fin d'un mouvement par pas, sa valeur date de l'image d'avant, et c3FxInfo
+  // (qui compare cote et réglage) ne voyait pas encore la formule remise (message sans « ƒx » après 70 → dd1/2)
+  c3AfterAnim(()=>{if(!d.drive)return;try{c3Refresh(d);}catch(e){}const lib=c3DrvLib(d.drive),I=c3FxInfo(d);
+    const fx=I?(I.e&&!parIsNumber(I.e)?' — ƒx '+(I.n?I.n+' = ':'')+I.e:I.n&&lib.indexOf(I.n+' = ')<0?' — paramètre « '+I.n+' »':''):'';
+    c3Say('Pilote '+lib+fx+'.'+(warn?' '+warn:''),!!warn);});
+}
+function c3HoleFxTxt(f,k,v){let D=null;try{D=c3FxDrv({t:'feat',f:f.id,k});}catch(e){}return c3FxShow(D,v);}
+function c3HoleSetText(d,k,txt){
+  // un nombre du trou (Ø du lamage, profondeur…) : nombre, paramètre, formule, « nom = valeur » → true | message
+  const HO=c3HoleOf(d);if(!HO)return 'ce n’est plus un trou de Perçage';
+  const F=c3FxRead(txt);if(F.err)return F.err;
+  if(!(F.T>0))return 'tape une valeur positive';
+  const drv={t:'feat',f:HO.f.id,k},D=c3FxDrv(drv);
+  let n=F.n;if(!n&&D&&D.n)n=D.n;
+  if(!n&&F.num){const n0=typeof docUndoStack!=='undefined'?docUndoStack.length:0;const r=c3HoleSet(d,k,F.T);if(r!==true)return r;
+    if(D&&D.e&&!(typeof docUndoStack!=='undefined'&&docUndoStack.length>n0)){c3UndoMark('Perçage '+(C3_FKEY[k]||k));
+      try{c3DrvSet(drv,c3DrvGet(drv));}catch(e){}try{c3Dirty();}catch(e){}c3RefreshAll();}
+    return true;}
+  const r=c3FxDirect(drv,n,F,'Perçage '+(C3_FKEY[k]||k)+' '+(n?n+' = ':'')+F.e,()=>({v:c3DrvGet(drv)}),null);
+  return r==='pas-egal'?'la valeur ne prend pas':r;
+}
+function c3FxRename(re,oldN,newN){
+  // un paramètre renommé (fenêtre ƒx, carte) : les formules tapées sur les cotes et le nom de la cote suivent
+  c3List().forEach(x=>{
+    if(x.fx){if(x.fx.n===oldN)x.fx.n=newN;['e','w'].forEach(k=>{if(x.fx[k])x.fx[k]=String(x.fx[k]).replace(re,newN);});}
+    if(x.name===oldN&&!c3List().some(y=>y!==x&&y.name===newN))x.name=newN;
+  });
+}
+function c3FxRenameParam(d,I,v){
+  // le nom de la cote change dans sa carte : le paramètre qu'elle porte change de nom avec elle → true | message
+  const X=c3FxH(d.drive);if(!X)return 'réglage introuvable';
+  const P=I.aff?c3FxParam(I.n):null;
+  const ok=X.dm?parNameCheck(v,X.dm,null):P?parNameCheck(v,null,P):parNameCheck(v,null,null,X.H[0],X.k);
+  if(ok!==true)return String(ok).replace(/\.$/,'');
+  try{docPushUndo('nom de la cote');}catch(e){}
+  parRename(I.n,v);
+  if(X.dm)X.dm.name=v;else if(P)P.name=v;else{X.H[0].pname=X.H[0].pname||{};X.H[0].pname[X.k]=v;}
+  d.name=v;try{parApplyAll();}catch(e){}try{c3Dirty();}catch(e){}
+  return true;
+}
+const C3_FX_TITRE='ƒx : nombre, paramètre (L), formule (L/2 + 3) ou « nom = valeur » pour la nommer ; la formule est gardée';
+function c3FxField(inp,txt,minW){
+  // champ de saisie d'une cote : la formule en cours, la liste des paramètres pendant la frappe (51), plus large si besoin
+  const w0=minW||76,fit=()=>{inp.style.width=Math.max(w0,Math.min(300,8*String(inp.value).length+24))+'px';};
+  inp._parFx=1;inp.title=C3_FX_TITRE;inp.value=txt==null?'':String(txt);fit();
+  inp.addEventListener('input',fit);
+  return inp;
+}
+function c3SayHole(f,k,r){
+  if(r!==true){c3Say('Refusé : '+r+'.',true);return;}
+  c3AfterAnim(()=>{const v=c3DrvGet({t:'feat',f:f.id,k}),t=c3HoleFxTxt(f,k,v);
+    c3Say('Pilote '+(f.name||f.id)+' › '+(C3_FKEY[k]||k)+' '+c3Num(v)+(t!==c3Num(v)?' — ƒx '+t:'')+'.');});
+}
+function c3FxKey(d,HO){
+  // ce qui change la carte (formules du réglage et des nombres du trou)
+  let s='';try{s=d.drive?c3FxInput(d):'';if(HO)HO.parts.forEach(q=>{[q.k,q.dk].forEach(k=>{if(k)s+='|'+c3HoleFxTxt(HO.f,k,0);});});}catch(e){}
+  return s;
 }
 /* ── créer, choisir, supprimer ── */
 function c3New(a,b,k){
@@ -91185,7 +91452,7 @@ function c3Add(d){
   if(!d.name&&!c3IsNote(d))d.name=c3NameNext();
   try{docPushUndo('Cote 3D');}catch(e){}
   c3List().push(d);c3Refresh(d);
-  try{markDirty();}catch(e){}
+  try{c3Dirty();}catch(e){}
   c3Select(d);
 }
 function c3Remove(d){
@@ -91193,7 +91460,7 @@ function c3Remove(d){
   try{docPushUndo('Supprimer la cote 3D');}catch(e){}
   L.splice(i,1);if(c3.sel===d)c3.sel=null;
   const el=c3.els.get(d.id);if(el){el.g.remove();el.lab.remove();c3.els.delete(d.id);}
-  try{markDirty();}catch(e){}c3.cardK='';c3Wake();
+  try{c3Dirty();}catch(e){}c3.cardK='';c3Wake();
 }
 function c3Select(d){c3.sel=d||null;c3.cardK='';c3Wake();}
 function c3SkPt(sk,id){const e=(sk.entities||[]).find(x=>x&&x.id===id);return e?(e.t==='cpoint'?e.p:(e.t==='circle'||e.t==='arc')?e.pc:null):null;}
@@ -91219,8 +91486,8 @@ function c3SetDrive(d,drv){
   // pilote ce réglage ; une autre cote qui le tenait passe en référence
   try{docPushUndo('Cote 3D pilotante');}catch(e){}
   const o=drv?c3Holder(drv,d):null;if(o){o.drive=null;delete o.slope;}
-  d.drive=drv||null;delete d.slope;
-  try{markDirty();}catch(e){}c3.cardK='';c3Wake();
+  d.drive=drv||null;delete d.slope;delete d.fx;
+  try{c3Dirty();}catch(e){}c3.cardK='';c3Wake();
   return o;
 }
 /* ── l'outil ── */
@@ -91355,6 +91622,7 @@ function c3Css(){
     '.c3lab .ip{display:inline-flex;align-items:stretch;border:1.4px solid currentColor;border-radius:999px;overflow:hidden}.c3lab .ip>b{font-weight:600;padding:1px 6px;display:flex;align-items:center}',
     '.c3lab .ip>b:first-child{border-right:1.2px solid currentColor}.c3lab .ip>b:last-child{border-left:1.2px solid currentColor}.c3lab .ip .iv{display:flex;align-items:center;gap:3px;padding:1px 6px}',
     '.c3lab .hv{cursor:text;border-bottom:1px dotted currentColor}.c3lab .hv input{width:58px}',
+    '.c3lab .fx{font:italic 600 10px "Segoe UI",system-ui,sans-serif;opacity:.8;margin-right:3px;align-self:flex-start}.c3lab .fx.e{color:'+C3_ORANGE+';opacity:1}',
     '.c3lab.al{align-items:flex-start}.c3lab.ar{align-items:flex-end}.c3lab.ar .hb{align-items:flex-end}',
     '.c3lab .hb{display:flex;flex-direction:column;align-items:flex-start;gap:2px}.c3lab .hl{display:flex;align-items:center;gap:4px}.c3lab .hl.o{font-weight:500;opacity:.85}',
     '.c3lab.n{color:#e8edf5}.c3lab.n.s{color:'+C3_ORANGE+'}.c3lab .dt{display:inline-block;min-width:16px;text-align:center;padding:2px 4px;border:1.4px solid currentColor;font-weight:600}.c3lab .rg{flex:none}',
@@ -91734,7 +92002,7 @@ function c3Render(RS){
     // gauche, à gauche du trait → à droite ; centrés sous une cote droite (Fred, 27/11)
     {const tf=el.lab.style.transform||'';el.lab.classList.toggle('al',/^translate\(0(px)?,/.test(tf));el.lab.classList.toggle('ar',/^translate\(-100%,/.test(tf));}
     el.lab.classList.toggle('s',c3.sel===d);el.lab.classList.toggle('r',!d.drive&&!note);el.lab.classList.toggle('n',note);el.lab.classList.toggle('e',!!d.err);
-    if(c3.edit!==d){const h=d.err?'⚠ '+c3Esc(note?c3Text(d,0):isFinite(+d.v)?c3Num(d.v):'?'):c3Html(d,+d.v);if(h!==el.html){el.lab.innerHTML=h;el.html=h;el.lab.title=c3Lib(d)+(d.err?' — '+d.err:'')+(note?'':d.drive?' · pilote '+c3DrvLib(d.drive):' · de référence');}}
+    if(c3.edit!==d){const h=d.err?'⚠ '+c3Esc(note?c3Text(d,0):isFinite(+d.v)?c3Num(d.v):'?'):c3Html(d,+d.v);if(h!==el.html){el.lab.innerHTML=h;el.html=h;el.lab.title=c3Lib(d)+(d.err?' — '+d.err:'')+(note?'':d.drive?' · pilote '+c3DrvLib(d.drive)+(c3FxInfo(d)?' · '+c3FxTip(c3FxInfo(d)):''):' · de référence');}}
   });
   c3.els.forEach((el,id)=>{if(!alive.has(id)){el.g.remove();el.lab.remove();c3.els.delete(id);}});
   if(c3.sel&&c3List().indexOf(c3.sel)<0){c3.sel=c3List().find(x=>x.id===c3.sel.id)||null;c3.cardK='';} // annulation : objets recréés
@@ -91806,7 +92074,7 @@ function c3LabDown(ev,d){
     }
     c3Wake();};
   const up=()=>{removeEventListener('pointermove',mv,true);removeEventListener('pointerup',up,true);
-    if(moved){try{markDirty();}catch(x){}return;}
+    if(moved){try{c3Dirty();}catch(x){}return;}
     if(c3.sel===d&&d.drive){c3EditStart(d);return;}
     c3Select(d);};
   addEventListener('pointermove',mv,true);addEventListener('pointerup',up,true);
@@ -91822,10 +92090,10 @@ function c3Turn(d){
   else{
     const u=c3Side(d,g).u;let w=new THREE.Vector3().crossVectors(g.n,u).normalize();
     if(g.ax){ // entre trous : dans le sens des axes ↔ couchée dans le plan du dessus
-      d.flat=Math.abs(u.dot(g.ax))>0.5;d.side=null;d.off=null;d.slide=0;c3Side(d,g);try{markDirty();}catch(e){}c3Wake();return;}
+      d.flat=Math.abs(u.dot(g.ax))>0.5;d.side=null;d.off=null;d.slide=0;c3Side(d,g);try{c3Dirty();}catch(e){}c3Wake();return;}
     d.side=[+w.x.toFixed(6),+w.y.toFixed(6),+w.z.toFixed(6)];d.off=8;d.slide=c3SlideEdge(g,w);
   }
-  try{markDirty();}catch(e){}c3Wake();
+  try{c3Dirty();}catch(e){}c3Wake();
 }
 function c3EditStart(d){
   if(!d)return;
@@ -91833,15 +92101,14 @@ function c3EditStart(d){
   if(!d.drive){c3Select(d);c3Say('Cote de référence : elle suit la pièce. Passe-la en « Pilotante » pour la changer.');return;}
   c3Select(d);c3.edit=d;
   const el=c3.els.get(d.id);if(!el){c3.edit=null;return;}
-  el.lab.innerHTML='<input type="text" inputmode="decimal" aria-label="Nouvelle valeur de la cote" spellcheck="false">';el.html=null;
-  const inp=el.lab.querySelector('input');inp.value=c3Num(d.v);
+  el.lab.innerHTML='<input type="text" aria-label="Nouvelle valeur de la cote" spellcheck="false" autocomplete="off">';el.html=null;
+  const inp=el.lab.querySelector('input');c3FxField(inp,c3FxInput(d));
   setTimeout(()=>{try{inp.focus();inp.select();}catch(e){}},0);
   inp.addEventListener('pointerdown',e=>e.stopPropagation());
   inp.addEventListener('keydown',e=>{e.stopPropagation();
-    if(e.key==='Enter'){e.preventDefault();const v=c3Parse(inp.value);c3.edit=null;el.html=null;
-      const r=isFinite(v)?c3SetValue(d,v):'valeur illisible';
-      if(r!==true){c3Say('Refusé : '+r+'.',true);setTimeout(()=>c3EditStart(d),0);}
-      else c3Say('Pilote '+c3DrvLib(d.drive)+'.');c3Wake();}
+    if(e.key==='Enter'){e.preventDefault();const txt=inp.value;c3.edit=null;el.html=null;
+      const r=c3SetText(d,txt);c3SayFx(d,r);
+      if(r!==true)setTimeout(()=>c3EditStart(d),0);c3Wake();}
     else if(e.key==='Escape'){e.preventDefault();c3.edit=null;el.html=null;c3Wake();}});
   inp.addEventListener('blur',()=>{if(c3.edit===d){c3.edit=null;el.html=null;c3Wake();}});
   c3Wake();
@@ -91870,15 +92137,14 @@ function c3HoleEdit(d,k,span){
   if(!d||!span)return;c3Select(d);c3.edit=d;
   const el=c3.els.get(d.id);if(!el){c3.edit=null;return;}
   const HO=c3HoleOf(d),q=HO&&HO.parts.find(x=>x.k===k||x.dk===k);const cur=q?(q.k===k?q.dia:q.dv):NaN;
-  span.innerHTML='<input type="text" inputmode="decimal" aria-label="'+c3Esc(C3_FKEY[k]||k)+'" spellcheck="false">';el.html=null;
-  const inp=span.querySelector('input');inp.value=isFinite(cur)?c3Num(cur):'';
+  span.innerHTML='<input type="text" aria-label="'+c3Esc(C3_FKEY[k]||k)+'" spellcheck="false" autocomplete="off">';el.html=null;
+  const inp=span.querySelector('input');c3FxField(inp,isFinite(cur)?c3HoleFxTxt(HO.f,k,cur):'',58);
   setTimeout(()=>{try{inp.focus();inp.select();}catch(e){}},0);
   inp.addEventListener('pointerdown',e=>e.stopPropagation());inp.addEventListener('dblclick',e=>e.stopPropagation());
   const end=()=>{c3.edit=null;el.html=null;c3Wake();};
   inp.addEventListener('keydown',e=>{e.stopPropagation();
-    if(e.key==='Enter'){e.preventDefault();const v=c3Parse(inp.value);end();
-      const r=isFinite(v)?c3HoleSet(d,k,v):'valeur illisible';
-      if(r!==true)c3Say('Refusé : '+r+'.',true);else c3Say('Pilote '+c3Esc((HO.f.name||HO.f.id))+' › '+(C3_FKEY[k]||k)+' '+c3Num(v)+'.');}
+    if(e.key==='Enter'){e.preventDefault();const txt=inp.value;end();
+      const r=c3HoleSetText(d,k,txt);c3SayHole(HO.f,k,r);}
     else if(e.key==='Escape'){e.preventDefault();end();}});
   inp.addEventListener('blur',()=>{if(c3.edit===d)end();});
   c3Wake();
@@ -91904,7 +92170,7 @@ function c3CardSync(){
   const K=c3.card;if(!K)return;const d=c3.sel;
   if(!d||c3Tool){if(K.style.display!=='none')K.style.display='none';c3.cardK='';return;}
   const HOc=c3HoleOf(d);
-  const key=d.id+'|'+JSON.stringify([d.drive,d.tol,d.pre,d.post,d.prec,d.gdt,d.err,c3Num(d.v),d.l,d.r,d.sup,HOc&&HOc.parts,d.fmt,d.insp,d.name,d.show,d.inplane,c3RepKey(d)]);
+  const key=d.id+'|'+JSON.stringify([d.drive,d.tol,d.pre,d.post,d.prec,d.gdt,d.err,c3Num(d.v),d.l,d.r,d.sup,HOc&&HOc.parts,d.fmt,d.insp,d.name,d.show,d.inplane,c3RepKey(d),c3FxKey(d,HOc)]);
   K.style.display='flex';
   const top=c3Top();K.style.top=top+'px';K.style.maxHeight=Math.max(160,c3.layer.clientHeight-top-70)+'px';
   if(c3.cardK===key)return;
@@ -91916,12 +92182,12 @@ function c3CardSync(){
   h+='<div>'+(d.drive?'<span class="chip d">Pilotante</span>':'<span class="chip r">De référence</span>')+(d.err?' <span class="chip r" style="color:'+C3_ROUGE+';border-color:'+C3_ROUGE+'">'+c3Esc(d.err)+'</span>':'')+'</div>';
   h+='<div class="drv">'+(d.drive?'Pilote <b>'+c3Esc(c3DrvLib(d.drive))+'</b>':'Mesure seulement : elle suit la pièce')+'</div>';
   h+='<div class="seg"><button data-a="drive" class="'+(d.drive?'on':'')+'">Pilotante</button><button data-a="ref" class="'+(d.drive?'':'on')+'">De référence</button></div>';
-  h+='<div class="row"><label>Valeur</label><input data-k="val" value="'+c3Esc(c3Num(d.v))+'"'+(d.drive?'':' disabled')+'></div>';
+  h+='<div class="row"><label>Valeur</label><input data-k="val" value="'+c3Esc(d.drive?c3FxInput(d):c3Num(d.v))+'"'+(d.drive?' title="'+C3_FX_TITRE+'"':' disabled')+' autocomplete="off"></div>';
   if(HOc){ // toutes les cotes du trou, chacune pilote la fonction Perçage
     h+='<div class="sec"><div class="h">Le trou ('+c3Esc(HOc.f.name||'Perçage')+')</div>';
     HOc.parts.forEach(q=>{if(q.txt)return;
-      h+='<div class="row"><label>'+c3Esc(C3_FKEY[q.k]||q.k)+'</label><input data-k="hk:'+q.k+'" value="'+c3Esc(c3Num(q.dia))+'"></div>';
-      if(q.dk)h+='<div class="row"><label>'+c3Esc(C3_FKEY[q.dk]||q.dk)+'</label><input data-k="hk:'+q.dk+'" value="'+c3Esc(c3Num(q.dv))+'"></div>';});
+      h+='<div class="row"><label>'+c3Esc(C3_FKEY[q.k]||q.k)+'</label><input data-k="hk:'+q.k+'" value="'+c3Esc(c3HoleFxTxt(HOc.f,q.k,q.dia))+'" title="'+C3_FX_TITRE+'" autocomplete="off"></div>';
+      if(q.dk)h+='<div class="row"><label>'+c3Esc(C3_FKEY[q.dk]||q.dk)+'</label><input data-k="hk:'+q.dk+'" value="'+c3Esc(c3HoleFxTxt(HOc.f,q.dk,q.dv))+'" title="'+C3_FX_TITRE+'" autocomplete="off"></div>';});
     h+='<div class="note">Chaque valeur pilote la fonction Perçage. Double-clic sur un nombre de la cote : même chose.</div></div>';
   }
   {const I=d.insp||{};
@@ -91968,6 +92234,7 @@ function c3CardSync(){
   h+='<div class="note">Glisser la cote pour la placer'+(d.k==='pcd'?' autour du cercle de perçage.':d.k==='dia'?' autour du trou.':d.k==='angle'?' : plus près ou plus loin de l’arête.':' : plus loin, ou le long de la face.')+'</div>';
   h+='<div class="act"><button data-a="turn" title="'+(d.k==='angle'?'Coter l’angle supplémentaire (180° − angle)':'La cote passe sur la face voisine')+'">'+(d.k==='angle'?(d.hax?(d.hv?'↻ Depuis l’axe horizontal':'↻ Depuis l’axe vertical'):d.polar&&(C3G.get(d)||{}).plane?(d.par?'↻ Depuis la normale':'↻ Le long de la face'):'↻ Supplémentaire'):d.k==='pcd'?'↻ Autre côté':'↻ Autre face')+'</button>'+(d.k==='dia'?'<button data-a="plan" title="'+(d.inplane?'Cote déportée : trait en biais, palier et texte':'Cote couchée dans le plan du cercle : trait '+(c3IsRad(d)?'de rayon':'de diamètre')+' et flèches sur le bord')+'">'+(d.inplane?'↗ Déportée':'⊙ Dans le plan')+'</button>':'')+(d.drive?'<button data-a="choose">Ce qui bouge…</button>':'')+'<button data-a="del">Supprimer</button></div>';
   K.innerHTML=h;
+  K.querySelectorAll('input[data-k="val"],input[data-k^="hk:"]').forEach(i=>{i._parFx=1;}); // formule lue ici, pas par le filet ƒx global
   K.onclick=c3CardClick;K.onchange=c3CardChange;
 }
 function c3NoteCard(K,d){
@@ -92001,7 +92268,7 @@ function c3CardClick(e){
   if(a==='iso'){c3IsoLoc(d);return;}
   if(a==='pcd'){c3MakePcd(d.a);return;}
   if(a==='hax'){c3MakeHax(d.a);return;}
-  if(a==='showall'){try{docPushUndo('affichage des cotes');}catch(x){}c3List().forEach(x=>{if(c3IsNote(x))return;if(d.show)x.show=d.show;else delete x.show;});try{markDirty();}catch(x){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';c3Wake();return;}
+  if(a==='showall'){try{docPushUndo('affichage des cotes');}catch(x){}c3List().forEach(x=>{if(c3IsNote(x))return;if(d.show)x.show=d.show;else delete x.show;});try{c3Dirty();}catch(x){}c3.els.forEach(el=>{el.html=null;});c3.cardK='';c3Wake();return;}
   if(a==='plan'){c3Edit(d,'présentation de la cote',()=>{if(d.inplane)delete d.inplane;else d.inplane=true;});return;}
   if(a==='gadd'){c3Edit(d,'cadre de tolérance',()=>{d.gdt=d.gdt||[];d.gdt.push({sym:d.k==='dia'?'pos':'par',dia:d.k==='dia',val:0.05,mod:'',refs:[{l:'A',m:''}]});});return;}
   if(a==='gdel'){c3Edit(d,'cadre de tolérance',()=>{d.gdt.splice(+b.dataset.i,1);});return;}
@@ -92011,15 +92278,15 @@ function c3Edit(d,lab,fn){
   // une étape d'annulation seulement si la cote change vraiment (un menu envoie « input » puis « change »)
   const b=JSON.stringify(d);fn();if(JSON.stringify(d)===b)return;
   const was=JSON.parse(b);Object.keys(d).forEach(k=>{delete d[k];});Object.assign(d,was);
-  try{docPushUndo(lab);}catch(e){}fn();try{markDirty();}catch(e){}c3.cardK='';const el=c3.els.get(d.id);if(el)el.html=null;c3Wake();}
+  try{docPushUndo(lab);}catch(e){}fn();try{c3Dirty();}catch(e){}c3.cardK='';const el=c3.els.get(d.id);if(el)el.html=null;c3Wake();}
 function c3CardChange(e){
   const t=e.target,d=c3.sel;if(!t||!d)return;
   const k=t.dataset.k,gk=t.dataset.gk;
-  if(k&&k.indexOf('hk:')===0){const hk=k.slice(3),v=c3Parse(t.value),r=isFinite(v)?c3HoleSet(d,hk,v):'valeur illisible';
-    if(r!==true)c3Say('Refusé : '+r+'.',true);else c3Say('Pilote '+(C3_FKEY[hk]||hk)+' '+c3Num(v)+'.');c3.cardK='';c3Wake();return;}
+  if(k&&k.indexOf('hk:')===0){const hk=k.slice(3),HO=c3HoleOf(d),r=c3HoleSetText(d,hk,t.value);
+    if(HO)c3SayHole(HO.f,hk,r);else if(r!==true)c3Say('Refusé : '+r+'.',true);c3.cardK='';c3Wake();return;}
   if(k==='dl'){c3Edit(d,'référence',()=>{d.l=t.value;});return;}
   if(k==='rpar'||k==='rproc'||k==='rtxt'||k==='rval'){c3Edit(d,'rugosité',()=>{d.r=d.r||{};const f={rpar:'par',rproc:'proc',rtxt:'txt',rval:'val'}[k];d.r[f]=k==='rval'?String(c3Parse(t.value)||''):t.value;c3.rgLast=Object.assign({},d.r);});return;}
-  if(k==='val'){const v=c3Parse(t.value);const r=isFinite(v)?c3SetValue(d,v):'valeur illisible';if(r!==true){c3Say('Refusé : '+r+'.',true);t.value=c3Num(d.v);}else c3Say('Pilote '+c3DrvLib(d.drive)+'.');c3.cardK='';c3Wake();return;}
+  if(k==='val'){const r=c3SetText(d,t.value);c3SayFx(d,r);if(r!==true)t.value=c3FxInput(d);c3.cardK='';c3Wake();return;}
   if(k==='tolm'){c3Edit(d,'tolérance',()=>{const m=t.value;d.tol=m?{m,s:0.1,hi:0.1,lo:-0.1,cls:m==='cls'?(d.k==='dia'?'H7':'h7'):''}:null;});return;}
   if(k==='tols'){c3Edit(d,'±',()=>{d.tol.s=Math.abs(+t.value)||0;});return;}
   if(k==='tolhi'){c3Edit(d,'+',()=>{d.tol.hi=+t.value||0;});return;}
@@ -92037,6 +92304,10 @@ function c3CardChange(e){
   if(k==='show'){c3Edit(d,'affichage de la cote',()=>{if(t.value)d.show=t.value;else delete d.show;});return;}
   if(k==='name'){const v=String(t.value||'').trim();
     if(v&&c3List().some(x=>x!==d&&c3Name(x)===v)){c3Say('Le nom « '+v+' » est déjà pris par une autre cote.',true);t.value=c3Name(d);return;}
+    const I=c3FxInfo(d); // la cote porte un paramètre du même nom : il est renommé avec elle (partout où il sert)
+    if(I&&I.n&&I.n===c3Name(d)&&v&&v!==I.n&&typeof PAR_ID!=='undefined'&&PAR_ID.test(v)){const r=c3FxRenameParam(d,I,v);
+      if(r!==true){c3Say('Refusé : '+r+'.',true);t.value=c3Name(d);return;}
+      c3Say('Paramètre « '+I.n+' » renommé « '+v+' ».');c3.cardK='';const el=c3.els.get(d.id);if(el)el.html=null;c3Wake();return;}
     c3Edit(d,'nom de la cote',()=>{if(v)d.name=v;else delete d.name;});return;}
   if(gk){const box=t.closest('[data-g]'),g=d.gdt[+box.dataset.g];if(!g)return;
     c3Edit(d,'cadre de tolérance',()=>{
@@ -92070,7 +92341,7 @@ function c3BtnSync(){const b=c3.btn;if(!b)return;b.classList.toggle('on',!!c3Too
 function c3Eye(){
   // bouton œil / Maj+D : quelque chose de caché → tout montrer ; sinon tout cacher
   const some=c3.hidden||c3List().some(d=>d.hid);
-  if(some){let k=0;c3List().forEach(d=>{if(d.hid){delete d.hid;k++;}});if(k)try{markDirty();}catch(e){}c3Hide(false);}
+  if(some){let k=0;c3List().forEach(d=>{if(d.hid){delete d.hid;k++;}});if(k)try{c3Dirty();}catch(e){}c3Hide(false);}
   else c3Hide(true);
 }
 function c3Hide(h){
@@ -92090,7 +92361,7 @@ function c3FeatOf(d){
   }catch(e){return null;}
 }
 function c3OfFeat(fid){return c3List().filter(d=>{const f=c3FeatOf(d);return f&&f.id===fid;});}
-function c3HideSet(L,h){if(!L.length)return;L.forEach(d=>{if(h)d.hid=true;else delete d.hid;if(h&&c3.sel===d)c3.sel=null;});if(!h&&c3.hidden)c3.hidden=false;try{markDirty();}catch(e){}c3.cardK='';c3Hide(c3.hidden);}
+function c3HideSet(L,h){if(!L.length)return;L.forEach(d=>{if(h)d.hid=true;else delete d.hid;if(h&&c3.sel===d)c3.sel=null;});if(!h&&c3.hidden)c3.hidden=false;try{c3Dirty();}catch(e){}c3.cardK='';c3Hide(c3.hidden);}
 function c3Menu(ev,d){
   // clic droit sur une cote : cacher celle-ci, cacher / montrer celles de sa fonction, tout montrer, supprimer
   ev.preventDefault();ev.stopPropagation();
@@ -92115,11 +92386,15 @@ function c3CtxSync(t){
   else if(t&&t.kind==='sketch')L=c3List().filter(d=>{const f=c3FeatOf(d);return (d.drive&&d.drive.t==='dim'&&d.drive.sk===t.id)||(f&&f.sketchId===t.id);});
   let a=document.getElementById('ctxC3a');
   const fa=t&&t.kind==='feature'?c3Feat(t.id):null;
-  if(fa&&!L.length){
+  if(fa){
+    // V1.1.4 : aussi quand la fonction a déjà des cotes 3D → « qui manquent » (une cote d'esquisse à formule, non reprise
+    // avant V1.1.4) ; c3AutoMake ne repose jamais un réglage déjà tenu (c3AutoHas)
+    const plus=L.length>0;
     if(!a){a=document.createElement('button');a.type='button';a.id='ctxC3a';M.appendChild(a);}
-    a.textContent='📐 Poser ses cotes 3D';a.style.display='';
+    a.textContent=plus?'📐 Poser les cotes 3D qui manquent':'📐 Poser ses cotes 3D';a.style.display='';
     a.onclick=e=>{e.stopPropagation();try{hideCtx();}catch(x){}let k=0;try{k=c3AutoFeat(fa);}catch(x){k=0;}
-      if(k){if(c3.hidden)c3Hide(false);try{markDirty();}catch(x){}c3Say(k+' cote'+(k>1?'s':'')+' 3D posée'+(k>1?'s':'')+'.');}else c3Say('Aucune cote 3D à poser pour « '+(fa.name||fa.id)+' ».',true);c3Wake();};
+      if(k){if(c3.hidden)c3Hide(false);try{c3Dirty();}catch(x){}c3Say(k+' cote'+(k>1?'s':'')+' 3D posée'+(k>1?'s':'')+'.');}
+      else c3Say(plus?'Rien ne manque : les cotes 3D de « '+(fa.name||fa.id)+' » sont toutes posées.':'Aucune cote 3D à poser pour « '+(fa.name||fa.id)+' ».',!plus);c3Wake();};
   }else if(a)a.style.display='none';
   if(!L.length){if(b)b.style.display='none';return;}
   if(!b){b=document.createElement('button');b.type='button';b.id='ctxC3';M.appendChild(b);}
@@ -92862,7 +93137,50 @@ function ppSuggestCtx(Rs,act,prev){
       why:'Comme tu l’as fait sur '+h.from+'.',
       lines:L.map(x=>x.e.pts),cmds:()=>ppEdgeCmds(kind,pick(L),h.v)});
   });
+  // ── 4. V1.1.3 : les arêtes vives de ce que l'on vient de faire (Fred, 27/11 : « une esquisse une extrusion »
+  //    → « rien ») — arêtes verticales d'un plot, arêtes du dessus (ou du bord d'une poche, entrée des trous),
+  //    pied d'un plot posé sur la pièce ; seulement quand ni les coins ni les habitudes n'ont rien à dire
+  //    (une poche ne propose toujours que ses coins : pas envahissante) ──
+  if(S.length)return ppKeep(S);
+  const libre=L=>L.length>0;
+  const dims=ppExtent(all.filter(mine),up),hole=ppIsHole(F.id);
+  const outM=all.filter(x=>mine(x)&&x.c.conv==='out'&&ppSharp(x.e,'out'));
+  const vert=outM.filter(x=>x.c.ori==='ax'&&x.e.len>=1);
+  if(libre(vert)&&!hole){
+    const hr=ppHabit(false,10),r=hr||ppNice(dims.min/10);
+    S.push({key:'plot:'+F.id+':vert',score:1.9,kind:'fillet',
+      title:'Arrondir '+(vert.length>1?'les '+vert.length+' arêtes verticales':'l’arête verticale')+' de '+nm+' · R'+ppNum(r),
+      why:hr?'Au rayon de ton dernier congé : une arête vive blesse et s’abîme.':'Une arête vive blesse et s’abîme : R'+ppNum(r)+', environ le dixième de la largeur.',
+      lines:vert.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('fillet',pick(vert),r)});
+  }
+  const hiOf=x=>Math.max(...x.e.pts.map(p=>ppDot(p,up)));
+  const zt=outM.length?Math.max(...outM.map(hiOf)):0;
+  const top=outM.filter(x=>x.c.ori!=='ax'&&x.e.pts.every(p=>Math.abs(ppDot(p,up)-zt)<0.01));
+  if(libre(top)){
+    const v=ppHabit(true,2)||(Math.hypot(...B.size)<80?0.5:1),bord=top.every(x=>x.c.role==='bord');
+    const n=top.length,lieu=hole?(n>1?'à l’entrée des '+n+' trous':'à l’entrée du trou'):(n>1?'sur les '+n+' arêtes du '+(bord?'bord':'dessus'):'sur l’arête du '+(bord?'bord':'dessus'));
+    S.push({key:'plot:'+F.id+':haut',score:1.8,kind:'chamfer',title:'Chanfrein '+ppNum(v)+' '+lieu+' de '+nm,
+      why:'Casser les angles vifs'+(hole?' : le trou s’ouvre sans bavure, la vis entre droit.':' : rien ne coupe, rien ne s’abîme.'),
+      lines:top.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('chamfer',pick(top),v)});
+  }
+  const pied=all.filter(x=>mine(x)&&x.c.conv==='in'&&x.c.ori!=='ax'&&x.c.role==='bord'&&ppSharp(x.e,'in'));
+  if(libre(pied)&&!hole){
+    const r=ppHabit(false,5)||Math.min(5,ppNice(dims.min/20));
+    S.push({key:'plot:'+F.id+':pied',score:1.7,kind:'fillet',
+      title:'Congé R'+ppNum(r)+' au pied de '+nm+' ('+pied.length+' arête'+(pied.length>1?'s':'')+')',
+      why:'Un congé au pied renforce '+nm+' et évite l’angle vif où la pièce casse.',
+      lines:pied.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('fillet',pick(pied),r)});
+  }
   return ppKeep(S);
+}
+const PP_NICE=[0.5,1,1.5,2,2.5,3,4,5,6,8,10,12,15,20,25];
+function ppNice(v){let b=PP_NICE[0];PP_NICE.forEach(n=>{if(Math.abs(n-v)<Math.abs(b-v))b=n;});return b;} // valeur ronde la plus proche
+function ppExtent(L,up){
+  // largeur et longueur de ce que l'on vient de faire, vues dans l'axe d'outil
+  const ref=Math.abs(up[0])<0.9?[1,0,0]:[0,1,0],u=ppNorm(ppCross(up,ref)),v=ppCross(up,u);
+  let a0=Infinity,a1=-Infinity,b0=Infinity,b1=-Infinity;
+  L.forEach(x=>x.e.pts.forEach(p=>{const a=ppDot(p,u),b=ppDot(p,v);if(a<a0)a0=a;if(a>a1)a1=a;if(b<b0)b0=b;if(b>b1)b1=b;}));
+  return a1>a0&&b1>b0?{min:Math.min(a1-a0,b1-b0),max:Math.max(a1-a0,b1-b0)}:{min:10,max:10};
 }
 function ppTapSize(w){return w<30?'M3':w<60?'M4':w<120?'M6':'M8';}
 function ppTopFace(Rs,ztop){
