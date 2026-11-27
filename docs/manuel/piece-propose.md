@@ -27,12 +27,13 @@ Quand on vient de faire une fonction (ou d'en modifier une), ConceptCAD regarde 
 | **Un congé ou un chanfrein** sur une arête | **le même** sur les arêtes pareilles de la même fonction (« Même congé R4 sur les 3 autres coins »), puis sur les mêmes arêtes ailleurs sur la pièce (« … sur les 4 coins de Découpe Esquisse 3 ») |
 | **Une poche, une découpe, une extrusion…** qui laisse des coins vifs creux | **les arrondir** au rayon de la plus petite fraise de la FAO (aucune fraise ne fait de coin vif) : « Arrondir les 4 coins de Découpe Esquisse 2 · R3 » |
 | La même chose, **une deuxième fois** | ce que l'on a fait la première fois : les coins au même rayon, le même chanfrein sur le bord (« Chanfrein 0,5 sur les 4 arêtes du bord de Découpe Esquisse 3 — comme tu l'as fait sur Découpe Esquisse 2 ») |
-| **Un plot** (une extrusion qui ajoute de la matière), quand rien de ce qui précède ne s'applique | **arrondir ses arêtes verticales** (« Arrondir les 4 arêtes verticales de Extrusion Esquisse 1 · R6 » : rayon de ton dernier congé, sinon environ le dixième de la largeur), **casser les arêtes du dessus** (« Chanfrein 1 sur les 4 arêtes du dessus… » : 0,5 sur une pièce de moins de 80 mm, 1 au-delà) et, pour un plot posé sur la pièce, **un congé au pied** |
-| **Un perçage** | un chanfrein **à l'entrée des trous** |
+| **Un plot** (une extrusion qui ajoute de la matière), dès la première fonction d'une pièce neuve, quand rien de ce qui précède ne s'applique | **arrondir ses arêtes verticales** (« Arrondir les 4 arêtes verticales de Extrusion Esquisse 1 · R1 »), **casser les arêtes du dessus** (« Chanfrein 0,5 sur les 4 arêtes du dessus… ») et, pour un plot posé sur la pièce, **un congé au pied** (R0,5) |
+| **Un perçage** | un chanfrein 0,5 **à l'entrée des trous** |
 
 - **Les arêtes pareilles** : même genre (coin, arête du bord, arête du fond, trou), même hauteur, même longueur pour une arête courbe. Le tour d'un bloc n'est pas pris pour le bord d'une poche.
 - **Les coins** ne sont proposés que là où une fraise peut descendre, dans l'axe de chaque posage et de chaque opération en 3+2 : le fond d'une poche ouverte sur le côté, sous un plafond, n'est pas proposé à une fraise verticale. Sans FAO : l'axe Z et la liste d'outils de départ.
 - Le pli qu'un chanfrein laisse n'est pas une arête vive : un chanfrein qui a déjà fait le tour d'un bord ne propose rien de plus.
+- **Les valeurs** d'un plot ou d'un perçage sont petites (R1, chanfrein 0,5, pied R0,5) : de quoi casser une arête vive. Si l'on a déjà fait un congé ou un chanfrein pendant la séance, sa valeur est reprise à la place (jusqu'à R5 pour les arêtes verticales, 2 pour le reste).
 - Les habitudes ne durent que le temps de la séance.
 
 ### Survoler, faire, refuser

@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.1.4';
+const APP_VER='V1.1.5';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -93052,10 +93052,10 @@ function ppAction(prev,cur){
   // la fonction ajoutée (la dernière), sinon celle dont un réglage ou l'esquisse a changé ; une fonction
   // retirée (annulation, suppression) ou une autre pièce ouverte : rien à suivre
   if(!prev||!cur||!cur.doc||prev.doc!==cur.doc)return null;
+  for(const id of prev.f.keys())if(!cur.f.has(id))return null; // avant les ajouts : un document rempli à nouveau n'est pas « ajouté »
   const F=(cur.doc.features||[]).filter(f=>f&&f.id&&!f.repeatId);
   const added=F.filter(f=>!prev.f.has(f.id));
   if(added.length)return {f:added[added.length-1],nouv:true};
-  for(const id of prev.f.keys())if(!cur.f.has(id))return null;
   const chg=F.find(f=>prev.f.get(f.id)!==cur.f.get(f.id));
   if(chg)return {f:chg,nouv:false};
   const g=F.find(f=>f.sketchId&&prev.s.has(f.sketchId)&&prev.s.get(f.sketchId)!==cur.s.get(f.sketchId));
@@ -93143,21 +93143,21 @@ function ppSuggestCtx(Rs,act,prev){
   //    (une poche ne propose toujours que ses coins : pas envahissante) ──
   if(S.length)return ppKeep(S);
   const libre=L=>L.length>0;
-  const dims=ppExtent(all.filter(mine),up),hole=ppIsHole(F.id);
+  const hole=ppIsHole(F.id); // V1.1.5 : petites valeurs, sans regarder la taille (Fred : « les valeurs sont trop grandes »)
   const outM=all.filter(x=>mine(x)&&x.c.conv==='out'&&ppSharp(x.e,'out'));
   const vert=outM.filter(x=>x.c.ori==='ax'&&x.e.len>=1);
   if(libre(vert)&&!hole){
-    const hr=ppHabit(false,10),r=hr||ppNice(dims.min/10);
+    const hr=ppHabit(false,5),r=hr||1;
     S.push({key:'plot:'+F.id+':vert',score:1.9,kind:'fillet',
       title:'Arrondir '+(vert.length>1?'les '+vert.length+' arêtes verticales':'l’arête verticale')+' de '+nm+' · R'+ppNum(r),
-      why:hr?'Au rayon de ton dernier congé : une arête vive blesse et s’abîme.':'Une arête vive blesse et s’abîme : R'+ppNum(r)+', environ le dixième de la largeur.',
+      why:'Une arête vive blesse et s’abîme'+(hr?' : au rayon de ton dernier congé.':'.'),
       lines:vert.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('fillet',pick(vert),r)});
   }
   const hiOf=x=>Math.max(...x.e.pts.map(p=>ppDot(p,up)));
   const zt=outM.length?Math.max(...outM.map(hiOf)):0;
   const top=outM.filter(x=>x.c.ori!=='ax'&&x.e.pts.every(p=>Math.abs(ppDot(p,up)-zt)<0.01));
   if(libre(top)){
-    const v=ppHabit(true,2)||(Math.hypot(...B.size)<80?0.5:1),bord=top.every(x=>x.c.role==='bord');
+    const v=ppHabit(true,2)||0.5,bord=top.every(x=>x.c.role==='bord');
     const n=top.length,lieu=hole?(n>1?'à l’entrée des '+n+' trous':'à l’entrée du trou'):(n>1?'sur les '+n+' arêtes du '+(bord?'bord':'dessus'):'sur l’arête du '+(bord?'bord':'dessus'));
     S.push({key:'plot:'+F.id+':haut',score:1.8,kind:'chamfer',title:'Chanfrein '+ppNum(v)+' '+lieu+' de '+nm,
       why:'Casser les angles vifs'+(hole?' : le trou s’ouvre sans bavure, la vis entre droit.':' : rien ne coupe, rien ne s’abîme.'),
@@ -93165,22 +93165,13 @@ function ppSuggestCtx(Rs,act,prev){
   }
   const pied=all.filter(x=>mine(x)&&x.c.conv==='in'&&x.c.ori!=='ax'&&x.c.role==='bord'&&ppSharp(x.e,'in'));
   if(libre(pied)&&!hole){
-    const r=ppHabit(false,5)||Math.min(5,ppNice(dims.min/20));
+    const r=ppHabit(false,2)||0.5;
     S.push({key:'plot:'+F.id+':pied',score:1.7,kind:'fillet',
       title:'Congé R'+ppNum(r)+' au pied de '+nm+' ('+pied.length+' arête'+(pied.length>1?'s':'')+')',
       why:'Un congé au pied renforce '+nm+' et évite l’angle vif où la pièce casse.',
       lines:pied.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('fillet',pick(pied),r)});
   }
   return ppKeep(S);
-}
-const PP_NICE=[0.5,1,1.5,2,2.5,3,4,5,6,8,10,12,15,20,25];
-function ppNice(v){let b=PP_NICE[0];PP_NICE.forEach(n=>{if(Math.abs(n-v)<Math.abs(b-v))b=n;});return b;} // valeur ronde la plus proche
-function ppExtent(L,up){
-  // largeur et longueur de ce que l'on vient de faire, vues dans l'axe d'outil
-  const ref=Math.abs(up[0])<0.9?[1,0,0]:[0,1,0],u=ppNorm(ppCross(up,ref)),v=ppCross(up,u);
-  let a0=Infinity,a1=-Infinity,b0=Infinity,b1=-Infinity;
-  L.forEach(x=>x.e.pts.forEach(p=>{const a=ppDot(p,u),b=ppDot(p,v);if(a<a0)a0=a;if(a>a1)a1=a;if(b<b0)b0=b;if(b>b1)b1=b;}));
-  return a1>a0&&b1>b0?{min:Math.min(a1-a0,b1-b0),max:Math.max(a1-a0,b1-b0)}:{min:10,max:10};
 }
 function ppTapSize(w){return w<30?'M3':w<60?'M4':w<120?'M6':'M8';}
 function ppTopFace(Rs,ztop){
@@ -93213,6 +93204,9 @@ function ppSigOf(){
   return s+'#'+t;
 }
 function ppTick(now){
+  // V1.1.5 : état de départ pris dès qu'un document est vu (Nouveau, ouverture), pas au premier calcul :
+  // sinon la 1re fonction d'une pièce neuve n'avait pas de suite (Fred, 27/11 : « à la 2nd extrusion »)
+  try{if(now-pp.sigT>PP_SIG_MS&&(!pp.base||pp.base.doc!==doc))pp.base=ppSnapBase();}catch(e){}
   if(now-pp.sigT>PP_SIG_MS){pp.sigT=now;const s=ppSigOf();if(s!==pp.want){pp.want=s;pp.wantT=now;pp.focus=-1;pp.hover=-1;
     if(pp.req){pp.req.items=[];pp.req.stale=true;}pp.list=[];pp.all=[];ppStripSync();}}
   // demande écrite ouverte : refaite sur la pièce modifiée
@@ -93780,7 +93774,9 @@ function ppPlace(){
   let left=14,bottom=14;
   const tw=vis(document.getElementById('treeWrap'));if(tw&&tw.left<lr.left+lr.width/2)left=Math.max(left,tw.right-lr.left+14);
   ['mfTl','faceInfo','mfStatus','mfStEng','mfStMeas'].forEach(id=>{const q=vis(document.getElementById(id));if(q&&q.top<lr.bottom&&q.bottom>lr.bottom-160)bottom=Math.max(bottom,lr.bottom-q.top+8);}); // la ligne d'état déborde de son cadre : ses textes comptent
-  const room=Math.max(260,lr.width-left-14);
+  // V1.1.5 : ni sur le panneau des paramètres à droite (la fenêtre Extrusion : la bande cachait le champ Distance)
+  let right=14;const pe=document.getElementById('props'),pw=vis(pe&&pe.closest&&pe.closest('.panel'));if(pw&&pw.left>lr.left+lr.width/2&&pw.bottom>lr.bottom-200)right=Math.max(right,lr.right-pw.left+14); // le cadre visible : une petite aide en haut ne compte pas
+  const room=Math.max(260,lr.width-left-right);
   let sb=bottom;
   const A=pp.askBar;
   if(A){const show=pp.askOpen;if((A.style.display==='none')===show)A.style.display=show?'':'none';

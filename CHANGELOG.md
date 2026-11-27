@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**810 versions**, de `2026-09-28b` à `V1.1.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**811 versions**, de `2026-09-28b` à `V1.1.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9071,5 +9071,34 @@ Vérifié dans Chromium (carte graphique réelle) sur l'exemple *Perçages*, ave
 - les deux cotes sont posées, la verticale avec ƒx ;
 - `160` sur dd1 met la verticale à 80 ; `dd1/4` donne 40 ; `70` retire la formule ;
 - une pièce où seule l'horizontale était posée reçoit la verticale par le clic droit, et un second clic ne pose rien.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.5 - La pièce qui propose : une suite dès la 1re extrusion, avec de petites valeurs
+
+Fred, 27/11 : « je ne comprends pas pourquoi je n'ai aucune propositions », « montre moi dans ton navigateur », puis « bon si j'ai une proposition à la 2nd extrusion mais les valeurs sont trop grandes »
+
+**Montré dans l'aperçu** (MERLIN-39-005, brouillon remis tel quel ensuite) : esquisse, Extrusion, Distance 3, OK → « Ensuite ? » avec 3 propositions ; survol de la 1re : les 4 arêtes verticales du plot en orange ; clic : congé posé (« Fait : … · Ctrl+Z pour revenir »).
+
+**1. Rien après la 1re extrusion d'une pièce neuve.** Cause : l'état de départ (ce qui existait avant la fonction) n'était pris qu'au premier calcul de la pièce. Après « Nouveau », la 1re extrusion devenait elle-même l'état de départ : aucune fonction « ajoutée », donc rien à proposer ; la 2e extrusion, elle, proposait. Correctif (`ppTick`) : l'état de départ est pris dès qu'un document est vu (Nouveau, ouverture), avant toute fonction. `ppAction` regarde d'abord les fonctions disparues : un document rempli d'un coup (ouverture d'une autre pièce dans la même fenêtre) n'est pas pris pour des fonctions ajoutées.
+
+**2. Valeurs trop grandes.** Un plot de 150 mm proposait R15 et un chanfrein de 1. Les valeurs sont maintenant petites et fixes :
+- arêtes verticales du plot : **R1** ;
+- arêtes du dessus, entrée des trous d'un perçage : **chanfrein 0,5** ;
+- pied d'un plot posé sur la pièce : **congé R0,5**.
+
+Si un congé ou un chanfrein a déjà été fait pendant la séance, sa valeur est reprise (jusqu'à R5 pour les arêtes verticales, 2 pour le reste), comme avant.
+
+**3. La bande cachait le panneau des paramètres** (vu en le montrant) : elle s'étendait jusqu'au bord droit de la vue et, fenêtre Extrusion ouverte, cachait le champ Distance. Correctif (`ppPlace`) : la bande s'arrête 14 px avant le panneau de droite quand celui-ci est déplié ; avec la seule petite aide en haut, elle garde toute la largeur.
+
+`src/93-piece-propose.js` ; manuel *La pièce qui propose* (valeurs du plot et du perçage).
+
+**Test** : `test_piece_propose` passe à 109 contrôles :
+- 1re fonction d'une pièce neuve proposée ;
+- document rempli d'un coup : rien ;
+- valeurs R1 / 0,5 / R0,5 ; habitude reprise d'abord ;
+- la bande évite le panneau.
+
+Vérifié dans Chromium (serveur d'essai à part, le brouillon de Fred n'est pas touché) : Nouveau, esquisse, extrusion, OK → 3 propositions dès la 1re extrusion (« Arrondir les 4 arêtes verticales … · R1 », « Chanfrein 0,5 sur les 4 arêtes du dessus … ») ; 2e plot posé dessus : R1, chanfrein 0,5, « Congé R0,5 au pied » ; bande arrêtée avant le panneau ouvert, pleine largeur après OK.
 
 CACHE_VER et FORMES_VER inchangés.
