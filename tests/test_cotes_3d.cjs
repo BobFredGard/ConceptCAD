@@ -347,10 +347,18 @@ const s4=src('50-esquisse-4-dessin-cotes.js'),s60=src('60-trim-et-souris.js'),s9
    ok(c3FxRead('Ø12,5').T===12.5&&c3FxRead('R5').T===5&&c3FxRead('Rc').T===3&&c3FxRead('Rc*2').T===6&&c3FxRead('L/2 mm').T===25,'saisie : Ø, R, nom qui commence par R (Rc), unité');
    ok(c3FxRead('x = ').err&&c3FxRead('2*(').err,'saisie vide ou formule cassée : refusée');
    ok(c3SetText(Object.assign({},h,{drive:null}),'L')!==true,'cote de référence : ne prend pas de formule');
+   // V1.1.4 (Fred, 27/11 : rectangle dd1 = 150, verticale = dd1/2 → « on ne voit que la cote horizontale ») : une cote
+   // d'esquisse à formule est candidate comme les autres (avant : écartée, jamais reprise en 3D)
+   {const sk={id:'s9',points:{},entities:[],dims:[{id:'a',type:'distance',value:150,name:'dd1'},{id:'b',type:'distance',value:75,expr:'dd1/2'}]};
+    const S=c3SkSlopesM(sk,x=>x.dims[1].value,false);
+    ok(S.length===1&&S[0].dm.id==='b'&&Math.abs(S[0].s-1)<1e-9,'cote d’esquisse « dd1/2 » : candidate pour la cote 3D (pente 1)');}
    return out;
  })()`,c2);
  q.forEach(([b,m])=>chk(b,'ƒx : '+m));}
 chk(/inp\._parFx=1/.test(s92)&&/K\.querySelectorAll\('input\[data-k="val"\],input\[data-k\^="hk:"\]'\)\.forEach\(i=>\{i\._parFx=1;\}\)/.test(s92)&&/const r=c3SetText\(d,txt\);c3SayFx\(d,r\)/.test(s92)&&/c3HoleSetText\(d,k,txt\)/.test(s92),'ƒx : champs de la cote, de la carte et du trou lus par la cote 3D (liste des paramètres pendant la frappe)');
+chk(/const plus=L\.length>0;/.test(s92)&&/Poser les cotes 3D qui manquent/.test(s92)&&!/if\(fa&&!L\.length\)/.test(s92),'clic droit sur une fonction déjà cotée : « Poser les cotes 3D qui manquent » (pièce d’avant V1.1.4)');
+chk(/c3AfterAnim\(\(\)=>\{if\(!d\.drive\)return;try\{c3Refresh\(d\);\}catch\(e\)\{\}/.test(s92),'message après le mouvement : la cote est relue avant de dire sa formule (ƒx)');
+chk(/const free=sk\.dims\.filter\(dm=>dm&&!dm\.ref&&dm\.type!=='angle'&&isFinite\(parDimUser\(dm\)\)\)/.test(s92),'ƒx : les cotes d’esquisse à formule sont reprises en 3D à la création (avec leur formule)');
 chk(/c3FxRename\(re,oldN,newN\)/.test(src('51-parametres.js'))&&/hole:typeof holeName==='function'&&!f\.kw\?holeName:null/.test(src('51-parametres.js')),'ƒx : renommer un paramètre suit dans les cotes 3D ; un Perçage piloté garde un nom juste');
 chk(/if\(d\.ord\)return skOrdSeg\(d,A,B\)/.test(s4)&&/if\(d&&d\.ord\)return skOrdTextAt\(S,d\)/.test(s4)&&/if\(d\.ord\)\{skOrdDraw\(sk,d,st\);return;\}/.test(s4)&&/if\(d\.ord\)return skOrdTextTo\(sk,d,tx,ty\)/.test(s4),'esquisse : ordonnées dessinées, déplacées en famille');
 chk(/if\(skTool==='ord'\)\{skOrdClick\(sk,wx,wy\);return;\}/.test(s60)&&/skTool==='ord'&&skOrd&&\(e\.key==='Enter'\|\|e\.key==='Escape'\)/.test(s60)&&/if\(dd\.ord\)skOrdSyncW\(sk,dd\)/.test(s60),'esquisse : clic, Entrée / Échap, glisser de la ligne');

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**809 versions**, de `2026-09-28b` à `V1.1.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**810 versions**, de `2026-09-28b` à `V1.1.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9046,3 +9046,30 @@ Une poche ne propose toujours que ses coins : la bande ne devient pas plus envah
 **Manuel** : `docs/manuel/piece-propose.md`, tableau *La suite après chaque fonction* (plot, perçage).
 
 **Test** : `test_piece_propose` (106 contrôles, +5 : bloc seul, plot sur la pièce, perçage, habitude prioritaire ; le 31 dit maintenant que la poche de côté propose seulement les arêtes verticales de sa bouche) ; `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.4 - Cotes 3D : les cotes d'esquisse à formule sont reprises aussi
+
+Fred, 27/11 : « Si j'ai un esquisse avec un rectangle, donc 2 cotes, la cote horizontale s'appelle dd1 et est égale à 150 et la cote verticale = dd1/2, alors, on ne voit que la cote horizontale alors que l'on peut à tous moments vouloir changer la valeur… »
+
+**Cause** : à la création d'une fonction, la reprise des cotes de l'esquisse sur la pièce (`c3AutoSketch`) écartait toute cote d'esquisse qui porte une formule (`dm.expr`). Elle était vue comme « tenue par la formule ». Seule `dd1 = 150` arrivait donc sur la pièce, et la verticale `dd1/2` ne se voyait nulle part en 3D. Le même filtre servait au choix de « Qu'est-ce qui bouge ? » (`c3SkSlopesM`).
+
+**Correctif** (`src/92-cotes-3d.js`) :
+- les cotes d'esquisse à formule sont candidates comme les autres. La cote 3D garde la formule : repère **ƒx**, saisie qui montre `dd1/2`. Changer `dd1` (sur sa cote 3D ou ailleurs) fait suivre la verticale ;
+- on peut taper une autre formule (`dd1/4`) ou un nombre (`70`, qui retire la formule) à tout moment ;
+- **pièce déjà faite** : le clic droit sur une fonction qui a déjà des cotes 3D propose maintenant **📐 Poser les cotes 3D qui manquent**. Avant, le menu n'apparaissait que si la fonction n'en avait aucune. Rien n'est posé deux fois (`c3AutoHas`) ; s'il ne manque rien, le message le dit ;
+- le message après le mouvement de la pièce relit la cote d'abord. Sans cela, après un mouvement par pas (`70` → `dd1/2`), il disait « cote 75 » sans « — ƒx dd1/2 ».
+
+**Manuel** : *Cotes 3D › Cotation automatique* (cotes d'esquisse à formule) et *Paramètres et formules (ƒx)* (cas dd1 / dd1/2, pièce d'avant V1.1.4).
+
+**Test** : `test_cotes_3d` passe à 215 contrôles (+4) :
+- cote d'esquisse à formule candidate (pente 1) ;
+- reprise à la création ;
+- menu « qui manquent » ;
+- message relu.
+
+Vérifié dans Chromium (carte graphique réelle) sur l'exemple *Perçages*, avec l'esquisse de la plaque en `dd1 = 150` et `dd1/2` :
+- les deux cotes sont posées, la verticale avec ƒx ;
+- `160` sur dd1 met la verticale à 80 ; `dd1/4` donne 40 ; `70` retire la formule ;
+- une pièce où seule l'horizontale était posée reçoit la verticale par le clic droit, et un second clic ne pose rien.
+
+CACHE_VER et FORMES_VER inchangés.

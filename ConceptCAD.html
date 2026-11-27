@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.1.3';
+const APP_VER='V1.1.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -90775,7 +90775,9 @@ function c3AutoSketch(f){
   // l'écart de deux flancs parallèles, un Ø, un entraxe ou un axe ↔ flanc devient une cote 3D qui la pilote
   const sk=f.sketchId?c3Sk(f.sketchId):null;if(!sk||!Array.isArray(sk.dims)||!sk.dims.length)return 0;
   if(f.type!=='extrude'&&f.type!=='hole'&&f.type!=='revolve')return 0;
-  const free=sk.dims.filter(dm=>dm&&!dm.ref&&!(dm.expr!=null&&String(dm.expr).trim()!=='')&&dm.type!=='angle'&&isFinite(parDimUser(dm)));
+  // V1.1.4 : une cote d'esquisse à formule (« dd1/2 ») est reprise aussi (Fred, 27/11 : avec dd1 = 150 et la verticale = dd1/2,
+  // « on ne voit que la cote horizontale ») — la cote 3D garde la formule (ƒx) et peut la changer à tout moment
+  const free=sk.dims.filter(dm=>dm&&!dm.ref&&dm.type!=='angle'&&isFinite(parDimUser(dm)));
   if(!free.length)return 0;
   const E=id=>(sk.entities||[]).find(e=>e&&e.id===id);
   // faces par entité : « fid/eN/flanc » (extrusion) ; « ho/cI/… » cylindre du centre I (perçage)
@@ -90883,7 +90885,7 @@ function c3SkSlopesM(sk,M,wrap){
   // même chose pour une mesure quelconque M(esquisse) ; wrap : angle en degrés (écart ramené dans ±180)
   const m0=M(sk),out=[];
   (sk.dims||[]).forEach(dm=>{
-    if(!dm||dm.ref||(dm.expr!=null&&String(dm.expr).trim()!==''))return;
+    if(!dm||dm.ref)return; // V1.1.4 : une cote à formule aussi (la cote 3D la garde, ƒx)
     const u=parDimUser(dm);if(!isFinite(u))return;
     const du=dm.type==='angle'?1:Math.max(0.1,Math.abs(u)*0.02);
     let s=null;
@@ -91377,13 +91379,16 @@ function c3SetText(d,txt){
 }
 function c3AfterAnim(fn){
   // le message attend la fin du mouvement de la pièce : nom de la fonction et formule y sont alors définitifs
-  let n=0;const w=()=>{if(c3Anim&&!c3Anim.morph&&++n<80){setTimeout(w,40);return;}fn();};w();
+  let n=0;const w=()=>{if(c3Anim&&!c3Anim.morph&&++n<500){setTimeout(w,40);return;}fn();};w(); // 20 s au plus (pièce lourde : un rejeu par image)
 }
 function c3SayFx(d,r){
   if(r!==true){c3Say('Refusé : '+r+'.',true);return;}
   const warn=c3.fxWarn;c3.fxWarn='';
-  c3AfterAnim(()=>{if(!d.drive)return;const I=c3FxInfo(d),fx=I?(I.e&&!parIsNumber(I.e)?' — ƒx '+(I.n?I.n+' = ':'')+I.e:I.n?' — paramètre « '+I.n+' »':''):'';
-    c3Say('Pilote '+c3DrvLib(d.drive)+fx+'.'+(warn?' '+warn:''),!!warn);});
+  // V1.1.4 : la cote est relue d'abord — à la fin d'un mouvement par pas, sa valeur date de l'image d'avant, et c3FxInfo
+  // (qui compare cote et réglage) ne voyait pas encore la formule remise (message sans « ƒx » après 70 → dd1/2)
+  c3AfterAnim(()=>{if(!d.drive)return;try{c3Refresh(d);}catch(e){}const lib=c3DrvLib(d.drive),I=c3FxInfo(d);
+    const fx=I?(I.e&&!parIsNumber(I.e)?' — ƒx '+(I.n?I.n+' = ':'')+I.e:I.n&&lib.indexOf(I.n+' = ')<0?' — paramètre « '+I.n+' »':''):'';
+    c3Say('Pilote '+lib+fx+'.'+(warn?' '+warn:''),!!warn);});
 }
 function c3HoleFxTxt(f,k,v){let D=null;try{D=c3FxDrv({t:'feat',f:f.id,k});}catch(e){}return c3FxShow(D,v);}
 function c3HoleSetText(d,k,txt){
@@ -92381,11 +92386,15 @@ function c3CtxSync(t){
   else if(t&&t.kind==='sketch')L=c3List().filter(d=>{const f=c3FeatOf(d);return (d.drive&&d.drive.t==='dim'&&d.drive.sk===t.id)||(f&&f.sketchId===t.id);});
   let a=document.getElementById('ctxC3a');
   const fa=t&&t.kind==='feature'?c3Feat(t.id):null;
-  if(fa&&!L.length){
+  if(fa){
+    // V1.1.4 : aussi quand la fonction a déjà des cotes 3D → « qui manquent » (une cote d'esquisse à formule, non reprise
+    // avant V1.1.4) ; c3AutoMake ne repose jamais un réglage déjà tenu (c3AutoHas)
+    const plus=L.length>0;
     if(!a){a=document.createElement('button');a.type='button';a.id='ctxC3a';M.appendChild(a);}
-    a.textContent='📐 Poser ses cotes 3D';a.style.display='';
+    a.textContent=plus?'📐 Poser les cotes 3D qui manquent':'📐 Poser ses cotes 3D';a.style.display='';
     a.onclick=e=>{e.stopPropagation();try{hideCtx();}catch(x){}let k=0;try{k=c3AutoFeat(fa);}catch(x){k=0;}
-      if(k){if(c3.hidden)c3Hide(false);try{c3Dirty();}catch(x){}c3Say(k+' cote'+(k>1?'s':'')+' 3D posée'+(k>1?'s':'')+'.');}else c3Say('Aucune cote 3D à poser pour « '+(fa.name||fa.id)+' ».',true);c3Wake();};
+      if(k){if(c3.hidden)c3Hide(false);try{c3Dirty();}catch(x){}c3Say(k+' cote'+(k>1?'s':'')+' 3D posée'+(k>1?'s':'')+'.');}
+      else c3Say(plus?'Rien ne manque : les cotes 3D de « '+(fa.name||fa.id)+' » sont toutes posées.':'Aucune cote 3D à poser pour « '+(fa.name||fa.id)+' ».',!plus);c3Wake();};
   }else if(a)a.style.display='none';
   if(!L.length){if(b)b.style.display='none';return;}
   if(!b){b=document.createElement('button');b.type='button';b.id='ctxC3';M.appendChild(b);}
