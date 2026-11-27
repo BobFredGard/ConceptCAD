@@ -520,6 +520,7 @@ function mfRibbon(){
   grp('Cotes',[['pDim','Cote',mepT('dim'),'Outil cote unique : Ø, longueur, distance, angle'],
     ['pHole','Perçage',mepT('hole'),'Cotation perçage : Ø, lamage, fraisure, taraudage'],
     ['pHoles','Perçages auto',()=>{try{mepSetActive(true);mepAutoHoles();}catch(e){}},'Coter toutes les fonctions Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche'],
+    ['pDim','Cotes 3D',()=>{try{mepSetActive(true);mepToggle3D();}catch(e){}},'Les cotes 3D de la pièce dans la vue sélectionnée (sans vue choisie : toute la planche) ; de nouveau : retirées de cette vue seulement. Clic droit sur une vue : la même chose pour cette vue. Supprimez ensuite celles que vous ne gardez pas'],
     ['pEq','Égalités',()=>{try{mepSetActive(true);mepEqAuto();}catch(e){}},'Cotes d’égalité « = » : chaque cote coupée en son milieu par un axe de symétrie reçoit 2 cotes à points marquées « = » (bord → axe → bord) — cote sélectionnée, sinon vue sélectionnée, sinon toute la planche'],
     ['pNote','Note',mepT('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',mepT('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
@@ -891,7 +892,7 @@ function mfCube(){
    modélisation (sous le bandeau du haut) et le panneau latéral (santé, sélection, contraintes,
    cotes) passe dans le panneau de droite. Fermeture / retour en classique : tout revient à sa
    place d'origine (mêmes nœuds, déplacés — leurs gestionnaires restent attachés). */
-const MF_SK_LAB={select:'Sélection',line:'Ligne',rect:'Rectangle',slot:'Oblong',circle:'Cercle',polygon:'Polygone',text:'Texte',arc:'Arc',cpoint:'Point',hpoint:'Perçage',project:'Projeter',isect:'Intersection',dim:'Cote',coincident:'Coïncident',trim:'Ajuster',offset:'Décalage',chamfer:'Chanfrein',fillet:'Congé',
+const MF_SK_LAB={select:'Sélection',line:'Ligne',rect:'Rectangle',slot:'Oblong',circle:'Cercle',polygon:'Polygone',text:'Texte',arc:'Arc',cpoint:'Point',hpoint:'Perçage',project:'Projeter',isect:'Intersection',dim:'Cote',ord:'Ordonnées',coincident:'Coïncident',trim:'Ajuster',offset:'Décalage',chamfer:'Chanfrein',fillet:'Congé',
   h:'Horizontal',v:'Vertical',parallel:'Parallèle',perpendicular:'Perpend.',collinear:'Colinéaire',equal:'Égal',symmetric:'Symétrie',fix:'Fixe',tangent:'Tangence',coaxial:'Coaxial',midpoint:'Milieu',construction:'Constr.',
   skZoomIn:'Zoom +',skZoomOut:'Zoom −',skFit:'Cadrer',skGrid:'Grille',skRefs:'Arêtes',skParams:'Param.',skUndo:'Annuler',skRedo:'Rétablir'};
 function mfSkLabels(){

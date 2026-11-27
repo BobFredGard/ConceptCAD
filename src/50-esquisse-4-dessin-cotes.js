@@ -300,6 +300,7 @@ function drawSketch2D(){
   try{lpDessinSk(sk);}catch(e){} // V0.99.82 : élément survolé dans la fenêtre des liens perdus / en cours de réattribution
   // ⨯ Intersection : courbes de section candidates / retenues / survolées
   if(skTool==='isect'&&typeof skIsectDraw==='function'){try{skIsectDraw(sk);}catch(e){}}
+  if(skTool==='ord'){try{skOrdOverlay(sk);}catch(e){}} // zéro des ordonnées choisi (50-esquisse-98)
   // ⇄ Décalage : aperçu orange de la copie, survol de la chaîne (50-esquisse-93-decalage)
   if(skTool==='offset'){try{skOffDraw(sk);}catch(e){}}
   // brouillon + cote live (longueur/angle comme Fusion)
@@ -435,12 +436,14 @@ function rdDraw(sk,d,st){
 function dimTextAt(S,d){ // V0.11.23 : texte d'une cote linéaire SUR sa ligne de cote, glissé de d.sl le long d'elle
   // (l'entraxe glisse sa ligne entière par d.sl : texte au milieu). Avant : dimLabelPos ajoutait
   // ox/oy mais dimTextOnLine dessinait au milieu — le texte glissé ne bougeait pas, sa zone de clic si.
+  if(d&&d.ord)return skOrdTextAt(S,d); // ordonnée : la valeur au bout de son rappel
   const mx=(S.a.x+S.b.x)/2,my=(S.a.y+S.b.y)/2;
   const s=(d&&d.type!=='gap'&&isFinite(d.sl))?d.sl:0;if(!s)return{x:mx,y:my};
   const dx=S.b.x-S.a.x,dy=S.b.y-S.a.y,L=Math.hypot(dx,dy)||1e-9;
   return{x:mx+dx/L*s,y:my+dy/L*s};
 }
 function skDimTextTo(sk,d,tx,ty){ // V0.11.23 : amène le texte d'une cote linéaire en (tx,ty) monde : écart d.w (⊥) + glissement d.sl (∥)
+  if(d.ord)return skOrdTextTo(sk,d,tx,ty); // ordonnée : toute la famille suit
   let S=dimSeg(sk,d);if(!S)return false;
   if(d.type==='gap'){const s0=d.sl||0,bx=(S.a.x+S.b.x)/2-S.ux*s0,by=(S.a.y+S.b.y)/2-S.uy*s0;d.sl=(tx-bx)*S.ux+(ty-by)*S.uy;return true;}
   const M={x:(S.A.x+S.B.x)/2,y:(S.A.y+S.B.y)/2};
@@ -473,6 +476,7 @@ function dimSeg(sk,d){ // segment monde de la ligne de cote (offset perpendicula
     if(d.orient==='v'){const cx=(A.x+B.x)/2+w;return{a:{x:cx,y:A.y},b:{x:cx,y:B.y},A,B,nx:1,ny:0,w,hv:'v',cx};}
     return{a:{x:A.x+nx*w,y:A.y+ny*w},b:{x:B.x+nx*w,y:B.y+ny*w},A,B,nx,ny,w};}
   if(d.type==='distance'){const A=P[d.a],B=P[d.b];if(!A||!B)return null;
+    if(d.ord)return skOrdSeg(d,A,B); // ordonnée (50-esquisse-98)
     const w=(d.w!=null&&isFinite(d.w))?d.w:0;
     const L=Math.hypot(B.x-A.x,B.y-A.y)||1e-9,nx=-(B.y-A.y)/L,ny=(B.x-A.x)/L;
     if(d.orient==='h'){const cy=(A.y+B.y)/2+w;return{a:{x:A.x,y:cy},b:{x:B.x,y:cy},A,B,nx:0,ny:1,w,hv:'h',cy};}
@@ -689,7 +693,8 @@ function skDimOtherSegs(sk,d){
   const ws=(p,q,geo)=>{const[a,b]=w2s(p.x,p.y),[c,e]=w2s(q.x,q.y);out.push([a,b,c,e,!!geo]);};
   const ext=(L,T)=>{const s=skDimExtSeg(sk,L,T);if(s)ws(s[0],s[1],true);};
   try{
-    if(d.type==='length'||d.type==='distance'){const S=dimSeg(sk,d);if(!S)return out;
+    if(d.ord){const S=dimSeg(sk,d);if(S)ws(S.a,S.b,true);}
+    else if(d.type==='length'||d.type==='distance'){const S=dimSeg(sk,d);if(!S)return out;
       const off=(d.w!=null&&isFinite(d.w))?d.w:(d.type==='length'?5:0);
       const W=skDimWitLin(S,off,over);ws(S.A,W.Aex,true);ws(S.B,W.Bex,true);}
     else if(d.type==='distline'){const S=dimSeg(sk,d);if(!S)return out;
@@ -744,6 +749,7 @@ function drawSkDims(sk){
     skDimTxtCol=st;
     const vtxt=v=>{const t=(d.dia?'Ø':'')+(d.dia?2*v:v).toFixed(2);return d.ref?'('+t+')':t;};
     const over=10/skView.s; // dépassement des lignes de rappel
+    if(d.ord){skOrdDraw(sk,d,st);return;} // ordonnée (50-esquisse-98)
     if(d.type==='length'||d.type==='distance'){
       const S=dimSeg(sk,d);if(!S)return;
       const{A,B,nx,ny}=S,off=(d.w!=null&&isFinite(d.w))?d.w:(d.type==='length'?5:0);

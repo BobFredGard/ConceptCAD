@@ -776,6 +776,7 @@ svg.addEventListener('pointerdown',e=>{
     skProjAppui={sk,wx,wy};return;
   }
   if(skTool==='isect'){skIsectClickAt(sk,wx,wy,e);return;}
+  if(skTool==='ord'){skOrdClick(sk,wx,wy);return;} // cotes d'ordonnées (50-esquisse-98)
   if(skTool==='trim'){
     const ent=nearestEntity(sk,wx,wy,SK_PICKX,true);
     if(!ent){skStatus('Ajuster : cliquez un tronçon de ligne, d’arc, de cercle ou de spline près d’une intersection.');return;}
@@ -849,6 +850,7 @@ svg.addEventListener('pointermove',e=>{
       if(dd.type==='length'||dd.type==='distance'||dd.type==='distline'){
         const S=dimSeg(sk,dd);
         if(S)dd.w=(skDimDrag.w0!=null?skDimDrag.w0:0)+ddx*S.nx+ddy*S.ny;
+        if(dd.ord)skOrdSyncW(sk,dd); // ordonnées : toute la famille reste alignée
       }else if(dd.type==='gap'){
         const S=dimSeg(sk,dd);
         if(S)dd.sl=(skDimDrag.sl0||0)+ddx*S.ux+ddy*S.uy;
@@ -973,7 +975,7 @@ svg.addEventListener('pointermove',e=>{
     const C=sk.points[skArcC];let a2=Math.atan2(wy-C.y,wx-C.x);let d=a2-skArcA1;while(d<=0)d+=Math.PI*2;
     skDraft.a2=skArcA1+d;drawSketch2D();return;
   }
-  if(!skDown&&!skDrag&&!skDimDrag&&(skTool==='line'||skTool==='coincident'||skTool==='dim'||skTool==='arc'||SK_PL_TOOLS.has(skTool))){
+  if(!skDown&&!skDrag&&!skDimDrag&&(skTool==='line'||skTool==='coincident'||skTool==='dim'||skTool==='ord'||skTool==='arc'||SK_PL_TOOLS.has(skTool))){
     const h0=skPlHover;
     const s=findSnap(sk,wx,wy);const nm=s?{x:s.x,y:s.y}:null;
     if(JSON.stringify(nm)!==JSON.stringify(skSnapMk)||h0!==skPlHover&&!(h0&&skPlHover&&h0.x===skPlHover.x&&h0.y===skPlHover.y)){skSnapMk=nm;drawSketch2D();}
@@ -1395,6 +1397,7 @@ window.addEventListener('keydown',e=>{
   }
   // spline : Entrée = fin du tracé (l'outil reste) · Échap = fin puis Sélection
   if(skEdit&&(skTool==='spline'||skTool==='cspline')&&skSpl&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();skSplFinish(false);if(e.key==='Escape')skEscapeToSelect();return;}
+  if(skEdit&&skTool==='ord'&&skOrd&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();skOrdEnd();if(e.key==='Escape')skEscapeToSelect();return;} // ordonnées : Entrée = fin de la famille (l'outil reste)
   if(skEdit&&skTool==='offset'&&skOffKey(e))return; // Décalage : Échap vide d'abord la sélection, Entrée valide, chiffres = distance
   if(e.key==='Escape'){e.preventDefault();skEscapeToSelect();return;}
   if(e.key==='Enter'&&skEdit&&skTool==='isect'){e.preventDefault();skIsectValidate();return;}

@@ -10,6 +10,7 @@ Tout ce que fait le logiciel, une page par sujet. Pour une vue d'ensemble, reven
 | [Interface](interface.md) | Espaces, ruban, thèmes et icônes, vue 3D |
 | [Lentilles](lentilles.md) | Loupes posées sur la vue : lentilles Coupe, FAO, Plan et Rendu |
 | [La pièce qui propose](piece-propose.md) | Après chaque fonction, la suite probable dans une bande discrète (« Même congé sur les 3 autres coins »), la demande écrite (« 4 trous M6 à 10 du bord »), deux variantes côte à côte |
+| [Cotes 3D](cotes-3d.md) | Coter sur la pièce 3D ; la cote pilote l’esquisse, l’extrusion ou le perçage, avec tolérances et cadres de la mise en plan |
 | [Téléphone et tablette](telephone.md) | Vue plein écran, panneau translucide, gestes |
 | [Esquisse](esquisse.md) | Tracé guidé, outils, contraintes, cotes, paramètres |
 | [Fonctions 3D](fonctions-3d.md) | Construction, extrusion, perçage, congés, répétition, corps et mesures |

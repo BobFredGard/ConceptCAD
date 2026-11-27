@@ -254,6 +254,7 @@ function mfFiTable(){
   const EQC=y=>[26,50,74].map(x=>ficL(x,y-5,x,y+3,GR,.8)+ficDot(x,y,1.5,GR)).join('')+ficL(26,y,74,y,GR,.9)+ficT(38,y-2.4,'=',7,GR)+ficT(62,y-2.4,'=',7,GR);
   F('Cotes/Égalités','Cotes d’égalité','Montre qu’une forme est symétrique : 2 cotes à points marquées « = » de part et d’autre de l’axe, sous chaque cote coupée en son milieu par un axe.',[],EQP(),EQP()+EQC(54));
   F('Cotes/Note','Note à flèche','Écrit un texte avec une flèche qui pointe un endroit précis.',['Cliquez la pointe','Placez et écrivez le texte'],ficR(22,36,44,26,'#111827',1.7),ficR(22,36,44,26,'#111827',1.7)+LEAD(42,36,50,18,'Ébavurer'));
+  F('Cotes/Cotes 3D','Cotes 3D','Met sur le plan toutes les cotes 3D de la pièce, ou les retire toutes. Supprimez ensuite celles que vous ne gardez pas.',['Toutes d’un coup','Suppr sur celles en trop'],ficR(26,30,48,26,'#111827',1.7),ficR(26,30,48,26,'#111827',1.7)+COTE(26,74,20,'48'));
   const OX=(y)=>ficR(20,28,60,32,'#111827',1.7)+[20,44,80].map((x,i)=>ficL(x,28,x,y,GR,.7)+ficT(x,y-1.5,['0','24','60'][i],6.6,GR)).join('');
   F('Cotes/Ordonnées X','Ordonnées en X','Donne toutes les positions depuis un même zéro, le long de X. Les valeurs restent alignées.',['Cliquez le zéro','Cliquez les points','Entrée pour finir'],ficR(20,28,60,32,'#111827',1.7)+NUM(20,28,'0'),OX(14));
   const OY=()=>ficR(32,14,48,48,'#111827',1.7)+[62,38,14].map((y,i)=>ficL(32,y,17,y,GR,.7)+ficT(15,y+2,['0','24','48'][i],6.6,GR,'end')).join('');

@@ -774,6 +774,7 @@ function animate(){
   renderer.render(RS,camera);
   try{if(typeof ppRender==='function')ppRender(RS);}catch(e){} // la pièce qui propose : la suite probable en fantôme (93-piece-propose)
   try{if(typeof lensRender==='function')lensRender(RS);}catch(e){} // lentilles : loupes posées sur la vue (91-lentilles)
+  try{if(typeof c3Render==='function')c3Render(RS);}catch(e){} // cotes 3D posées sur la vue (92-cotes-3d)
   try{if(film&&film.rec)filmFrame();}catch(e){} // film de construction enregistré : image recopiée tant que le tampon est lisible (98-film)
 }
 // Sol miroir, lampe et plan d'ombre (98-rendu-vue) suivent la scène dessinée : celle de la pièce,
@@ -845,6 +846,7 @@ function showAll(){
   const box=new THREE.Box3();
   bodies.forEach(b=>{if(b.visible)box.expandByObject(b.mesh);});
   doc.sketches.forEach(s=>{const m=scene.getObjectByName('sk_'+s.id);if(m&&s.visible!==false)box.expandByObject(m);});
+  try{if(typeof c3FitBox==='function')c3FitBox(box);}catch(e){} // cotes 3D visibles comprises (92)
   viewUpReset();
   if(box.isEmpty()){camera.position.set(90,-90,90);controls.target.set(0,0,0);}
   else{const c=box.getCenter(new THREE.Vector3()),r=box.getSize(new THREE.Vector3()).length()||50;
@@ -858,6 +860,7 @@ function viewFit(o){
   const box=new THREE.Box3();
   bodies.forEach(b=>{if(b.visible)box.expandByObject(b.mesh);});
   doc.sketches.forEach(s=>{const m=scene.getObjectByName('sk_'+s.id);if(m&&s.visible!==false)box.expandByObject(m);});
+  try{if(typeof c3FitBox==='function')c3FitBox(box);}catch(e){} // cotes 3D visibles comprises (92)
   if(box.isEmpty())return;
   const c=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3());
   const r=(sz.length()*0.5)||50;

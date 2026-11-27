@@ -184,6 +184,7 @@ const SUITES = [
   'test_zoom_deplacement', // V1.0.8 : zoom et déplacement de la vue 3D, moins d'une seconde
   'test_lentilles', // V1.0.19 : loupes posées sur la vue (91-lentilles), moins d'une seconde
   'test_piece_propose', // V1.0.19 : la pièce qui propose (93-piece-propose) : suite après chaque fonction, demande écrite, variantes
+  'test_cotes_3d', // essai local (branche essai/cotes-3d) : cotes 3D pilotantes (92-cotes-3d), moins d'une seconde
   'test_materiaux',
   'test_environnement_piece',
   'test_rendu_patine',

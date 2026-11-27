@@ -26,6 +26,7 @@ function wirePick(){
     if(Math.hypot(e.clientX-dx,e.clientY-dy)>6)return;
     if(filMode){if(e.button===0&&!e.ctrlKey)filletToggle(e);return;}
     if(filModeX){if(e.button===0)exactToggle(e);return;} // clic = ajouter / retirer une arête (V0.11.6)
+    if(typeof c3Tool!=='undefined'&&c3Tool){if(e.button===0)c3PickAt(e);return;} // cote 3D : 2 faces ou un cylindre (92-cotes-3d)
     if(typeof parMesPick!=='undefined'&&parMesPick){if(e.button===0)parMesPickAt(e);return;} // paramètre mesuré : 2 faces (51-parametres-mesure)
     if(typeof hnPick!=='undefined'&&hnPick){if(e.button===0)hnPickAt(e);return;} // perçage normal : faces
     if(typeof holeFacePick!=='undefined'&&holeFacePick){if(e.button===0&&!e.ctrlKey)holeFacePickAt(e);return;} // fonction Perçage : face de fin

@@ -451,6 +451,7 @@
   window.mepWmPlace=mepWmPlace; // V0.76.0 : filigranes (ruban PLAN)
   window.mepWmSplitT=mepWmSplit;window.mepWmSizeT=mepWmSize; // tests
   window.mepAutoHoles=mepAutoHoles;
+  window.mepFrom3D=mepFrom3D;window.mepNo3D=mepNo3D;window.mepToggle3D=mepToggle3D;window.mepC3Relayout=mepC3Relayout; // cotes 3D reprises (98-mep-77)
   window.mepEqAuto=d=>mepEqAuto(d); // cotes d’égalité « = » (98-mep-88)
   window.mepTbEdit=on=>{try{mepTbEdit(on===undefined?!mepSt.tbEdit:!!on);}catch(e){}};
   window.mepDxfBuild=()=>mepDxfBuild(); // texte DXF + entités (sans téléchargement)

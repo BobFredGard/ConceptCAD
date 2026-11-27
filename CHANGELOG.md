@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**804 versions**, de `2026-09-28b` à `V1.0.19` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**805 versions**, de `2026-09-28b` à `V1.0.20` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8968,3 +8968,17 @@ Fred, 27/11 : « On garde ces 2 et on les intègre dans ConceptCAD » (essayées
 **La pièce qui propose** (`src/93-piece-propose.js`, bouton étincelle) : après chaque fonction seulement, la suite sur ce que l'on vient de faire, dans une bande discrète « Ensuite ? » en bas de la vue — même congé ou chanfrein sur les arêtes pareilles (ici, puis ailleurs), coins d'une poche arrondis au rayon de la plus petite fraise là où une fraise descend (axes des posages et 3+2), habitudes de la séance ; fantôme au survol, touches 1/2/3, « Non merci » / Échap retenu, une seule annulation. Menu : Proposer la suite (oui / non), Écrire une demande… (« 4 trous M6 à 10 du bord », lue sur place), Essayer une variante (A/B comparées par la masse).
 
 **Test** : `test_lentilles` et `test_piece_propose` (101 contrôles) inscrits dans `run` et `run-fast` ; une ligne de chaque dans la boucle d'image de `10-scene-3d` ; manuels Lentilles et La pièce qui propose. CACHE_VER et FORMES_VER inchangés.
+
+## V1.0.20 - Cotes 3D pilotantes : coter sur la pièce, comme dans Inventor
+
+Fred, 27/11 : « un outil de cotation dans le monde CAO, mais sur la 3D… ces cotes pilotent le 3D… un peu comme le fait Inventor… toutes les propriétés qui existent dans la mise en plan » ; essayées d'abord à part, sur la branche locale `essai/cotes-3d` (12 lots, chacun essayé par Fred), puis « tu peux commiter dans ConceptCAD »
+
+**Cotes 3D** (`src/92-cotes-3d.js`, bouton de la barre de vue, touche D hors esquisse) : on clique des faces, des arêtes ou des sommets de la pièce ; la cote lit toujours sa valeur sur la pièce et, **pilotante**, change la cote d'esquisse ou le réglage de fonction qui la fait bouger (extrusion, découpe, Perçage — toutes ses valeurs —, congé, chanfrein, coque, révolution, répétition), la pièce passant d'une valeur à l'autre. Faces retenues par leur nom unique : la cote suit la pièce. Distances couchées sur les faces le long des axes, entraxes sur les axes, Ø / R, angles, cotes posées d'office à la création d'une fonction (interrupteur au clic droit), tolérances (±, écarts, classes ISO 286), références A / B, rugosité, cadres de tolérance géométrique, cote encadrée ou d'inspection, nom (« d1 = 20 »), œil et Maj+D pour cacher, glisser et ↻ Autre face.
+
+**Cercle de trous à la norme ISO** : Ø de perçage avec cercle d'axe et tous les axes, « 6× Ø6 EQS » sur un tour complet, angle du 1er trou depuis l'axe horizontal puis angle du pas à la suite, ⌖ Localisation ISO (A = face d'entrée, au-dessus d'une fraisure ou d'un lamage ; B = alésage centré ; ⌖ Ø0,1 A B ; Ø de perçage et angles encadrés) en une annulation.
+
+**Cotes d'ordonnées** (`src/50-esquisse-98-ordonnees.js`, outil Ordonnées de l'esquisse), reprises en 3D puis dans le plan.
+
+**Mise en plan** (`src/98-mep-77-cotes-3d.js`, bouton Cotes 3D, clic droit sur une vue) : les cotes 3D reprises vue par vue, une cote dans une seule vue, rangées sans chevauchement (écart réglable), Ø d'un trou de Perçage repris en cotation de perçage complète (« 6× Ø9 ↧15 EQS / Fraisure Ø18.4 x 90° »), cadres de tolérance sous le trait souligné et calés du côté du trait, axes du cercle de trous, DXF compris.
+
+**Test** : `test_cotes_3d` (186 contrôles) inscrit dans `run` et `run-fast` ; manuels Cotes 3D, Esquisse et Plan, README. Essais dans Chromium (Playwright) à chaque lot, sans erreur. CACHE_VER et FORMES_VER inchangés (les cotes 3D sont enregistrées avec le document, hors empreinte).

@@ -353,6 +353,7 @@ const SUITES = [
   "test_zoom_deplacement",
   "test_lentilles",
   "test_piece_propose",
+  "test_cotes_3d",
   "test_composants_inspection",
   "test_composants_normalises",
   "test_aimants",
