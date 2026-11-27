@@ -34,10 +34,72 @@ function mfMaquetteSync(refaire){
     if(t==='habitacle'&&typeof hbSync==='function')hbSync();
     if(t==='planvivant'&&typeof pvSync==='function')pvSync();
     if(t==='holo'&&typeof tbSync==='function')tbSync();
-    if(refaire&&typeof renderTimeline==='function')renderTimeline();
+    if(refaire)mfMaquetteRefaire();
   }catch(e){}
 }
 function mfMaquetteSet(t,on){try{mfLS('minifusion_maquette_'+t,on?'1':'0');}catch(e){}mfMaquetteSync(true);}
+/* V1.1.13 : FAO, assemblage et PLAN disposés comme la CAO — Fred, 27/11 : « les menus FAO,
+   Assembler/Mise en plan ne sont pas traités comme le menu CAO pour les 4 Interfaces du futur »,
+   puis « Chaque partie doit avoir le même style partout ». Chaque interface habille aussi la barre
+   de l'assemblage (48 asmTlRender) et la liste des opérations FAO (88 faoRenderTree), refaites par
+   leur propre code : ces deux crochets passent la main à celle qui est active. */
+function mfEspace(){
+  // 'cao' · 'asm' (Assembler) · 'fao' · 'plan' · 'sk' (esquisse)
+  try{
+    const b=document.body;if(!b)return 'cao';
+    if(b.classList.contains('mf-sk'))return 'sk';
+    const w=b.getAttribute('data-ws')||'cao';
+    return w==='cao'&&b.getAttribute('data-asm')==='1'?'asm':w;
+  }catch(e){return 'cao';}
+}
+function mfAsmTlSync(R,H,c){
+  try{if(typeof gtAsmHabille==='function')gtAsmHabille(R,H,c);}catch(e){}
+  try{if(typeof pvAsmHabille==='function')pvAsmHabille(R,H,c);}catch(e){}
+  try{if(typeof tbAsmHabille==='function')tbAsmHabille(R,H,c);}catch(e){}
+}
+function mfFaoArbreSync(tree){
+  try{mfPosageFiltre(tree);}catch(e){}
+  try{if(typeof gtFaoHabille==='function')gtFaoHabille(tree);}catch(e){}
+  try{if(typeof hbFaoHabille==='function')hbFaoHabille(tree);}catch(e){}
+  try{if(typeof pvFaoHabille==='function')pvFaoHabille(tree);}catch(e){}
+}
+// Pur : « Relation Coaxiale — « Bride » » → {nom:'Bride', detail:'relation coaxiale'} (étape d'assemblage)
+function mfAsmEtape(nomComplet){
+  const s=String(nomComplet||'').trim(),m=s.match(/«\s*(.*?)\s*»/);
+  const detail=s.replace(/\s*(—\s*)?«.*»\s*$/,'').replace(/\s*—\s*$/,'').trim().toLowerCase();
+  return {nom:m?m[1]:s,detail:m?detail:''};
+}
+// Pur : les opérations FAO dans l'ordre des lignes de l'arbre (posages ouverts seulement)
+function mfFaoOpsVues(root){
+  const out=[];
+  try{mfPosagesVus(root).forEach(s=>{if(s.open===false)return;(s.ops||[]).forEach((op,i)=>out.push({s,op,i}));});}catch(e){}
+  return out;
+}
+// V1.1.13 (Fred, 27/11) : un seul posage montré à la fois, celui de la pastille choisie (le posage actif) ;
+// avec un seul posage, rien ne change. Pur.
+function mfPosagesVus(root){
+  const S=(root&&root.setups)||[];
+  if(S.length<2)return S;
+  return [S.find(s=>s.id===root.activeSetupId)||S[0]];
+}
+// Arbre de l'usinage (interface moderne) : les lignes des autres posages sont marquées .mfPosCache (masquées en CSS)
+function mfPosageFiltre(tree){
+  if(!tree)return;
+  let R=null;try{R=faoRoot();}catch(e){R=null;}
+  const S=(R&&R.setups)||[],vu=new Set(mfPosagesVus(R).map(s=>s.id));
+  const moderne=document.body.classList.contains('ui-modern');
+  let i=-1;
+  [...tree.children].forEach(row=>{
+    if(row.classList.contains('fao-setup'))i++;
+    const s=S[i];
+    row.classList.toggle('mfPosCache',moderne&&S.length>1&&!!s&&!vu.has(s.id));
+  });
+}
+// Refaire les barres habillées (changement de thème, de disposition)
+function mfMaquetteRefaire(){
+  try{if(typeof renderTimeline==='function')renderTimeline();}catch(e){} // refait aussi la barre de l'assemblage (41 → 48)
+  try{if(typeof faoRenderTree==='function'&&document.getElementById('faoTree'))faoRenderTree();}catch(e){}
+}
 // arêtes de la pièce [vives, tangentes] en RVB 0..1 — teintes foncées et saturées, lisibles sur
 // les pièces claires comme sur les sombres ; null = couleurs d'origine (noir / gris doux)
 function mfEdgeCols(){

@@ -255,15 +255,19 @@ function asmTlHost(){
   window.addEventListener('pointerdown',e=>{try{if(asmHistSel&&!(asmTlEl&&asmTlEl.contains(e.target))&&!(e.target.closest&&e.target.closest('.mfPop'))){asmHistSel=null;asmTlRender();}}catch(_){}},true);
   d.addEventListener('wheel',e=>{try{e.stopPropagation();if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){R.scrollLeft+=e.deltaY;e.preventDefault();}}catch(_){}},{passive:false});
   window.addEventListener('pointermove',e=>{const D=asmTlDrag;if(!D||!asmTlEl)return;
-    if(!D.on){if(Math.abs(e.clientX-D.x0)<5)return;D.on=true;D.node.className='tlbM on';}
-    D.gap=asmTlGapAt(e.clientX);const L=asmTlEl._steps;try{R.insertBefore(D.node,D.gap<L.length?L[D.gap]:null);}catch(_){}});
+    if(!D.on){if(Math.hypot(e.clientX-D.x0,e.clientY-(D.y0==null?e.clientY:D.y0))<5)return;D.on=true;D.node.className='tlbM on';}
+    D.gap=asmTlGapAt(e.clientX,e.clientY);const L=asmTlEl._steps;try{R.insertBefore(D.node,D.gap<L.length?L[D.gap]:null);}catch(_){}});
   window.addEventListener('pointerup',()=>{const D=asmTlDrag;asmTlDrag=null;if(!D||!D.on)return;asmHistSetPtr(D.gap);asmTlRender();});
   vp.appendChild(d);asmTlEl=d;
   return d;
 }
-function asmTlGapAt(x){
+function asmTlGapAt(x,y){
+  // V1.1.13 : la barre peut être verticale (thèmes du futur : tige, pile) — dessus / dessous comme 41 tlbGapAt
   const L=asmTlEl?asmTlEl._steps:[];let g=0;
-  for(const el of L){const r=el.getBoundingClientRect();if(x>r.left+r.width/2)g++;else break;}
+  let V=0;try{const f=getComputedStyle(asmTlEl._row).flexDirection;V=f==='column-reverse'?-1:f==='column'?1:0;}catch(e){}
+  for(const el of L){const r=el.getBoundingClientRect();
+    const passe=V===0||y==null?x>r.left+r.width/2:V<0?y<r.top+r.height/2:y>r.top+r.height/2;
+    if(passe)g++;else break;}
   return g;
 }
 function asmTlRender(){
@@ -277,7 +281,7 @@ function asmTlRender(){
   h._title.textContent='🧩 '+c.name;
   const mk=()=>{const M=document.createElement('div');M.className='tlbM';
     M.title=ptr<H.length?'⏱ Marqueur — glisser pour revoir l’assemblage à une autre étape (au-delà : grisé) · double-clic = fin':'⏱ Marqueur (fin) — glisser vers la gauche pour revoir l’assemblage étape par étape';
-    M.onpointerdown=e=>{if(e.button)return;asmTlDrag={x0:e.clientX,on:false,gap:ptr,node:M};try{e.preventDefault();}catch(_){}};
+    M.onpointerdown=e=>{if(e.button)return;asmTlDrag={x0:e.clientX,y0:e.clientY,on:false,gap:ptr,node:M};try{e.preventDefault();}catch(_){}};
     M.ondblclick=()=>asmHistSetPtr(null);return M;};
   H.forEach((s,i)=>{
     if(i===ptr)R.appendChild(mk());
@@ -293,4 +297,5 @@ function asmTlRender(){
   if(ptr>=H.length&&H.length)R.appendChild(mk());
   if(!H.length){const e=document.createElement('span');e.className='tlbE';e.textContent='Aucune étape — insérez un composant, puis posez-le (Relations, Aligner…).';R.appendChild(e);}
   h._cnt.textContent=H.length?(ptr<H.length?ptr+' / '+H.length:H.length)+' étape(s)':'';
+  try{if(typeof mfAsmTlSync==='function')mfAsmTlSync(R,H,c);}catch(e){} // V1.1.13 : habillage des interfaces du futur (97-interface-themes-futur)
 }

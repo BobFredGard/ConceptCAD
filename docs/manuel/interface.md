@@ -42,15 +42,26 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
       - **sous le curseur** : la face survolée est nommée à côté de la souris (« Face 26 · Découpe … ») ;
       - en haut de la vue : l'espace, le nombre de fonctions et l'état (enregistrée / modifiée).
 
-      FAO, PLAN, esquisse et assemblage gardent leur disposition, sous la visière. Menu 🎨 › *Disposition de la maquette* (décochée) rend la disposition habituelle en gardant les couleurs : l'arborescence et les paramètres restent alors légèrement inclinés ;
+      Dans les autres espaces, le même habitacle :
+      - **assemblage** : l'écran incliné **ASSEMBLAGE** (l'arbre), la frise des étapes (insertions, relations, liaisons) en bas au milieu, la jauge qui compte les pièces, les étapes, les relations et les liaisons (l'anneau : étapes rejouées jusqu'au marqueur) ;
+      - **FAO** : l'écran incliné **USINAGE** (l'arbre de l'usinage, avec le nom du posage), le **rail des opérations** en bas au milieu (une puce par posage, un point par opération du posage choisi : clic = sa fiche), la jauge des opérations à jour ;
+      - **PLAN** : le panneau de la planche incliné à droite, cadre orange, et la jauge de la planche (vues, cotes) ;
+      - l'état en haut de la vue dit l'espace et ce qu'on y fait (ESPACE FAO · USINAGE, ASSEMBLAGE · nom…).
+
+      L'esquisse garde sa disposition, sous la visière. Menu 🎨 › *Disposition de la maquette* (décochée) rend la disposition habituelle en gardant les couleurs : l'arborescence et les paramètres restent alors légèrement inclinés ;
     - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ; sa disposition :
-      - la **table** : une grande ellipse lumineuse en bas de la vue, avec le nom de la pièce, sa matière, sa masse et son volume écrits sur l'anneau ;
+      - la **table** : une grande ellipse lumineuse en bas de la vue, avec le nom de la pièce, sa matière, sa masse et son volume écrits sur l'anneau ; sa moitié arrière s'efface pour ne pas cacher la pièce ;
       - les **espaces autour de la table** : CAO devant, FAO à gauche, PLAN au fond, RENDU à droite ; un clic y va ;
-      - les **commandes sur l'arc avant** de la table (plus de ruban en CAO) : d'abord les groupes (Esquisse, Créer, Modifier…), un groupe y déroule toutes ses commandes, **‹** revient. `Ctrl+K` et les raccourcis restent ;
+      - les **commandes sur l'arc avant** de la table (plus de ruban) : d'abord les groupes (Esquisse, Créer, Modifier…), un groupe y déroule toutes ses commandes, **‹** revient. Elles sont rangées côte à côte le long du bord de la table, sur deux rangées alignées quand elles sont nombreuses. `Ctrl+K` et les raccourcis restent ;
       - l'**histoire de la pièce** à gauche : les fonctions empilées en tranches de cylindre, la plus ancienne en bas (une tranche fine par esquisse), nom et valeur à côté, l'étape choisie en ambre. Clic, double-clic et glisser comme dans la timeline ; **Histoire · Arbre** en haut à gauche montre l'un ou l'autre ;
       - le **cadran** à droite : la valeur principale de la fonction choisie (profondeur, hauteur, Ø, angle) sur un arc. Après un clic sur une face de la pièce, on fait glisser le curseur ou on tape la valeur puis `Entrée` : la pièce est refaite, `Ctrl+Z` revient. Quand la fonction est ouverte dans sa fenêtre, c'est la fenêtre qui règle (OK ou Annuler) et le cadran ne fait que montrer ;
 
-      FAO, PLAN, esquisse et assemblage gardent la disposition habituelle ;
+      Dans les autres espaces, la même table (le cadran reste à la CAO) :
+      - **assemblage** : l'arc porte les commandes de l'assemblage (Modéliser, Composant, Relations…, sans groupes), l'**histoire de l'assemblage** s'empile à gauche (le nom de la pièce et la nature de l'étape à côté de chaque tranche ; marqueur et glisser comme dans la barre de l'assemblage) ; l'anneau compte les pièces, les étapes, les relations ;
+      - **FAO** : l'arc porte les groupes de la FAO (Posage, Limites, Opérations…), l'**histoire de l'usinage** s'empile à gauche (le posage en socle ambré, les opérations en tranches, esquisses et corps en tranches fines ; clic = sa fiche) ; l'anneau compte les posages, les outils, les opérations ;
+      - **PLAN** : l'arc porte les groupes du PLAN (Planches, Vues, Cotes…) au-dessus de la feuille, les **planches** s'empilent à gauche, la table reste claire sur le papier ; l'anneau dit le format, les vues, les cotes.
+
+      L'esquisse garde la disposition habituelle ;
     - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ; il a **sa propre disposition**, celle d'une planche à dessin :
       - la **règle trace-formes** en haut : le ruban devient une règle de dessinateur translucide, posée de biais et graduée ; chaque commande y est une découpe, son nom au pochoir dessous ; le nom d'un groupe ouvre toujours sa liste complète ;
       - en CAO, la vue devient une **planche** : double cadre, repères de zones 1 à 6 et A à D ;
@@ -58,7 +69,12 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
       - le **cartouche** en bas à droite : nom de la pièce, les espaces en **tampons** (CAO, FAO, PLAN, RENDU ; celui de l'espace en cours encré de biais), la nomenclature des fonctions (REP · FONCTION · RÉGLAGE : un clic choisit la fonction, un double-clic l'ouvre), la matière, la masse et le volume ;
       - l'**annotation vivante** : un clic sur une face écrit, au bout d'une ligne de rappel, la fonction qui l'a créée et sa valeur (« DÉCOUPE · profondeur 6 mm ») ; la changer puis `Entrée` refait la pièce, `Ctrl+Z` revient, `Échap` ou un clic ailleurs l'efface.
 
-      En FAO, PLAN et RENDU, le bandeau garde ses espaces sous la règle ; esquisse et assemblage gardent leur disposition. Menu 🎨 › *Disposition de la maquette* décochée : disposition habituelle, couleurs gardées ;
+      Dans les autres espaces, la même planche :
+      - **assemblage** : la **frise de l'assemblage** en cote de chaîne (une cote par étape : la pièce et la nature de l'étape), le cartouche dont la nomenclature devient REP · PIÈCE · QTÉ (un clic choisit la pièce) ;
+      - **FAO** : la **frise de l'usinage** en cote de chaîne (une cote par posage, puis une par opération du posage choisi, avec son outil « T6 Ø25 »), le cartouche REP · OPÉRATION · OUTIL (un clic : sa fiche) ;
+      - **PLAN** : les planches en cote de chaîne au-dessus de la feuille, le cartouche en bas à gauche avec REP · PLANCHE · FORMAT (un clic affiche la planche).
+
+      Les espaces sont les tampons du cartouche partout ; l'esquisse garde sa disposition. Menu 🎨 › *Disposition de la maquette* décochée : disposition habituelle, couleurs gardées ;
     - **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent doucement tant qu'ils sont ouverts. Et surtout **la bulle d'actions** : un clic sur une face ou une arête de la pièce (espace CAO) fait apparaître, à côté de la souris, une goutte de verre avec ce qu'on peut faire à cet endroit :
       - face plane : *Esquisse ici*, *Déplacer la face*, *Évider (coque)*, *Dépouille*, *Coter* ;
       - face cylindrique (trou, axe) : *Fileter*, *Déplacer la face*, *Coter* ;
@@ -73,7 +89,13 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
       - **Tige · Arbre**, en haut à gauche de la vue, montre l'un ou l'autre ;
       - en haut, les espaces en galets au milieu et des orbes à droite : annuler, rétablir, enregistrer (les autres boutons de fichier sortent au survol).
 
-      FAO, PLAN, esquisse et assemblage gardent leur ruban ; couper la bulle rend la disposition habituelle.
+      Dans les autres espaces, la même goutte (plus de ruban) :
+      - **assemblage** : la **tige de l'assemblage** (un bourgeon par étape, le nom de la pièce et la nature de l'étape ; la pousse du haut est le marqueur, la glisser vers le bas rejoue l'assemblage plus tôt), **Tige · Arbre**, la goutte de toutes les commandes de l'assemblage d'un clic dans le vide ;
+      - **FAO** : la **tige de l'usinage** (le posage en nœud de bois, les opérations en bourgeons avec leur icône, esquisses et corps en feuilles ; les pastilles des posages au pied), la goutte des commandes de la FAO d'un clic dans le vide ou sur **+ la suite** ;
+      - **PLAN** : **+ la suite** en haut à gauche de la planche ouvre la goutte des commandes du PLAN ; les planches deviennent des galets.
+
+      L'esquisse garde son ruban ; couper la bulle rend la disposition habituelle.
+    - **Dans les quatre** : quand le panneau des réglages s'ouvre, rien ne glisse (table, frises, rail, cartouche, gyroscope restent à leur place ; seules les commandes de la table se rangent dans la partie de l'arc restée visible). Avec plusieurs posages, l'usinage ne montre que celui de la pastille choisie (dans toute l'interface moderne, quel que soit le thème).
     Les arêtes de la pièce prennent la teinte du thème (foncée, lisible sur une pièce claire comme sur une sombre). Au repos, rien ne bouge : la vue en veille ne fait pas souffler la carte graphique ;
   - **fiches illustrées au survol**, façon dessin animé (actives par défaut, ⚙ → Affichage pour les couper) : une image avant → après qui s'anime, une phrase simple, les étapes et le raccourci de chaque icône ;
   - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.

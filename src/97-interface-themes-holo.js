@@ -12,7 +12,12 @@
      clic, double-clic, glisser comme dans la timeline ; bascule Histoire · Arbre ;
    • le CADRAN à droite : la valeur principale de la fonction choisie (profondeur, hauteur, Ø, angle)
      sur un arc ; on fait glisser le curseur ou on tape la valeur, et la pièce est refaite au lâcher.
-   CAO seulement (hors esquisse, assemblage, téléphone). 🎨 › « Disposition de la maquette » remet la
+   V1.1.13 (Fred, 27/11 : « les menus FAO, Assembler/Mise en plan ne sont pas traités comme le menu
+   CAO », « Chaque partie doit avoir le même style partout ») : la table, ses espaces et l'arc des
+   commandes dans chaque espace (l'arc porte les groupes de la FAO, de l'assemblage, du PLAN) ; la pile
+   des étapes de l'assemblage, la pile de l'usinage (posages, opérations), la pile des planches du
+   PLAN ; sur l'anneau, ce que compte l'espace. Le cadran reste en CAO (la valeur d'une fonction de la
+   pièce). Esquisse et téléphone : disposition habituelle. 🎨 › « Disposition de la maquette » remet la
    disposition habituelle. Aucune animation sans fin (la vue en veille ne doit pas faire souffler la carte). */
 const TB_MONO='"Cascadia Mono",Consolas,"Lucida Console",ui-monospace,monospace';
 function tbCss(){
@@ -20,51 +25,115 @@ function tbCss(){
   const st=document.createElement('style');st.id='tbCss';
   const T='html body.ui-modern.mq-lay[data-theme="holo"]:not(.mf-mobile)';
   const C=T+'[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
+  const A=T+'[data-ws="cao"][data-asm="1"]:not(.mf-sk)'; // V1.1.13 : assemblage
+  const F=T+'[data-ws="fao"]:not(.mf-sk)',FH=F+':not(.tb-arbre)'; // V1.1.13 : FAO (FH : en pile)
+  const Q=T+'[data-ws="plan"]:not(.mf-sk)';                // V1.1.13 : PLAN
+  const T3=[C,A,F],TOUS=[C,A,F,Q];
   const X=(p,sel,decl)=>sel.split(',').map(s=>p+' '+s.trim()).join(',')+'{'+decl+'}';
   const CY='#38f2d0',AM='#ffb547';
+  // la pile d'une barre d'étapes (CAO : #mfTl des fonctions, assemblage : #asmTl des étapes)
+  const pile=(Z,B,titre)=>{const Y=(sel,decl)=>X(Z,sel.replace(/#mfTl/g,B),decl);return [
+    Y('#mfTl','left:30px;right:auto;top:52px;bottom:auto;width:310px;max-height:calc(100% - 210px);height:auto;flex-direction:column;align-items:flex-start;gap:6px;padding:22px 0 0!important;'+
+      'background:none!important;border:none!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;pointer-events:none'),
+    Y('#mfTl>*','pointer-events:auto'),
+    Y('#mfTl::before','content:"'+titre+'";position:absolute;left:22px;top:2px;font-family:'+TB_MONO+';font-size:11.5px;letter-spacing:.2em;color:#7fe9d3;pointer-events:none;white-space:nowrap'),
+    Y('#mfTl .tlbC','order:5;opacity:.7'),Y('#mfTl .tlbN','order:6;font-family:'+TB_MONO+';color:#7fbfb2'),
+    Y('#mfTl .tlbR','order:4;flex:0 1 auto;min-height:0;flex-direction:column-reverse;align-items:flex-start;gap:0;width:310px;overflow-x:hidden;overflow-y:auto;padding:16px 0 8px 22px;box-sizing:border-box;scrollbar-width:thin'),
+    Y('#mfTl .tlbS','flex:none;width:110px;min-width:110px;height:36px;margin:0!important;padding:0!important;font-size:0;color:transparent!important;position:relative;opacity:1;'+
+      'border:1px solid rgba(56,242,208,.6)!important;border-top:none!important;border-radius:0 0 55px 55px / 0 0 12px 12px!important;'+
+      'background:linear-gradient(90deg,#08302b,#14524b 45%,#08302b)!important;box-shadow:none!important'),
+    Y('#mfTl .tlbS::before','content:"";position:absolute;left:-1px;right:-1px;top:-12px;height:24px;border-radius:50%;background:#14524b;border:1px solid rgba(56,242,208,.8);box-sizing:border-box;pointer-events:none'),
+    Y('#mfTl .tlbS>span:first-child','display:none'),
+    Y('#mfTl .tlbS.sk','height:18px'),
+    Y('#mfTl .tlbS.sk::before','background:#0f4741'),
+    Y('#mfTl .tlbS.off','opacity:.4'),
+    Y('#mfTl .tlbS:hover','filter:brightness(1.35)'),
+    Y('#mfTl .tlbS.sel','background:linear-gradient(90deg,#6b4310,#c98a2c 45%,#6b4310)!important;border-color:#ffc46b!important'),
+    Y('#mfTl .tlbS.sel::before','background:#e0a040;border-color:#ffd08a'),
+    Y('#mfTl .tlbS.warn','border-color:#ff6b5a!important'),
+    Y('#mfTl .tlbM','flex:none;width:130px;height:2px;margin:6px 0 6px -12px;background:'+AM+';box-shadow:0 0 8px '+AM+';border-radius:2px'),
+    Y('#mfTl .tbNm','position:absolute;left:122px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:1px;width:170px;pointer-events:none;white-space:nowrap;line-height:1.15'),
+    Y('#mfTl .tbNm::before','content:"";position:absolute;left:-10px;top:50%;width:8px;height:1px;background:rgba(56,242,208,.5)'),
+    Y('#mfTl .tbNm b','font-weight:500;font-size:13.5px;color:#e8fffa;overflow:hidden;text-overflow:ellipsis'),
+    Y('#mfTl .tbNm i','font-style:normal;font-size:11.5px;color:#7fbfb2;overflow:hidden;text-overflow:ellipsis'),
+    Y('#mfTl .tlbS.sk .tbNm b','font-size:12.5px;color:#bfeee4;font-weight:400'),
+    Y('#mfTl .tlbS.sel .tbNm b','color:#ffd08a;font-weight:600'),Y('#mfTl .tlbS.sel .tbNm i','color:#e7b875')];};
+  // une tranche dessinée derrière une ligne existante (opération FAO, planche) : ::after = le corps, ::before = le dessus
+  const tranche=(Z,sel,h)=>[
+    X(Z,sel,'position:relative;flex:none;display:flex;align-items:center;gap:6px;height:'+h+'px;min-height:'+h+'px;box-sizing:border-box;margin:0!important;padding:0 6px 0 122px!important;'+
+      'background:none!important;border:none!important;border-radius:0!important;box-shadow:none!important;color:#e8fffa;font-size:13px;overflow:visible;cursor:pointer'),
+    X(Z,sel+'::after','content:"";position:absolute;left:0;top:0;width:110px;height:100%;box-sizing:border-box;border:1px solid rgba(56,242,208,.6);border-top:none;border-radius:0 0 55px 55px / 0 0 12px 12px;'+
+      'background:linear-gradient(90deg,#08302b,#14524b 45%,#08302b);pointer-events:none;z-index:0'),
+    X(Z,sel+'::before','content:"";position:absolute;left:-1px;top:-12px;width:112px;height:24px;border-radius:50%;background:#14524b;border:1px solid rgba(56,242,208,.8);box-sizing:border-box;pointer-events:none;z-index:1'),
+    X(Z,sel+':hover::after,'+sel+':hover::before','filter:brightness(1.35)'),
+    X(Z,sel+'.sel::after','background:linear-gradient(90deg,#6b4310,#c98a2c 45%,#6b4310);border-color:#ffc46b'),
+    X(Z,sel+'.sel::before','background:#e0a040;border-color:#ffd08a')];
   st.textContent=[
     '#tbTable,#tbArc,#tbWs,#tbDial,#tbSw{display:none}',
     /* ═══ CAO : plus de ruban, le bandeau s'efface ═══ */
     X(C,'#mfRibbon,#mfBrTabs','display:none!important'),
     X(C,'.topbar .mfWs','display:none!important'),
     X(C,'.topbar','background:linear-gradient(180deg,rgba(2,7,8,.92),rgba(2,7,8,0))!important;border-bottom-color:transparent!important;box-shadow:none!important'),
+    // V1.1.13 : de même en assemblage, en FAO et en PLAN (l'arc porte les commandes de l'espace)
+    ...[A,F,Q].flatMap(Z=>[X(Z,'#mfRibbon,#mfBrTabs','display:none!important'),X(Z,'.topbar .mfWs','display:none!important'),
+      X(Z,'.topbar','background:linear-gradient(180deg,rgba(2,7,8,.92),rgba(2,7,8,0))!important;border-bottom-color:transparent!important;box-shadow:none!important')]),
     C+':not(.tb-arbre) #treeWrap{display:none!important}',
     C+'.tb-arbre #mfTl{display:none!important}',
+    A+':not(.tb-arbre) #treeWrap{display:none!important}',
+    A+'.tb-arbre #asmTl{display:none!important}',
     X(C,'#tbSw','display:flex;position:absolute;left:40px;top:12px;z-index:26;gap:2px;padding:3px;border-radius:999px;border:1px solid rgba(56,242,208,.3);background:rgba(3,20,20,.75)'),
+    X(A,'#tbSw','display:flex;position:absolute;left:40px;top:12px;z-index:26;gap:2px;padding:3px;border-radius:999px;border:1px solid rgba(56,242,208,.3);background:rgba(3,20,20,.75)'),
+    X(F,'#tbSw','display:flex;position:absolute;left:40px;top:12px;z-index:26;gap:2px;padding:3px;border-radius:999px;border:1px solid rgba(56,242,208,.3);background:rgba(3,20,20,.75)'),
+    A+'.tb-arbre #treeWrap{top:46px}',
     '#tbSw button{border:none;background:none;color:#7fe9d3;font-family:'+TB_MONO+';font-size:11px;letter-spacing:.14em;padding:4px 12px;border-radius:999px;cursor:pointer}',
     'body:not(.tb-arbre) #tbSw button[data-tb="hist"],body.tb-arbre #tbSw button[data-tb="arbre"]{background:'+CY+';color:#02110f;font-weight:700}',
     C+'.tb-arbre #treeWrap{top:46px}',
-    /* ═══ l'histoire de la pièce : la timeline en pile de tranches ═══ */
-    X(C,'#mfTl','left:30px;right:auto;top:52px;bottom:auto;width:310px;max-height:calc(100% - 210px);height:auto;flex-direction:column;align-items:flex-start;gap:6px;padding:22px 0 0!important;'+
-      'background:none!important;border:none!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;pointer-events:none'),
-    X(C,'#mfTl>*','pointer-events:auto'),
-    X(C,'#mfTl::before','content:"HISTOIRE DE LA PIÈCE";position:absolute;left:22px;top:2px;font-family:'+TB_MONO+';font-size:11.5px;letter-spacing:.2em;color:#7fe9d3;pointer-events:none'),
-    X(C,'#mfTl .tlbC','order:5;opacity:.7'),X(C,'#mfTl .tlbN','order:6;font-family:'+TB_MONO+';color:#7fbfb2'),
-    X(C,'#mfTl .tlbR','order:4;flex:0 1 auto;min-height:0;flex-direction:column-reverse;align-items:flex-start;gap:0;width:310px;overflow-x:hidden;overflow-y:auto;padding:16px 0 8px 22px;box-sizing:border-box;scrollbar-width:thin'),
-    X(C,'#mfTl .tlbS','flex:none;width:110px;min-width:110px;height:36px;margin:0!important;padding:0!important;font-size:0;color:transparent!important;position:relative;opacity:1;'+
-      'border:1px solid rgba(56,242,208,.6)!important;border-top:none!important;border-radius:0 0 55px 55px / 0 0 12px 12px!important;'+
-      'background:linear-gradient(90deg,#08302b,#14524b 45%,#08302b)!important;box-shadow:none!important'),
-    X(C,'#mfTl .tlbS::before','content:"";position:absolute;left:-1px;right:-1px;top:-12px;height:24px;border-radius:50%;background:#14524b;border:1px solid rgba(56,242,208,.8);box-sizing:border-box;pointer-events:none'),
-    X(C,'#mfTl .tlbS>span:first-child','display:none'),
-    X(C,'#mfTl .tlbS.sk','height:18px'),
-    X(C,'#mfVpInfo','bottom:6px!important;right:calc(14px + var(--mfPropsW,0px))'),
-    X(C,'#mfTl .tlbS.sk::before','background:#0f4741'),
-    X(C,'#mfTl .tlbS.off','opacity:.4'),
-    X(C,'#mfTl .tlbS:hover','filter:brightness(1.35)'),
-    X(C,'#mfTl .tlbS.sel','background:linear-gradient(90deg,#6b4310,#c98a2c 45%,#6b4310)!important;border-color:#ffc46b!important'),
-    X(C,'#mfTl .tlbS.sel::before','background:#e0a040;border-color:#ffd08a'),
-    X(C,'#mfTl .tlbS.warn','border-color:#ff6b5a!important'),
-    X(C,'#mfTl .tlbM','flex:none;width:130px;height:2px;margin:6px 0 6px -12px;background:'+AM+';box-shadow:0 0 8px '+AM+';border-radius:2px'),
-    X(C,'#mfTl .tbNm','position:absolute;left:122px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:1px;width:170px;pointer-events:none;white-space:nowrap;line-height:1.15'),
-    X(C,'#mfTl .tbNm::before','content:"";position:absolute;left:-10px;top:50%;width:8px;height:1px;background:rgba(56,242,208,.5)'),
-    X(C,'#mfTl .tbNm b','font-weight:500;font-size:13.5px;color:#e8fffa;overflow:hidden;text-overflow:ellipsis'),
-    X(C,'#mfTl .tbNm i','font-style:normal;font-size:11.5px;color:#7fbfb2;overflow:hidden;text-overflow:ellipsis'),
-    X(C,'#mfTl .tlbS.sk .tbNm b','font-size:12.5px;color:#bfeee4;font-weight:400'),
-    X(C,'#mfTl .tlbS.sel .tbNm b','color:#ffd08a;font-weight:600'),X(C,'#mfTl .tlbS.sel .tbNm i','color:#e7b875'),
+    /* ═══ l'histoire de la pièce : la timeline en pile de tranches — et celle de l'assemblage ═══ */
+    ...pile(C,'#mfTl','HISTOIRE DE LA PIÈCE'),
+    ...pile(A,'#asmTl','HISTOIRE DE L’ASSEMBLAGE'),
+    X(A,'#asmTl .tlbK,#asmTl .tlbS small','display:none'),
+    ...T3.map(Z=>X(Z,'#mfVpInfo','bottom:6px!important;right:14px')),
+    /* ═══ FAO : la pile de l'usinage — posages en socles, opérations en tranches, esquisses et corps FAO en tranches fines ═══ */
+    X(FH,'#faoWrap','top:52px!important;left:30px!important;right:auto!important;bottom:auto!important;min-width:0!important;max-width:none!important;align-items:flex-start!important'),
+    X(FH,'#faoToggle,#faoTreeWrap .fao-title','display:none!important'),
+    X(FH,'#faoTreeWrap .fao-cnt','display:flex!important;flex-direction:column;gap:6px;width:370px;max-height:calc(100vh - 380px);box-sizing:border-box;margin:0!important;padding:22px 0 0!important;overflow:visible;position:relative;'+
+      'background:none!important;border:none!important;border-radius:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important'),
+    X(FH,'#faoTreeWrap .fao-cnt::before','content:"HISTOIRE DE L’USINAGE";position:absolute;left:22px;top:2px;font-family:'+TB_MONO+';font-size:11.5px;letter-spacing:.2em;color:#7fe9d3;pointer-events:none;white-space:nowrap'),
+    X(FH,'#faoTree','order:4;flex:0 1 auto;min-height:0;display:flex;flex-direction:column-reverse;align-items:stretch;gap:0;overflow-x:hidden;overflow-y:auto;padding:16px 0 8px 22px;box-sizing:border-box;scrollbar-width:thin'),
+    X(FH,'#mfPosTabs','order:5;margin:6px 0 0 22px!important;gap:6px'),
+    X(FH,'#mfPosTabs button','border-radius:999px!important;border:1px solid rgba(56,242,208,.35)!important;background:rgba(3,20,20,.78)!important;color:#a7fbe9!important;font-family:'+TB_MONO+';font-size:11px;letter-spacing:.12em'),
+    X(FH,'#mfPosTabs button.on','background:'+CY+'!important;color:#02110f!important;font-weight:700'),
+    ...tranche(FH,'#faoTree>div',36),
+    X(FH,'#faoTree>.fao-grp,#faoTree>.fao-sub','height:22px;min-height:22px;font-size:12px;color:#bfeee4'),
+    X(FH,'#faoTree>.fao-grp::before,#faoTree>.fao-sub::before','background:#0f4741'),
+    X(FH,'#faoTree>.fao-setup::after','background:linear-gradient(90deg,#3a2a0c,#7a5a1e 45%,#3a2a0c);border-color:rgba(255,196,107,.6)'),
+    X(FH,'#faoTree>.fao-setup::before','background:#7a5a1e;border-color:rgba(255,208,138,.8)'),
+    X(FH,'#faoTree>.fao-setup','font-family:'+TB_MONO+';font-size:11px;letter-spacing:.08em;color:#ffe0ad'),
+    X(FH,'#faoTree>div.isoff,#faoTree>div.struck','opacity:.45'),
+    X(FH,'#faoTree>div.sel .lb,#faoTree>.fao-setup.sel>span','color:#ffd08a;font-weight:600'),
+    X(FH,'#faoTree .lb,#faoTree .fao-setup>span:not(.fao-tri)','flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'),
+    X(FH,'#faoTree .badge','flex:none;font-size:11px;color:#7fbfb2'),
+    X(FH,'#faoTree .eye,#faoTree .fao-tri','position:absolute;left:44px;top:50%;transform:translateY(-50%);z-index:2;font-size:11px;color:#a7fbe9'),
+    X(FH,'#faoTree .hbtn','flex:none;opacity:0;font-size:11px;transition:opacity .15s'),
+    X(FH,'#faoTree>div:hover .hbtn,#faoTree .hbtn.on','opacity:1'),
+    /* ═══ PLAN : la pile des planches, à gauche de la feuille ═══ */
+    X(Q,'#mepTabs','position:absolute;left:24px;top:56px;z-index:5;flex-direction:column-reverse;align-items:flex-start;gap:0;padding:22px 0 0!important;background:none!important;border:none!important;overflow:visible;pointer-events:none'),
+    X(Q,'#mepTabs>*','pointer-events:auto'),
+    X(Q,'#mepTabs::after','content:"LES PLANCHES";position:absolute;left:0;top:2px;font-family:'+TB_MONO+';font-size:11.5px;letter-spacing:.2em;color:#0f6b5c;pointer-events:none;white-space:nowrap'),
+    ...tranche(Q,'#mepTabs>button:not(.mepAdd)',32),
+    X(Q,'#mepTabs>button:not(.mepAdd)','color:#0b3b34!important;font-family:'+TB_MONO+';font-size:12px;font-weight:500!important;margin-top:12px!important'),
+    X(Q,'#mepTabs>button.on','color:#7a4b0c!important;font-weight:700!important'),
+    X(Q,'#mepTabs>.mepAdd','margin:0 0 6px!important;width:30px;height:26px;padding:0!important;border-radius:999px!important;border:1px solid rgba(56,242,208,.5)!important;background:rgba(3,20,20,.85)!important;color:#a7fbe9!important'),
+    X(Q,'#mepTabs>span','margin:0 0 6px!important;color:#0f6b5c!important;font-family:'+TB_MONO),
     /* ═══ la table, les espaces, l'arc des commandes ═══ */
-    X(C,'#tbTable','display:block;position:absolute;inset:0;pointer-events:none;z-index:2;overflow:visible'),
-    X(C,'#tbWs','display:block;position:absolute;inset:0;pointer-events:none;z-index:24'),
-    X(C,'#tbArc','display:block;position:absolute;inset:0;pointer-events:none;z-index:25'),
+    ...T3.flatMap(Z=>[
+      X(Z,'#tbTable','display:block;position:absolute;inset:0;pointer-events:none;z-index:2;overflow:visible'),
+      X(Z,'#tbWs','display:block;position:absolute;inset:0;pointer-events:none;z-index:24'),
+      X(Z,'#tbArc','display:block;position:absolute;inset:0;pointer-events:none;z-index:25')]),
+    X(Q,'#tbTable','display:block;position:absolute;inset:0;pointer-events:none;z-index:51;overflow:visible'),
+    X(Q,'#tbTable ellipse','fill:rgba(56,242,208,.05)!important'), // sur le papier blanc : une table claire, pas une tache grise
+    X(Q,'#tbWs','display:block;position:absolute;inset:0;pointer-events:none;z-index:56'),
+    X(Q,'#tbArc','display:block;position:absolute;inset:0;pointer-events:none;z-index:57'),
     '#tbWs button{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;padding:7px 16px;border-radius:999px;border:1px solid rgba(56,242,208,.35);background:rgba(3,20,20,.78);color:#a7fbe9;font-family:'+TB_MONO+';font-size:13.5px;letter-spacing:.22em;cursor:pointer;white-space:nowrap}',
     '#tbWs button.on{background:'+CY+';color:#02110f;font-weight:700;box-shadow:0 0 26px rgba(56,242,208,.55)}',
     '#tbWs button:hover:not(.on){border-color:'+CY+';color:#e8fffa}',
@@ -73,6 +142,7 @@ function tbCss(){
     '#tbArc button:hover{background:rgba(56,242,208,.2);box-shadow:0 0 18px rgba(56,242,208,.5)}',
     '#tbArc button.tbGrp{border-color:rgba(255,181,71,.45);color:#ffe0ad}#tbArc button.tbGrp em{font-style:normal;font-size:10.5px;color:#ffcf85;opacity:.8}',
     '#tbArc button.tbRet{border-color:rgba(255,181,71,.7);background:rgba(40,24,4,.85);color:#ffcf85}',
+    '#tbArc button.on{background:rgba(56,242,208,.3);border-color:'+CY+';box-shadow:0 0 16px rgba(56,242,208,.5)}',
     '#tbArc button i{display:inline-flex}#tbArc button i svg{width:16px;height:16px}',
     '#tbWs button:focus-visible,#tbArc button:focus-visible,#tbDial input:focus-visible,#tbSw button:focus-visible{outline:2px solid #fff;outline-offset:3px}',
     /* ═══ le cadran de la fonction choisie ═══ */
@@ -89,23 +159,27 @@ function tbCss(){
   ].join('\n');
   document.head.appendChild(st);
 }
-function tbActif(){
+// V1.1.13 : la disposition est en place, quel que soit l'espace (hors esquisse et téléphone)
+function tbOn(){
   try{
     const b=document.body;
     return b.classList.contains('mq-lay')&&b.classList.contains('ui-modern')&&!b.classList.contains('mf-mobile')&&b.getAttribute('data-theme')==='holo'&&
-      (b.getAttribute('data-ws')||'cao')==='cao'&&!b.classList.contains('mf-sk')&&b.getAttribute('data-asm')!=='1';
+      !b.classList.contains('mf-sk');
   }catch(e){return false;}
 }
+// CAO (pièce) : la pile des fonctions, le cadran
+function tbActif(){return tbOn()&&mfEspace()==='cao';}
 // Géométrie de la table dans une vue W×H : centre, rayons. Pur.
 function tbGeom(W,H){
   const rx=Math.max(220,Math.min(W*0.39,560)),ry=rx*0.19;
   return {cx:W/2,cy:H-ry*1.5-42,rx,ry};
 }
 // Positions de n boutons sur l'arc avant, de gauche (150°) à droite (30°), plus gros au milieu. Pur.
-function tbArcPos(n,G){
-  const out=[];
+// dMin (V1.1.13) : angle du bouton le plus à droite (30° par défaut ; plus grand quand le panneau des réglages couvre la droite de l'arc).
+function tbArcPos(n,G,dMin){
+  const out=[],d0=150,d1=(dMin>30&&dMin<120)?dMin:30;
   for(let i=0;i<n;i++){
-    const deg=n>1?150-i*(120/(n-1)):90,a=deg*Math.PI/180,s=Math.sin(a);
+    const deg=n>1?d0-i*((d0-d1)/(n-1)):(d0+d1)/2,a=deg*Math.PI/180,s=Math.sin(a);
     out.push({x:G.cx+G.rx*Math.cos(a),y:G.cy+G.ry*1.05*s,k:+(0.82+0.24*s).toFixed(2),o:+(0.6+0.4*s).toFixed(2)});
   }
   return out;
@@ -119,33 +193,55 @@ function tbWsPos(G){
   });
 }
 let tbGrp=null,tbTxtSig='';
+// V1.1.13 : largeur couverte par le panneau des réglages à droite. La table ne bouge pas (Fred, 27/11 :
+// « Ne pas décaler le cercle vers la gauche ou la droite quand les menus s'ouvrent ») : seules les
+// commandes de l'arc se rangent dans la partie de l'arc restée visible.
+// yBas : le panneau ne compte que s'il descend jusque-là (un panneau court, en haut, ne gêne pas l'arc).
+function tbPanneau(W,yBas){
+  let p=0;try{p=parseFloat(document.body.style.getPropertyValue('--mfPropsW'))||0;}catch(e){p=0;}
+  if(!(p>0&&W-p>=560))return 0;
+  if(yBas!=null){
+    try{
+      const vp=document.getElementById('vpwrap'),a=document.querySelector('#propsWrap aside.right');
+      if(vp&&a&&a.offsetWidth>0){const b=a.getBoundingClientRect().bottom-vp.getBoundingClientRect().top;if(b<yBas)return 0;}
+    }catch(e){}
+  }
+  return p;
+}
 function tbTableMaj(force){
   const vp=document.getElementById('vpwrap'),sv=document.getElementById('tbTable');if(!vp||!sv)return;
   const W=vp.clientWidth,H=vp.clientHeight;if(!(W>0&&H>0))return;
+  const G0=tbGeom(W,H),Pw=tbPanneau(W,G0.cy+G0.ry*0.5-14);
   let txt='';try{txt=tbTexte();}catch(e){}
-  const sig=W+'x'+H+'|'+txt;if(!force&&sig===tbTxtSig)return;tbTxtSig=sig;
+  const sig=W+'x'+H+'|'+Pw+'|'+txt;if(!force&&sig===tbTxtSig)return;tbTxtSig=sig;
   const G=tbGeom(W,H),esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   sv.setAttribute('viewBox','0 0 '+W+' '+H);sv.setAttribute('width',W);sv.setAttribute('height',H);
   const e=(k,stroke,op,w,extra)=>'<ellipse cx="'+G.cx+'" cy="'+G.cy+'" rx="'+(G.rx*k)+'" ry="'+(G.ry*k)+'" fill="none" stroke="'+stroke+'" stroke-opacity="'+op+'" stroke-width="'+w+'"'+(extra||'')+'/>';
   const ar=G.rx*0.8,br=G.ry*0.8;
-  sv.innerHTML='<defs><radialGradient id="tbDisc"><stop offset="0" stop-color="#38f2d0" stop-opacity=".2"/><stop offset="1" stop-color="#38f2d0" stop-opacity="0"/></radialGradient></defs>'+
+  // V1.1.13 (Fred, 27/11 : « le cercle penché est trop devant sur sa partie arrière et cache la pièce ») :
+  // la moitié arrière de la table s'efface (masque en dégradé du fond vers l'avant), l'avant reste net
+  const yF=G.cy-G.ry,yA=G.cy+G.ry;
+  sv.innerHTML='<defs><radialGradient id="tbDisc"><stop offset="0" stop-color="#38f2d0" stop-opacity=".2"/><stop offset="1" stop-color="#38f2d0" stop-opacity="0"/></radialGradient>'+
+    '<linearGradient id="tbFondu" gradientUnits="userSpaceOnUse" x1="0" y1="'+yF+'" x2="0" y2="'+yA+'"><stop offset="0" stop-color="#fff" stop-opacity=".1"/><stop offset=".5" stop-color="#fff" stop-opacity=".16"/><stop offset=".78" stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="1"/></linearGradient>'+
+    '<mask id="tbAvant" maskUnits="userSpaceOnUse" x="0" y="0" width="'+W+'" height="'+H+'"><rect x="0" y="0" width="'+W+'" height="'+H+'" fill="url(#tbFondu)"/></mask></defs>'+
+    '<g mask="url(#tbAvant)">'+
     '<ellipse cx="'+G.cx+'" cy="'+G.cy+'" rx="'+G.rx+'" ry="'+G.ry+'" fill="rgba(4,26,25,.35)" stroke="#38f2d0" stroke-opacity=".7" stroke-width="2.5"/>'+
     e(0.84,'#38f2d0',.42,1.2,' stroke-dasharray="2 10"')+
     '<ellipse cx="'+G.cx+'" cy="'+G.cy+'" rx="'+(G.rx*0.64)+'" ry="'+(G.ry*0.64)+'" fill="url(#tbDisc)" stroke="#38f2d0" stroke-opacity=".3" stroke-width="1"/>'+
-    e(0.43,'#38f2d0',.5,1.5)+
+    e(0.43,'#38f2d0',.5,1.5)+'</g>'+
     '<path id="tbTxtArc" d="M'+(G.cx-ar)+' '+G.cy+'A'+ar+' '+br+' 0 0 1 '+(G.cx+ar)+' '+G.cy+'" fill="none"/>'+
     '<text font-family="'+esc(TB_MONO)+'" font-size="12" letter-spacing="2.5" fill="#7fe9d3"><textPath href="#tbTxtArc" startOffset="50%" text-anchor="middle">'+esc(txt)+'</textPath></text>';
   tbWsMaj(G);tbArcMaj(G);
 }
 function tbTexte(){
   let nom='';try{nom=(document.getElementById('docName')||{}).textContent||doc.name||'';}catch(e){}
-  let P=['','',''];try{P=pvPied();}catch(e){}
+  let P=['','',''];try{P=pvPied(mfEspace());}catch(e){} // V1.1.13 : ce que compte l'espace où l'on est
   return [String(nom||'Sans nom').toUpperCase()].concat(P).filter(Boolean).join(' · ');
 }
 function tbWsMaj(G){
   const el=document.getElementById('tbWs');if(!el)return;
   let ws='cao';try{ws=document.body.getAttribute('data-ws')||'cao';}catch(e){}
-  el.innerHTML='';
+  el.innerHTML='';el.dataset.ws=ws;
   tbWsPos(G).forEach(p=>{
     const b=document.createElement('button');b.type='button';b.textContent=p.l;b.dataset.ws=p.k;
     if(p.k===ws){b.className='on';b.setAttribute('aria-pressed','true');}else b.setAttribute('aria-pressed','false');
@@ -157,26 +253,70 @@ function tbWsMaj(G){
 }
 function tbArcMaj(G){
   const el=document.getElementById('tbArc');if(!el)return;
-  if(!G){const vp=document.getElementById('vpwrap');if(!vp)return;G=tbGeom(vp.clientWidth,vp.clientHeight);}
+  const vp=document.getElementById('vpwrap');if(!vp)return;
+  if(!G)G=tbGeom(vp.clientWidth,vp.clientHeight);
+  const dMin=tbArcDegMin(G,vp.clientWidth-tbPanneau(vp.clientWidth,G.cy+G.ry*0.5-14)-70);
   let Gs=[];try{Gs=gtGroupes();}catch(e){Gs=[];}
+  // V1.1.13 : un seul groupe (assemblage) = ses commandes tout de suite, sans « ‹ »
+  if(Gs.length===1)tbGrp=Gs[0].nom;
   const g=tbGrp&&Gs.find(x=>x.nom===tbGrp);if(!g)tbGrp=null;
-  const items=g?[{ret:true,l:'‹ '+g.nom}].concat(g.cmds.map(c=>({c,l:c.l,ic:c.ic,tip:c.tip}))):Gs.map(x=>({grp:x,l:x.nom,n:x.cmds.length}));
-  const P=tbArcPos(items.length,G);
+  const items=g?(Gs.length>1?[{ret:true,l:'‹ '+g.nom}]:[]).concat(g.cmds.map(c=>({c,l:c.l,ic:c.ic,tip:c.tip,on:c.on}))):Gs.map(x=>({grp:x,l:x.nom,n:x.cmds.length}));
+  el.dataset.esp=typeof mfEspace==='function'?mfEspace():'cao';
+  const P=tbArcPos(items.length,G,dMin);
   el.innerHTML='';
+  const place=(b,p)=>{b.style.left=p.x+'px';b.style.top=p.y+'px';b.style.opacity=p.o;b.style.setProperty('--k',p.k);b.style.zIndex=Math.round(30+p.k*10);};
   items.forEach((it,i)=>{
-    const b=document.createElement('button');b.type='button';const p=P[i];
-    b.style.left=p.x+'px';b.style.top=p.y+'px';b.style.opacity=p.o;b.style.setProperty('--k',p.k);b.style.zIndex=Math.round(30+p.k*10);
+    const b=document.createElement('button');b.type='button';place(b,P[i]);
     if(it.ret){b.className='tbRet';b.textContent=it.l;b.title='Revenir aux groupes';b.onclick=e=>{e.stopPropagation();tbGrp=null;tbArcMaj();};}
     else if(it.grp){
       b.className='tbGrp';b.innerHTML='<span></span><em></em>';b.firstChild.textContent=it.l;b.lastChild.textContent=it.n;b.title=it.l+' : '+it.n+' commande'+(it.n>1?'s':'');
       b.onclick=e=>{e.stopPropagation();if(it.grp.cmds.length===1){try{it.grp.cmds[0].b.click();}catch(err){}return;}tbGrp=it.grp.nom;tbArcMaj();};
     }else{
-      b.innerHTML='<i aria-hidden="true"></i><span></span>';b.firstChild.innerHTML=it.ic||'';b.lastChild.textContent=it.l;b.title=it.tip||it.l;
+      b.innerHTML='<i aria-hidden="true"></i><span></span>';b.firstChild.innerHTML=it.ic||'';b.lastChild.textContent=it.l;b.title=it.tip||it.l;if(it.on)b.classList.add('on');
       b.onclick=e=>{e.stopPropagation();try{it.c.b.click();}catch(err){}};
     }
     ['pointerdown','mousedown','dblclick'].forEach(t=>b.addEventListener(t,ev=>{try{ev.stopPropagation();}catch(_){}}));
     el.appendChild(b);
   });
+  // V1.1.13 (Fred, 27/11 : « les icônes sont en vrac ? ») : les boutons rangés côte à côte selon leur largeur,
+  // en une rangée qui suit le bord de la table ; deux (ou trois) rangées alignées seulement si la place manque
+  try{
+    const B=[...el.children],L=B.map(b=>b.offsetWidth);
+    if(L.length&&L.every(w=>w>0)){const Q=tbArcRangees(L,G,dMin);B.forEach((b,i)=>place(b,Q[i]));}
+  }catch(e){}
+}
+// Angle (en degrés) du point de l'arc avant à l'abscisse xMax : les boutons restent à gauche de xMax. Pur.
+function tbArcDegMin(G,xMax){
+  const c=(xMax-G.cx)/G.rx;
+  if(!(c<Math.cos(Math.PI/6)))return 30;
+  return Math.min(110,Math.acos(Math.max(-1,c))*180/Math.PI);
+}
+// Une rangée de boutons de largeurs L, côte à côte (écart régulier, 8 à 44 px), centrée sur la partie
+// visible de l'arc avant (150° → dMin), chaque bouton posé sur le bord de la table, monté de dy.
+// null si la rangée ne tient pas (sauf force). Pur.
+function tbArcLigne(L,G,dMin,dy,force){
+  const n=L.length;if(!n)return [];
+  const d1=(dMin>30&&dMin<120)?dMin:30,xL=G.cx+G.rx*Math.cos(150*Math.PI/180),xR=G.cx+G.rx*Math.cos(d1*Math.PI/180);
+  const sw=L.reduce((a,b)=>a+b,0),place=xR-xL;
+  if(sw+(n-1)*8>place&&!force)return null;
+  const gap=n>1?Math.max(8,Math.min(44,(place-sw)/(n-1))):0,tot=sw+gap*(n-1);
+  let x=(xL+xR)/2-tot/2;
+  return L.map(w=>{const c=x+w/2;x+=w+gap;
+    const a=Math.acos(Math.max(-1,Math.min(1,(c-G.cx)/G.rx))),sn=Math.sin(a);
+    return {x:c,y:G.cy+G.ry*1.05*sn-dy,k:+(0.82+0.24*sn).toFixed(2),o:+(0.6+0.4*sn).toFixed(2)};});
+}
+// Une rangée si elle tient, sinon deux puis trois rangées alignées (la première au fond), l'ordre de lecture gardé. Pur.
+function tbArcRangees(L,G,dMin){
+  for(let r=1;r<=3;r++){
+    const par=Math.ceil(L.length/r),out=[];let ok=true;
+    for(let i=0;i<r&&ok;i++){
+      const part=L.slice(i*par,(i+1)*par);if(!part.length)continue;
+      const q=tbArcLigne(part,G,dMin,(r-1-i)*42,r===3);if(!q){ok=false;break;}
+      out.push(...q);
+    }
+    if(ok)return out;
+  }
+  return tbArcLigne(L,G,dMin,0,true);
 }
 // noms et valeurs à côté de chaque tranche (appelé à chaque rendu de la timeline, par gtTigeSync)
 function tbHistHabille(R,S){
@@ -192,6 +332,19 @@ function tbHistHabille(R,S){
     el.appendChild(m);
   });
   tbDialMaj(R,S);
+}
+/* ----- V1.1.13 : l'assemblage — nom de la pièce et nature de l'étape à côté de chaque tranche (48 → mfAsmTlSync) ----- */
+function tbAsmHabille(R,H,c){
+  if(!tbOn())return;
+  [...R.querySelectorAll('.tlbS')].forEach((el,i)=>{
+    const s=H&&H[i];if(!s)return;
+    let nc='';try{nc=asmHistName(c,s);}catch(e){}
+    const E=mfAsmEtape(nc);
+    const m=document.createElement('span');m.className='tbNm';
+    const b=document.createElement('b');b.textContent=E.nom;m.appendChild(b);
+    if(E.detail){const it=document.createElement('i');it.textContent=E.detail;m.appendChild(it);}
+    el.appendChild(m);
+  });
 }
 /* ----- le cadran : la valeur principale de la fonction choisie ----- */
 let tbDialFid=null;
@@ -287,6 +440,7 @@ function tbSwBuild(){
   [['hist','Histoire','L’histoire de la pièce : une tranche par fonction, la plus ancienne en bas'],['arbre','Arbre','L’arbre du modèle : origine, corps, esquisses, paramètres']].forEach(([k,l,t])=>{
     const bt=document.createElement('button');bt.type='button';bt.dataset.tb=k;bt.textContent=l;bt.title=t;
     bt.onclick=e=>{e.stopPropagation();tbArbre(k==='arbre');};w.appendChild(bt);});
+  w.title='L’histoire (pile de tranches) ou l’arbre — pièce, assemblage ou usinage';
   ['pointerdown','mousedown','dblclick'].forEach(t=>w.addEventListener(t,e=>{try{e.stopPropagation();}catch(_){}}));
   vp.appendChild(w);
 }
@@ -294,6 +448,7 @@ function tbArbre(on){
   try{mfLS('minifusion_holo_arbre',on?'1':'0');}catch(e){}
   document.body.classList.toggle('tb-arbre',!!on);
   try{if(!on&&typeof renderTimeline==='function')renderTimeline();}catch(e){}
+  try{if(tbOn())tbDialMaj();}catch(e){}
 }
 function tbSync(){
   try{
@@ -302,20 +457,21 @@ function tbSync(){
     if(!document.getElementById('tbTable')){const s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.id='tbTable';s.setAttribute('aria-hidden','true');vp.appendChild(s);}
     ['tbWs','tbArc','tbDial'].forEach(id=>{if(!document.getElementById(id)){const m=document.createElement('div');m.id=id;
       if(id==='tbWs'){m.setAttribute('role','group');m.setAttribute('aria-label','Espaces de travail');}
-      if(id==='tbArc'){m.setAttribute('role','toolbar');m.setAttribute('aria-label','Commandes de la CAO');}
+      if(id==='tbArc'){m.setAttribute('role','toolbar');m.setAttribute('aria-label','Commandes de l’espace');}
       vp.appendChild(m);}});
     tbSwBuild();
     let a=false;try{a=mfLS('minifusion_holo_arbre')==='1';}catch(e){}
     document.body.classList.toggle('tb-arbre',a);
     tbGrp=null;tbTxtSig='';
-    if(tbActif()){tbTableMaj(true);tbDialMaj();}
+    if(tbOn()){tbTableMaj(true);tbDialMaj();}
   }catch(e){}
 }
 (function tbEcoute(){
   try{
     // nom, matière, masse, taille de la vue : relus chaque seconde, la table n'est refaite que s'ils changent
-    setInterval(()=>{if(tbActif())tbTableMaj();},1000);
-    window.addEventListener('resize',()=>{if(tbActif()){tbTableMaj(true);tbDialMaj();}});
+    // V1.1.13 : l'espace a changé (autres groupes sur l'arc) → la table est refaite
+    setInterval(()=>{if(!tbOn())return;const a=document.getElementById('tbArc'),e=mfEspace();if(a&&a.dataset.esp!==e){tbGrp=null;tbTableMaj(true);tbDialMaj();}else tbTableMaj();},1000);
+    window.addEventListener('resize',()=>{if(tbOn()){tbTableMaj(true);tbDialMaj();}});
   }catch(e){}
 })();
 // au démarrage : mfTheme est passé avant que MF_MAQUETTE (97-interface-themes-futur) existe

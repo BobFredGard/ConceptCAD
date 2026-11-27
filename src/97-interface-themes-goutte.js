@@ -38,6 +38,14 @@ function gtActif(){
   }catch(e){return false;}
   return !gtOutilOuvert();
 }
+// V1.1.13 : FAO et assemblage — pas de bulle sur les faces, mais le clic dans le vide donne les commandes de l'espace
+function gtVideAilleurs(){
+  try{
+    if(!gtOn()||typeof gtLayOn!=='function'||!gtLayOn())return false;
+    const e=typeof mfEspace==='function'?mfEspace():'cao';
+    return (e==='fao'||e==='asm')&&!gtOutilOuvert();
+  }catch(e){return false;}
+}
 // un outil attend déjà un clic sur la pièce : la goutte se tait
 function gtOutilOuvert(){
   const T=[
@@ -256,13 +264,14 @@ const gtTigeEclos=new Map(); // étape → instant où elle a éclos
     document.addEventListener('pointerup',e=>{
       if(!vue(e)||!gtAppui||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
       if(Math.hypot(e.clientX-gtAppui.x,e.clientY-gtAppui.y)>6)return;
-      if(!gtActif())return;
+      if(!gtActif()&&!gtVideAilleurs())return;
       const cx=e.clientX,cy=e.clientY,avant=gtAvant,rien=gtAppui.rien;
       setTimeout(()=>{
-        if(!gtActif())return;
-        if(gtSig()!==avant){gtMontrer(cx,cy);return;}
+        if(gtActif()){if(gtSig()!==avant){gtMontrer(cx,cy);return;}}
+        else if(!gtVideAilleurs())return;
         // V1.1.8 : clic dans le vide, rien de sélectionné avant ni après (disposition de la maquette, sans ruban) → toutes les commandes
-        let vide=false;try{vide=rien&&gtLayCao()&&gtRien()&&!pick({clientX:cx,clientY:cy});}catch(err){vide=false;}
+        // V1.1.13 : aussi en FAO et en assemblage (les commandes de l'espace)
+        let vide=false;try{vide=rien&&gtLayOn()&&gtRien()&&!pick({clientX:cx,clientY:cy});}catch(err){vide=false;}
         if(vide)gtOutils(cx,cy);
       },30);
     });

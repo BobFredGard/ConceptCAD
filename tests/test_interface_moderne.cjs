@@ -107,7 +107,7 @@ A(d.det.join('|')==='30 mm|découpe 6 mm|Ø9 débouchant|Ø5,5 × 12|chanfrein �
 A(d.val[0].l==='Profondeur'&&d.val[0].v===6&&d.val[0].k==='distance'&&d.val[1].l==='Hauteur'&&d.val[2]===null&&d.val[3].l==='Diamètre'&&d.val[4]===null&&d.val[5].fx===true,
   'Goutte : la valeur de la fonction créatrice dans la bulle (profondeur d’une découpe, Ø d’un perçage ; rien « jusqu’à une face » ; formule ƒx non écrasée)');
 const C0='html body.ui-modern.gt-lay[data-theme="goutte"]:not(.mf-mobile)[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
-A(d.css.includes(C0+' #mfRibbon,'+C0+' #mfBrTabs{display:none!important}'),'Goutte : plus de ruban en CAO (hors esquisse, assemblage, téléphone) — FAO et PLAN le gardent');
+A(d.css.includes(C0+' #mfRibbon,'+C0+' #mfBrTabs{display:none!important}'),'Goutte : plus de ruban en CAO (hors esquisse, téléphone) — de même en assemblage, FAO et PLAN depuis V1.1.13');
 A(d.css.includes(C0+' #mfTl .tlbR{order:4;flex:0 1 auto;min-height:0;flex-direction:column-reverse'),'Goutte : l’historique en tige verticale, la plus ancienne en bas');
 A(d.css.includes(C0+':not(.gt-arbre) #treeWrap{display:none!important}')&&d.css.includes(C0+'.gt-arbre #mfTl{display:none!important}'),'Goutte : bascule Tige · Arbre');
 A(/position:absolute;left:50%;top:50%;transform:translate\(-50%,-50%\)/.test(d.css),'Goutte : espaces en galets au milieu du bandeau');
@@ -140,7 +140,7 @@ A(h.on.join()==='true,false,false'&&h.off[0]===false&&h.off[1]==='0'&&h.on2===tr
 const H0='html body.ui-modern.mq-lay[data-theme="habitacle"]:not(.mf-mobile)',HC=H0+'[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
 A(h.css.includes(H0+' #mfRibbon{width:min(1240px')&&h.css.includes(H0+' #mfRibbon .mfRb{width:40px')&&h.css.includes(H0+' #mfRibbon .mfGrpT::after{content:"▾"'),'Habitacle : visière centrée, commandes en pods, ▾ garde la liste complète de chaque groupe');
 A(h.css.includes(HC+' #treeOverlay{transform:perspective(1100px) rotateY(16deg)')&&h.css.includes(HC+' #propsWrap>.right>.panel{transform:perspective(1100px) rotateY(-14deg)')&&h.css.includes('content:"HISTORIQUE"'),'Habitacle : écrans inclinés HISTORIQUE à gauche, RÉGLAGES à droite (redressés au survol)');
-A(h.css.includes(HC+' #mfTl{left:calc(50% - var(--mfPropsW,0px) / 2);right:auto;transform:translateX(-50%)')&&h.css.includes(HC+' #mfCube{top:auto!important;bottom:16px;right:calc(22px + var(--mfPropsW,0px))!important'),'Habitacle : frise en bas au milieu, gyroscope en bas à droite qui suit le panneau des réglages');
+A(h.css.includes(HC+' #mfTl{left:50%;right:auto;transform:translateX(-50%)')&&h.css.includes(HC+' #mfCube{top:auto!important;bottom:16px;right:22px!important'),'Habitacle : frise en bas au milieu, gyroscope en bas à droite — immobiles quand le panneau des réglages s’ouvre (V1.1.13)');
 A(/#hbMasse\{display:flex;[^}]*pointer-events:none/.test(h.css)&&/#hbHud\{[^}]*pointer-events:none/.test(h.css)&&/#hbEtat\{display:flex;[^}]*pointer-events:none/.test(h.css),'Habitacle : jauge, état et lecture sous le curseur ne prennent aucun clic');
 A(!/infinite/.test(h.css),'Habitacle : la disposition n’ajoute aucune animation sans fin');
 A(h.fn==='function,function,function,function,function','Habitacle : jauge de masse, état, lecture sous le curseur (fonctions présentes)');
@@ -169,7 +169,7 @@ const P0='html body.ui-modern.mq-lay[data-theme="planvivant"]:not(.mf-mobile)',P
 A(p.css.includes(P0+' #mfRibbon{position:relative;width:min(1480px')&&/transform:rotate\(-\.8deg\)/.test(p.css)&&p.css.includes(P0+' #mfRibbon::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:12px;pointer-events:none'),'Plan vivant : le ruban en règle trace-formes de biais, graduée, partout');
 A(p.css.includes(PC+' .topbar .mfWs{display:none!important}')&&/#pvCart \.pvTp button\.on\{[^}]*rotate\(-5deg\)/.test(p.css),'Plan vivant : en CAO, les espaces deviennent des tampons du cartouche (le bandeau les garde ailleurs)');
 A(p.css.includes(PC+' #mfTl .tlbS{flex:1 1 0')&&p.css.includes(PC+' #mfTl::before{content:"FRISE DES FONCTIONS — COTE DE CHAÎNE"'),'Plan vivant : la frise en cote de chaîne');
-A(p.css.includes(PC+' #pvCart{display:grid;position:absolute;right:calc(18px + var(--mfPropsW,0px))')&&p.css.includes(PC+' #treeOverlay{max-height:calc(100% - 150px)!important}'),'Plan vivant : cartouche en bas à droite (suit le panneau des réglages), l’arbre s’arrête au-dessus de la frise');
+A(p.css.includes(PC+' #pvCart{display:grid;position:absolute;right:18px;')&&p.css.includes(PC+' #treeOverlay{max-height:calc(100% - 150px)!important}'),'Plan vivant : cartouche en bas à droite (immobile quand le panneau s’ouvre, V1.1.13), l’arbre s’arrête au-dessus de la frise');
 A(/#pvRefs\{[^}]*pointer-events:none/.test(p.css)&&/#pvNote\{[^}]*pointer-events:none/.test(p.css)&&!/infinite/.test(p.css),'Plan vivant : repères et ligne de rappel ne prennent aucun clic ; aucune animation sans fin');
 A(p.fn==='function,function,function,function,function,function','Plan vivant : cotes, cartouche, annotation vivante (fonctions présentes)');
 A(/pvFriseHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant'[,\]]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'Plan vivant : la frise est habillée à chaque rendu de la timeline ; case 🎨 de la disposition');
@@ -205,4 +205,49 @@ A(t.fn==='function,function,function,function,function,function,function','Table
 const tbsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-holo.js'),'utf8');
 A(/tbHistHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant','holo'\]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8'))&&/c3FeatSet\(f,V\.k,v,/.test(tbsrc)&&/if\(tbFenetreOuverte\(f\)\)\{err\.textContent/.test(tbsrc),
   'Table : pile habillée à chaque rendu de la timeline ; cadran par c3FeatSet (Ctrl+Z), jamais pendant la fenêtre de la fonction');
+// V1.1.13 : les 4 interfaces du futur dans chaque espace — FAO, assemblage, PLAN traités comme la CAO ; un seul posage montré ;
+// rien ne glisse quand le panneau des réglages s'ouvre ; arc de la Table rangé, moitié arrière effacée
+const u=JSON.parse(vm.runInContext(`(function(){const o={};
+  o.et=[mfAsmEtape('Relation Coaxiale — « Bride »'),mfAsmEtape('Base:1')];
+  const R2={setups:[{id:'a',ops:[{id:'x'}]},{id:'b',ops:[{id:'y'},{id:'z'}]}],activeSetupId:'b'};
+  o.pv=[mfPosagesVus(R2).map(s=>s.id).join(),mfPosagesVus({setups:[{id:'a'}]}).map(s=>s.id).join(),mfPosagesVus({setups:[{id:'a'},{id:'b'}],activeSetupId:'zz'}).map(s=>s.id).join(),
+    mfFaoOpsVues(R2).map(v=>v.s.id+':'+v.op.id).join()];
+  o.us=hbUsinage({setups:[{id:'a',ops:[{toolId:1,on:true},{toolId:1,on:false},{toolId:2,stale:true}]},{id:'b',ops:[{toolId:1}]}]});
+  o.as=hbAssemblage(2,[{k:'ins'},{k:'rel'},{k:'join'},{k:'rel'}],2);
+  o.na=pvNomAsm([{id:'o1',comp:'c1',name:'Base:1'},{id:'o2',comp:'c2',name:'Goupille:1'},{id:'o3',comp:'c2',name:'Goupille:2'}],'o3',x=>({c1:'Base',c2:'Goupille'})[x.comp]);
+  o.np=pvNomPlan({sheets:[{name:'Vue de face',format:'A3',orient:'landscape'},{format:'A4',orient:'portrait'}],cur:1});
+  const G=tbGeom(1600,900);o.G=G;
+  o.dm=[tbArcDegMin(G,5000),Math.round(tbArcDegMin(G,G.cx))];
+  o.a90=tbArcPos(7,G,90);
+  o.l1=tbArcLigne([100,100,100],G,30,0);o.lx=tbArcLigne(new Array(12).fill(120),G,30,0);
+  o.r2=tbArcRangees(new Array(10).fill(120),G,30);o.r1=tbArcRangees([90,100,120,120,90,90],G,30);
+  let cap=null;const hd=document.head,old=hd.appendChild,gid=document.getElementById;
+  document.getElementById=()=>null;hd.appendChild=n=>{cap=n;return n;};
+  o.css={};
+  try{[['gt',gtLayCss],['hb',hbCss],['pv',pvCss],['tb',tbCss]].forEach(([k,f])=>{cap=null;f();o.css[k]=(cap&&cap.textContent)||'';});}finally{document.getElementById=gid;hd.appendChild=old;}
+  o.fn=[typeof mfEspace,typeof mfAsmTlSync,typeof mfFaoArbreSync,typeof mfPosageFiltre,typeof gtAsmHabille,typeof gtFaoHabille,typeof hbFaoHabille,typeof hbRailMaj,typeof pvAsmHabille,typeof pvFaoHabille,typeof tbAsmHabille,typeof tbOn].join(',');
+  return JSON.stringify(o);})()`,ctx));
+A(u.fn.split(',').every(x=>x==='function'),'V1.1.13 : habillages de l’assemblage et de la FAO présents pour les 4 interfaces');
+A(u.et[0].nom==='Bride'&&u.et[0].detail==='relation coaxiale'&&u.et[1].nom==='Base:1'&&u.et[1].detail==='','assemblage : nom de la pièce et nature de l’étape lus dans le nom de l’étape');
+A(u.pv.join(' ; ')==='b ; a ; a ; b:y,b:z','un seul posage montré à la fois, celui de la pastille choisie (un seul posage : rien ne change) : '+u.pv.join(' ; '));
+A(u.us.n===4&&u.us.actives===3&&u.us.aJour===2&&u.us.posages===2&&u.us.outils===3&&Math.abs(u.us.rempli-2/3)<1e-9,'Habitacle, jauge de la FAO : opérations, actives, à jour, posages, outils');
+A(u.as.pieces===2&&u.as.etapes===4&&u.as.relations===2&&u.as.liaisons===1&&u.as.rempli===0.5,'Habitacle, jauge de l’assemblage : pièces, étapes, relations, liaisons, marqueur');
+A(u.na.map(x=>x.rep+':'+x.nom+':'+x.reglage+(x.sel?'*':'')).join()==='1:Base:× 1,2:Goupille:× 2*','Plan vivant, cartouche de l’assemblage : REP · PIÈCE · QTÉ, pièce choisie : '+u.na.map(x=>x.rep+':'+x.nom+':'+x.reglage).join());
+A(u.np.map(x=>x.nom+':'+x.reglage+(x.sel?'*':'')).join()==='Vue de face:A3 paysage,Planche 2:A4 portrait*','Plan vivant, cartouche du PLAN : REP · PLANCHE · FORMAT, planche affichée');
+const G=u.G;
+A(u.dm[0]===30&&u.dm[1]===90&&Math.abs(u.a90[6].x-G.cx)<1e-6&&u.a90[0].x<u.a90[6].x,'Table : panneau ouvert, les commandes restent dans la partie visible de l’arc (le cercle ne bouge pas)');
+A(u.l1&&Math.abs(u.l1[1].x-G.cx)<1e-6&&u.l1[0].x<u.l1[1].x&&u.l1[1].x<u.l1[2].x&&u.l1[1].y>u.l1[0].y&&u.lx===null,'Table : une rangée côte à côte, centrée, qui suit le bord de la table ; trop large → refusée');
+const r2a=u.r2.slice(0,5),r2b=u.r2.slice(5);
+A(u.r1.length===6&&u.r1.every((q,i)=>!i||q.x>u.r1[i-1].x)&&u.r2.length===10&&r2a.every(q=>q.y<r2b[2].y)&&r2a.every((q,i)=>!i||q.x>r2a[i-1].x)&&r2b.every((q,i)=>!i||q.x>r2b[i-1].x),'Table : 6 groupes sur une rangée ; 10 commandes sur deux rangées alignées, la première au fond, dans l’ordre de lecture');
+const CS=u.css,W='[data-ws="fao"]:not(.mf-sk)',AS='[data-ws="cao"][data-asm="1"]:not(.mf-sk)',PL='[data-ws="plan"]:not(.mf-sk)';
+A(['gt','tb'].every(k=>CS[k].includes(W+' #mfRibbon')&&CS[k].includes(AS+' #mfRibbon')&&CS[k].includes(PL+' #mfRibbon')),'Goutte et Table : plus de ruban en FAO, assemblage et PLAN non plus (les commandes sont dans la goutte / sur la table)');
+A(CS.gt.includes(AS+' #asmTl .tlbR{order:4')&&CS.gt.includes(W+':not(.gt-arbre) #faoTree{')&&CS.gt.includes(PL+' #gtSuiteP'),'Goutte : la tige de l’assemblage, la tige de l’usinage, « + la suite » sur la planche');
+A(CS.hb.includes(AS+' #asmTl{left:50%')&&CS.hb.includes(W+' #hbRail{display:flex')&&CS.hb.includes(PL+' #mepSidePanel'),'Habitacle : frise de l’assemblage, rail des opérations, écran incliné du PLAN');
+A(CS.pv.includes(AS+' #asmTl::before{content:"FRISE DE L’ASSEMBLAGE"')&&CS.pv.includes(W+' #pvFriseF{display:flex')&&CS.pv.includes(PL+' #pvCart{'),'Plan vivant : cote de chaîne de l’assemblage et de l’usinage, cartouche sur la planche');
+A(CS.tb.includes(AS+' #asmTl::before{content:"HISTOIRE DE L’ASSEMBLAGE"')&&CS.tb.includes('#faoTreeWrap .fao-cnt::before{content:"HISTOIRE DE L’USINAGE"')&&CS.tb.includes(PL+' #mepTabs::after{content:"LES PLANCHES"'),'Table : piles de l’assemblage, de l’usinage et des planches');
+A(!/mfPropsW/.test(CS.pv)&&!/#(mfTl|asmTl|hbRail|mfCube|mfVpInfo|hbMasse|hbEtat){[^}]*mfPropsW/.test(CS.hb)&&!/#mfVpInfo\{[^}]*mfPropsW/.test(CS.tb),'rien ne glisse quand le panneau des réglages s’ouvre (frises, rail, cartouche, gyroscope, textes ; seuls la barre de vue et le cadran se rangent à côté)');
+A(['gt','hb','pv','tb'].every(k=>!/infinite/.test(CS[k])),'aucune animation sans fin dans les 4 dispositions');
+const tbs=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-holo.js'),'utf8'),msrc=fs.readFileSync(path.join(ROOT,'src','97-interface-moderne.js'),'utf8');
+A(/<g mask="url\(#tbAvant\)">/.test(tbs)&&/stop-opacity="\.1"/.test(tbs)&&CS.tb.includes('#tbTable ellipse{fill:rgba(56,242,208,.05)!important}'),'Table : la moitié arrière du cercle s’efface (la pièce reste visible) ; table claire sur le papier du PLAN');
+A(msrc.includes("'body.ui-modern #faoTree .mfPosCache{display:none!important}'")&&/mfPosageFiltre\(tree\)/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'arbre de l’usinage : les lignes des autres posages masquées dans l’interface moderne');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);

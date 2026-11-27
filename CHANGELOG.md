@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**818 versions**, de `2026-09-28b` à `V1.1.12` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**819 versions**, de `2026-09-28b` à `V1.1.13` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9309,5 +9309,36 @@ FAO, PLAN, esquisse et assemblage gardent la disposition habituelle. Menu 🎨 �
 - pile de 11 tranches (« Extrusion 30 mm », « Découpe 6 mm »…), Histoire · Arbre dans les deux sens ;
 - cadran : curseur glissé 6 → 9 mm (masse 993 g sur la table) ; fonction ouverte → cadran en lecture seule ; après un clic sur une face : 9 → 8 puis Ctrl+Z → 9 ;
 - aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.13 - Les quatre interfaces du futur dans chaque espace : FAO, assemblage et PLAN traités comme la CAO
+
+Fred, 27/11, avant la livraison : « Non car les menus FAO, Assembler/Mise en plan ne sont pas traité comme le menu CAO pour les 4 Interfaces du futur », puis « Chaque partie doit avoir le même style partout ». Pendant les essais : « le cercle penché est trop devant sur sa partie arrière et cache la pièce », « Ne pas décaler le cercle vers la gauche ou la droite quand les menus s'ouvrent » (« valable pour toutes les nouvelles interfaces »), « je préfère n'en voir qu'un [posage] à la fois quand je clique sur le posage de mon choix » (« valable partout »), « les icônes sont en vrac ? ».
+
+**Goutte** : plus de ruban en assemblage, FAO et PLAN non plus. Assemblage : tige de l'assemblage (bourgeons par étape, nom de la pièce et nature de l'étape, pousse = marqueur qu'on glisse), Tige · Arbre, goutte des commandes de l'assemblage d'un clic dans le vide. FAO : tige de l'usinage (posage en nœud de bois, opérations en bourgeons avec leur icône, esquisses et corps en feuilles, pastilles des posages au pied), goutte des commandes FAO d'un clic dans le vide ou sur « + la suite ». PLAN : « + la suite » sur la planche, planches en galets.
+
+**Habitacle** : écran incliné ASSEMBLAGE et frise des étapes ; écran incliné USINAGE (nom du posage) et rail des opérations (une puce par posage, un point par opération du posage choisi) ; panneau de la planche incliné ; jauge et état propres à chaque espace (pièces / étapes / relations / liaisons ; opérations à jour ; vues et cotes de la planche).
+
+**Plan vivant** : cote de chaîne de l'assemblage et de l'usinage (opérations avec leur outil « T6 Ø25 »), planches en cote de chaîne ; cartouche REP · PIÈCE · QTÉ, REP · OPÉRATION · OUTIL, REP · PLANCHE · FORMAT (un clic choisit), en bas à gauche de la planche en PLAN.
+
+**Table holographique** : table, espaces et arc dans chaque espace (groupes de la FAO, du PLAN ; commandes de l'assemblage directement) ; piles de l'assemblage (pièce et nature de l'étape à côté), de l'usinage (posage en socle ambré, opérations en tranches), des planches ; anneau qui compte ce que contient l'espace ; cadran gardé en CAO. Moitié arrière du cercle effacée (masque en dégradé) : la pièce n'est plus cachée ; table claire sur le papier du PLAN. Les commandes de l'arc rangées côte à côte selon leur largeur le long du bord de la table, deux rangées alignées quand elles sont nombreuses (assemblage : 10).
+
+**Dans les quatre** : rien ne glisse quand le panneau des réglages s'ouvre (cercle de la Table, frise et rail de l'Habitacle, frises et cartouche du Plan vivant, gyroscope, textes de la vue) ; les commandes de la Table se rangent dans la partie de l'arc restée visible, et seulement si le panneau descend jusqu'à elles. L'esquisse et le téléphone gardent la disposition habituelle.
+
+**Un seul posage montré** (interface moderne, tous les thèmes) : avec plusieurs posages, l'arbre de l'usinage, la tige, la pile, le rail et les frises ne montrent que le posage de la pastille choisie ; les autres restent accessibles par leur pastille (et leur puce / cote dans l'Habitacle et le Plan vivant).
+
+**Fichiers** :
+- `97-interface-themes-futur` : `mfEspace`, `mfAsmTlSync`, `mfFaoArbreSync`, `mfAsmEtape`, `mfFaoOpsVues`, `mfPosagesVus`, `mfPosageFiltre`, `mfMaquetteRefaire` ;
+- `97-interface-themes-goutte-disposition`, `97-interface-themes-goutte`, `97-interface-themes-habitacle`, `97-interface-themes-planvivant`, `97-interface-themes-holo` : dispositions de l'assemblage, de la FAO et du PLAN ;
+- `48-assemblage-historique` : la barre de l'assemblage habillée à chaque rendu, glisser du marqueur à la verticale ;
+- `88-fao-80-interface` : l'arbre de l'usinage habillé à chaque rendu ;
+- `97-interface-moderne` : lignes des autres posages masquées.
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 17 contrôles (habillages présents, étape d'assemblage lue, un seul posage, jauges FAO et assemblage, cartouches assemblage et PLAN, arc limité à la partie visible, rangées côte à côte, deux rangées alignées, plus de ruban en FAO / assemblage / PLAN, tige, frise, rail, piles, rien ne glisse, aucune animation sans fin, moitié arrière effacée, lignes masquées) ; 2 contrôles adaptés (frise et gyroscope de l'Habitacle, cartouche du Plan vivant immobiles).
+
+**Vérifié dans Chromium** (Poche et Contour, Test Assemblage, 1249 × 837), les quatre thèmes dans les trois espaces : listes de commandes par espace, clic dans le vide en FAO et en assemblage, marqueur de l'assemblage glissé à la verticale, rails et frises qui choisissent une opération, cartouches par espace ; Table : cercle immobile panneau ouvert, 6 groupes FAO sur une rangée, 10 commandes d'assemblage sur deux rangées, moitié arrière effacée, PLAN clair ; deux posages : seul celui de la pastille choisie dans la pile, la tige, le rail, la frise et le thème Nuit.
 
 CACHE_VER et FORMES_VER inchangés.

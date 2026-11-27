@@ -985,6 +985,7 @@ function faoRenderTree(){
     });
   }catch(e){}
   try{ faoWalls3D(); }catch(e){} // V0.23.20 : corps et esquisses FAO dans la vue
+  try{ if(typeof mfFaoArbreSync==='function')mfFaoArbreSync(tree); }catch(e){} // V1.1.13 : habillage des interfaces du futur (97-interface-themes-futur)
 }
 function faoOpShortLabel(op){
   if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }

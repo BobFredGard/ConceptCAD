@@ -201,6 +201,9 @@ function mfCss(){
   '#mfPosTabs button.on{background:var(--primary);border-color:var(--primary);color:#fff}',
   '#mfPosTabs button.struck{text-decoration:line-through;opacity:.55}',
   'body:not(.ui-modern) #mfPosTabs{display:none}',
+  /* V1.1.13 (Fred, 27/11 : « je préfère n'en voir qu'un à la fois quand je clique sur le posage de mon choix », « valable partout ») :
+     avec plusieurs posages, l'arbre de l'usinage ne montre que celui de la pastille choisie (97-interface-themes-futur, mfPosageFiltre) */
+  'body.ui-modern #faoTree .mfPosCache{display:none!important}',
   /* barre d'état */
   '#mfStatus{gap:16px;align-items:center;padding:5px 12px;margin-top:6px;font-size:.72rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;overflow:hidden}',
   '#mfStatus b{color:var(--text);font-weight:600}',
