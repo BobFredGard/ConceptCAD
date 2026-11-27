@@ -43,6 +43,7 @@ function mfTheme(t){
   try{document.body.setAttribute('data-theme',t);}catch(e){}
   mf3D(t);
   try{if(typeof mfEdgeSync==='function')mfEdgeSync();}catch(e){} // teinte des arêtes de la pièce
+  try{if(typeof gtCacher==='function')gtCacher();}catch(e){} // V1.1.7 : bulle de la Goutte fermée
   mfLS('minifusion_theme',t);
   try{document.querySelectorAll('.mfThemeOpt').forEach(b=>b.classList.toggle('on',b.dataset.t===t));}catch(e){}
   try{if(typeof window.mepThemeApply==='function')window.mepThemeApply();}catch(e){} // espace PLAN : fond, papier, accent
@@ -323,7 +324,9 @@ function mfTopButtons(){
     const ci=document.body.getAttribute('data-icons')||'trait',IS={trait:['#9aa0a6','#9aa0a6','#9aa0a6'],couleur:['#22c55e','#3b82f6','#f59e0b'],fusion:['#a9bfd6','#f6a623','#1e88e5'],delire:['#ff5f6d','#47e891','#b06ab3']};
     const thIt=([k,l])=>({html:'<span class="mfSw" style="background:linear-gradient(135deg,'+SW[k][0]+' 55%,'+SW[k][1]+' 55%)"></span>'+l,cls:'mfThemeOpt'+(k===cur?' on':''),data:{t:k},fn:()=>mfTheme(k)});
     const fut=typeof mfIsFutur==='function'?mfIsFutur:()=>false;
-    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),
+    // V1.1.7 : thème Goutte → sa bulle d'actions près de la souris, à couper ou remettre (97-interface-themes-goutte)
+    const gtIt=cur==='goutte'&&typeof gtOn==='function'?[{html:'<span class="mfSw" style="display:inline-flex;align-items:center;justify-content:center;font-size:11px;border-color:transparent">'+(gtOn()?'☑':'☐')+'</span>Bulle d’actions près de la souris',fn:()=>gtSetOn(!gtOn())}]:[];
+    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),gtIt,
       [{title:'Icônes'}],MF_ICSTYLES.map(([k,l])=>({html:'<span class="mfIcSw">'+IS[k].map(c=>'<i style="background:'+c+'"></i>').join('')+'</span>'+l,cls:'mfIconOpt'+(k===ci?' on':''),data:{i:k},fn:()=>mfIcons(k)}))));};
   box.appendChild(th);
   const pv=document.getElementById('prodVer');
@@ -718,6 +721,7 @@ function mfFaoOk(){
 function mfFaoGate(){try{if(mfFaoOk())document.body.removeAttribute('data-fao-off');else document.body.setAttribute('data-fao-off','1');}catch(e){}}
 function mfWs(w){
   mfCloseMenus();
+  try{if(typeof gtCacher==='function')gtCacher();}catch(e){} // V1.1.7 : bulle de la Goutte fermée
   w=(w==='fao'||w==='plan')?w:'cao';
   // V0.21.11 : FAO refusé sans pièce active en Modéliser (bouton grisé, mfFaoGate)
   if(w==='fao'&&!mfFaoOk()){try{faceEl.textContent='FAO : rendez d’abord une pièce active (double-clic dans l’arbre → « Modéliser »).';}catch(e){}return;}

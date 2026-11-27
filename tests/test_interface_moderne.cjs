@@ -57,4 +57,35 @@ const mep=fs.readFileSync(path.join(ROOT,'src','98-mep-30-planches-cartouche.js'
 A(['MEP_DESK','MEP_ACC_W','MEP_ACC_D'].every(k=>new RegExp('const '+k+'=\\{[^}]*habitacle:[^}]*holo:[^}]*planvivant:[^}]*goutte:').test(mep)),'espace PLAN : bureau et accent pour les 4');
 A(/mfEdgeCols\(\)/.test(fs.readFileSync(path.join(ROOT,'src','20-50-aretes-affichees.js'),'utf8')),'les arêtes de la pièce lisent la teinte du thème');
 A(/\{title:'Interfaces du futur'\}/.test(src),'menu 🎨 : partie « Interfaces du futur »');
+// V1.1.7 : la Goutte — bulle d'actions près de la souris (97-interface-themes-goutte)
+const g=JSON.parse(vm.runInContext(`(function(){const o={};
+  o.plan=gtContexte({face:{kind:'plan',n:21,origine:'Découpe 2',fid:'ex_2',fnom:'Découpe 2'}});
+  o.planSans=gtContexte({face:{kind:'plan',n:3,origine:'',fid:null}});
+  o.cyl=gtContexte({face:{kind:'cyl',r:5,n:7,fid:null}});
+  o.bspl=gtContexte({face:{kind:'',n:9}});
+  o.ligne=gtContexte({edge:{kind:'line',L:110,n:6,origine:'Chanfrein'}});
+  o.cercle=gtContexte({edge:{kind:'circle',r:5,closed:true,n:2}});
+  o.arc=gtContexte({edge:{kind:'circle',r:8,closed:false,n:4}});
+  o.rien=gtContexte({});
+  o.toutes=[].concat(o.plan.actions,o.cyl.actions,o.bspl.actions,o.ligne.actions).every(k=>GT_ACT[k]&&typeof GT_ACT[k].go==='function');
+  const R={left:0,top:100,right:1400,bottom:900};
+  o.droite=gtPlace(500,400,330,260,R);o.gauche=gtPlace(1300,400,330,260,R);o.haut=gtPlace(500,110,330,260,R);
+  o.on=gtOn();gtSetOn(false);o.off=gtOn();o.ls=mfLS('minifusion_goutte_bulle');gtSetOn(true);o.on2=gtOn();
+  o.actif=gtActif(); // thème du harnais : pas la Goutte
+  o.sig=typeof gtSig()==='string';
+  return JSON.stringify(o);})()`,ctx));
+A(g.plan.actions.join(',')==='esquisse,deplacer,coque,depouille,coter,modifier'&&g.plan.titre==='Face 21'&&g.plan.detail==='face plane · Découpe 2'&&g.plan.fnom==='Découpe 2','Goutte : face plane → Esquisse ici, Déplacer, Évider, Dépouille, Coter, Modifier « Découpe 2 »');
+A(g.planSans.actions.indexOf('modifier')<0,'Goutte : pas de « Modifier » sans fonction créatrice connue');
+A(g.cyl.actions.join(',')==='fileter,deplacer,coter'&&g.cyl.detail==='cylindre Ø10'&&/cylindrique/.test(g.cyl.titre),'Goutte : cylindre → Fileter, Déplacer, Coter (Ø10)');
+A(g.bspl.actions.join(',')==='deplacer,coque,coter','Goutte : face courbe → Déplacer, Évider, Coter');
+A(g.ligne.actions.join(',')==='conge,chanfrein,coter'&&g.ligne.detail==='droite · 110 mm · Chanfrein','Goutte : arête droite → Congé, Chanfrein, Coter (110 mm)');
+A(g.cercle.detail==='cercle Ø10'&&g.arc.detail==='arc R8','Goutte : cercle Ø10, arc R8');
+A(g.rien===null,'Goutte : rien sous le clic → pas de bulle');
+A(g.toutes,'Goutte : chaque action proposée a sa commande');
+A(g.droite.x===584&&g.gauche.x===1300-84-330&&g.haut.y===108,'Goutte : à droite du curseur, à gauche au bord, jamais hors de la vue');
+A(g.on===true&&g.off===false&&g.ls==='0'&&g.on2===true,'Goutte : « Ne plus montrer » la coupe, le menu 🎨 la remet');
+A(g.actif===false&&g.sig,'Goutte : muette hors du thème Goutte');
+const gsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-goutte.js'),'utf8');
+A(/mfPickForce=F;\s*try\{wirePick\._up\(fake\);\}finally\{mfPickForce=null;\}/.test(gsrc),'Goutte : le clic d’origine est rejoué dans l’outil (comme le clic long), le forçage toujours relâché');
+A(/gtCacher\(\)/.test(src)&&/gtSetOn\(!gtOn\(\)\)/.test(src),'Goutte : fermée au changement de thème / d’espace ; bulle à cocher dans le menu 🎨');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);

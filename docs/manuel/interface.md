@@ -36,7 +36,13 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
     - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue ; l'arborescence et les paramètres sont inclinés comme des écrans de cockpit et se redressent dès que la souris y va ;
     - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ;
     - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ;
-    - **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent doucement tant qu'ils sont ouverts.
+    - **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent doucement tant qu'ils sont ouverts. Et surtout **la bulle d'actions** : un clic sur une face ou une arête de la pièce (espace CAO) fait apparaître, à côté de la souris, une goutte de verre avec ce qu'on peut faire à cet endroit :
+      - face plane : *Esquisse ici*, *Déplacer la face*, *Évider (coque)*, *Dépouille*, *Coter* ;
+      - face cylindrique (trou, axe) : *Fileter*, *Déplacer la face*, *Coter* ;
+      - arête : *Congé*, *Chanfrein*, *Coter* ;
+      - pour une face, *Modifier « … »* ouvre la fonction qui l'a créée (la poche, l'extrusion…), comme un double-clic dans la timeline.
+
+      La commande démarre avec la face ou l'arête **déjà prise** : le congé a son arête, le déplacement sa face ; il ne reste qu'à régler la valeur. La bulle se ferme au moindre geste ailleurs (clic, molette, touche, `Échap`) et ne vient jamais pendant un outil, en esquisse ni en tournant la vue. *Ne plus montrer* (dans la bulle) la coupe ; menu 🎨 › *Bulle d'actions près de la souris* la remet.
     Les arêtes de la pièce prennent la teinte du thème (foncée, lisible sur une pièce claire comme sur une sombre). Au repos, rien ne bouge : la vue en veille ne fait pas souffler la carte graphique ;
   - **fiches illustrées au survol**, façon dessin animé (actives par défaut, ⚙ → Affichage pour les couper) : une image avant → après qui s'anime, une phrase simple, les étapes et le raccourci de chaque icône ;
   - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.
