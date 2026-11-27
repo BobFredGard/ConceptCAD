@@ -32,6 +32,12 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
+  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) — rien ne change de place, tout reste là où vous l'attendez ; c'est l'allure de toute l'application qui change, vue 3D comprise :
+    - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue ; l'arborescence et les paramètres sont inclinés comme des écrans de cockpit et se redressent dès que la souris y va ;
+    - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ;
+    - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ;
+    - **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent doucement tant qu'ils sont ouverts.
+    Les arêtes de la pièce prennent la teinte du thème (foncée, lisible sur une pièce claire comme sur une sombre). Au repos, rien ne bouge : la vue en veille ne fait pas souffler la carte graphique ;
   - **fiches illustrées au survol**, façon dessin animé (actives par défaut, ⚙ → Affichage pour les couper) : une image avant → après qui s'anime, une phrase simple, les étapes et le raccourci de chaque icône ;
   - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.
 - **Vue 3D** : cube de vue (axes X rouge, Y vert, Z bleu épais, fléchés et lettrés, qui dépassent du cube), orbite contrainte ou libre, centre de rotation sur le point visé, zoom vers le curseur, sol miroir, transparence « verre », **effet de perspective** réglable (de presque orthographique à fuyantes marquées, la pièce garde sa taille).

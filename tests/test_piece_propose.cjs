@@ -164,9 +164,9 @@ const r=vm.runInContext(String.raw`(async()=>{
     ok(S4.length===2&&kv&&kh&&S4[0]===kv&&kv.lines.length===4&&kh.lines.length===4&&kh.lines.every(P=>P.every(q=>q[2]===20)),
       '101b : bloc seul : arrondir ses 4 arêtes verticales, chanfrein sur les 4 arêtes du dessus (pas celles du dessous) ('+S4.map(s=>s.title)+')');
     const cv=kv.cmds(),ch=kh.cmds();
-    ok(/^Arrondir les 4 arêtes verticales de Extrusion Esquisse 1 · R6$/.test(kv.title)&&cv[0].op==='fillet'&&cv[0].radius===6&&cv[0].edges.length===4
-      &&/^Chanfrein 1 sur les 4 arêtes du dessus de Extrusion Esquisse 1$/.test(kh.title)&&ch[0].op==='chamfer'&&ch[0].distance===1,
-      '101c : R6 = valeur ronde du dixième de la largeur (60 mm) ; chanfrein 1 (pièce de plus de 80 mm)');
+    ok(/^Arrondir les 4 arêtes verticales de Extrusion Esquisse 1 · R1$/.test(kv.title)&&cv[0].op==='fillet'&&cv[0].radius===1&&cv[0].edges.length===4
+      &&/^Chanfrein 0,5 sur les 4 arêtes du dessus de Extrusion Esquisse 1$/.test(kh.title)&&ch[0].op==='chamfer'&&ch[0].distance===0.5,
+      '101c : petites valeurs, quelle que soit la taille (V1.1.5, Fred : « les valeurs sont trop grandes ») : R1, chanfrein 0,5');
     // plot posé sur le bloc : ex_5, x −10..10, y −10..10, z 20..30
     const F5={id:'ex_5',type:'extrude',name:'Extrusion Esquisse 5 10mm',sketchId:'s5',distance:10};doc.features=[F1,F5];
     const inP=p=>p[0]>-10&&p[0]<10&&p[1]>-10&&p[1]<10&&p[2]>=20&&p[2]<30,sp=p=>inBox(p)||inP(p)?1:0;
@@ -175,19 +175,26 @@ const r=vm.runInContext(String.raw`(async()=>{
       LP.push(N([a[0],a[1],30],[b[0],b[1],30],0.25,'ex_5/e'+i+'/flanc|ex_5/haut'),N([a[0],a[1],20],[b[0],b[1],20],0.75,'ex_5/e'+i+'/flanc|ex_1/haut'),
         N([a[0],a[1],20],[a[0],a[1],30],0.25,'ex_5/e'+((i+3)%4)+'/flanc|ex_5/e'+i+'/flanc'));}
     S4=ppSuggestCtx(lit(bloc().concat(LP),sp),{f:F5,nouv:true},null);
-    ok(S4.map(s=>s.key).join()==='plot:ex_5:vert,plot:ex_5:haut,plot:ex_5:pied'&&/· R2$/.test(S4[0].title)&&S4[1].lines.every(P=>P.every(q=>q[2]===30))
-      &&/^Congé R1 au pied de Extrusion Esquisse 5 \(4 arêtes\)$/.test(S4[2].title)&&S4[2].lines.every(P=>P.every(q=>q[2]===20)),
-      '101d : plot sur la pièce : ses arêtes verticales (R2), le dessus du plot seulement, le congé au pied ('+S4.map(s=>s.title)+')');
+    ok(S4.map(s=>s.key).join()==='plot:ex_5:vert,plot:ex_5:haut,plot:ex_5:pied'&&/· R1$/.test(S4[0].title)&&S4[1].lines.every(P=>P.every(q=>q[2]===30))
+      &&/^Congé R0,5 au pied de Extrusion Esquisse 5 \(4 arêtes\)$/.test(S4[2].title)&&S4[2].lines.every(P=>P.every(q=>q[2]===20)),
+      '101d : plot sur la pièce : ses arêtes verticales (R1), le dessus du plot seulement, le congé au pied (R0,5) ('+S4.map(s=>s.title)+')');
     // perçage : 2 trous débouchants Ø6 dans le bloc
     const Fh={id:'h1',type:'hole',name:''};doc.features=[F1,Fh];
     const rim=(cx,z,k)=>{const P=ppCircle([cx,0,z],[0,0,1],3,24);return {mid:P[6],pts:P,len:2*Math.PI*3,line:false,dir:null,frac:0.25,nom:'h1/c'+k+'/s1/f2|ex_1/'+(z>0?'haut':'bas')};};
     S4=ppSuggestCtx(lit(bloc().concat([rim(-20,20,0),rim(20,20,1),rim(-20,0,0),rim(20,0,1)])),{f:Fh,nouv:true},null);
-    ok(S4.length===1&&S4[0].key==='plot:h1:haut'&&/^Chanfrein 1 à l’entrée des 2 trous de Perçage$/.test(S4[0].title)&&S4[0].lines.length===2,
+    ok(S4.length===1&&S4[0].key==='plot:h1:haut'&&/^Chanfrein 0,5 à l’entrée des 2 trous de Perçage$/.test(S4[0].title)&&S4[0].lines.length===2,
       '101e : perçage : chanfrein à l’entrée des trous seulement ('+S4.map(s=>s.title)+')');
     // une habitude sur ces arêtes passe avant (ici : chanfrein 0,5 sur le dessus) : rien de plus
     doc.features=[F1];pp.habits=[{k:'out flat int c',c:{conv:'out',ori:'flat',role:'int'},cham:true,v:0.5,from:'Bride'}];
     S4=ppSuggestCtx(lit(bloc()),{f:F1,nouv:true},null);
     ok(S4.length===1&&S4[0].key.indexOf('hab:')===0&&/^Chanfrein 0,5 sur les 8 arêtes du bord de Extrusion Esquisse 1$/.test(S4[0].title),'101f : habitude de la séance : elle seule ('+S4.map(s=>s.title)+')');
+    // V1.1.5 : « Nouveau » puis 1re extrusion (Fred : « à la 2nd extrusion ») — état de départ pris dès que le document est vu
+    const D0=doc,on0=pp.on,b0=pp.base;pp.on=false;pp.base=b0||ppSnapBase();doc={name:'Sans titre',features:[],sketches:[]};pp.sigT=0;ppTick(1e9);
+    const neuf=pp.base&&pp.base.doc===doc&&pp.base.f.size===0;doc.features.push(Object.assign({},F1));const A1=ppAction(pp.base,ppSnapBase());
+    ok(neuf&&A1&&A1.f.id==='ex_1'&&A1.nouv,'101g : pièce neuve : sa 1re fonction a une suite');
+    const av=ppSnapBase();doc.features=[{id:'ex_77',type:'extrude',name:'Autre',distance:3}];
+    ok(ppAction(av,ppSnapBase())===null,'101h : le même document rempli par une autre pièce : rien à suivre');
+    doc=D0;pp.on=on0;pp.base=b0;
     doc.features=F0;pp.habits=H0;pp.refus.clear();
   }
   doc.fao.setups[0].ops=[{id:'o1',type:'pocket',name:'Poche de côté',frame:{z:'+X',x:'-Z'}}];
@@ -315,6 +322,9 @@ const r=vm.runInContext(String.raw`(async()=>{
   return out;
 })()`,ctx);
 r.then(out=>{
+  // V1.1.5 : la bande ne passe plus sur le panneau des paramètres (fenêtre Extrusion : le champ Distance était caché)
+  out.push([/pw=vis\(pe&&pe\.closest&&pe\.closest\('\.panel'\)\);if\(pw&&pw\.left>lr\.left\+lr\.width\/2&&pw\.bottom>lr\.bottom-200\)right=Math\.max\(right,lr\.right-pw\.left\+14\)/.test(src('93-piece-propose.js'))
+    &&/room=Math\.max\(260,lr\.width-left-right\)/.test(src('93-piece-propose.js')),'102 : la bande s’arrête avant le panneau des paramètres à droite quand il descend jusqu’à elle']);
   for(const [c,m] of out){console.log((c?'  ok  ':'  ÉCHEC ')+m);if(!c)ko++;}
   console.log(ko?ko+' échec(s) sur '+out.length:'test_piece_propose : '+out.length+'/'+out.length+' ok');
   process.exit(ko?1:0);

@@ -165,10 +165,12 @@ function buildEdgeOverlay(){
   //     c'est-à-dire devant le solide — vives noires, tangentes grises, pleines.
   // Un seul draw call partagé : l'overlay ne coûte pas plus cher qu'avant.
   const pos=[],col=[];
+  // V1.1.6 : les interfaces du futur teintent les arêtes (97-interface-themes-futur) ; sinon couleurs d'origine
+  let EC=null;try{EC=typeof mfEdgeCols==='function'?mfEdgeCols():null;}catch(e){EC=null;}
   for(const d of data){
     const pts=d&&d.pts;if(!pts||pts.length<2)continue;
     // vive → noire ; tangente → grise douce (plus lisible sur fond sombre)
-    const c=d.sharp?[0.02,0.02,0.025]:[0x9a/255,0x9f/255,0xa6/255];
+    const c=d.sharp?(EC?EC[0]:[0.02,0.02,0.025]):(EC?EC[1]:[0x9a/255,0x9f/255,0xa6/255]);
     const M=(d.mw&&d.mw.elements)||null;
     const put=p=>{
       let x=+p[0],y=+p[1],z=+p[2];
