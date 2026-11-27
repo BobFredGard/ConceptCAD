@@ -32,8 +32,17 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
-  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; la Goutte change aussi la disposition (voir plus bas) :
-    - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue ; l'arborescence et les paramètres sont inclinés comme des écrans de cockpit et se redressent dès que la souris y va ;
+  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; l'Habitacle et la Goutte changent aussi la disposition :
+    - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue. Il a **sa propre disposition**, celle de sa maquette :
+      - une **visière** suspendue en haut : bandeau et ruban réunis au milieu ; les commandes deviennent des **pods** carrés (l'icône seule, le nom au survol), séparés par groupe d'un point lumineux ; **▾** à droite de chaque groupe ouvre toujours sa liste complète, avec les raccourcis ;
+      - en CAO, deux **écrans inclinés** : à gauche l'**HISTORIQUE** (l'arborescence, avec le nom de la pièce en grand), à droite les **RÉGLAGES** (le panneau des paramètres, cadre orange). Ils se redressent dès que la souris y va ;
+      - la **frise des fonctions** en bas au milieu : un rail lumineux, un point par étape (plus petit pour une esquisse), l'étape choisie en orange. Clic, double-clic et glisser marchent comme dans la timeline ;
+      - la **jauge de masse** en bas à gauche : masse, volume et matière des corps affichés (aluminium quand un corps n'a pas de matière) ; l'anneau montre combien la pièce remplit sa boîte englobante ;
+      - le **gyroscope** en bas à droite : le cube de vue ceint de ses anneaux X, Y, Z ;
+      - **sous le curseur** : la face survolée est nommée à côté de la souris (« Face 26 · Découpe … ») ;
+      - en haut de la vue : l'espace, le nombre de fonctions et l'état (enregistrée / modifiée).
+
+      FAO, PLAN, esquisse et assemblage gardent leur disposition, sous la visière. Menu 🎨 › *Disposition de la maquette* (décochée) rend la disposition habituelle en gardant les couleurs : l'arborescence et les paramètres restent alors légèrement inclinés ;
     - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ;
     - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ;
     - **Goutte** : tons chauds, panneaux en galets de verre, boutons ronds, menus du clic droit en gouttes qui ondulent doucement tant qu'ils sont ouverts. Et surtout **la bulle d'actions** : un clic sur une face ou une arête de la pièce (espace CAO) fait apparaître, à côté de la souris, une goutte de verre avec ce qu'on peut faire à cet endroit :

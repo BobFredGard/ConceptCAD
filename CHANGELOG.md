@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**815 versions**, de `2026-09-28b` à `V1.1.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**816 versions**, de `2026-09-28b` à `V1.1.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9206,5 +9206,43 @@ FAO, PLAN, esquisse et assemblage gardent leur ruban. *Ne plus montrer* (bulle) 
 - profondeur de la découpe 6 → 7 dans la bulle, puis Ctrl+Z → 6 ;
 - pousse glissée vers le bas → pièce rejouée après l'extrusion, puis remise au bout ;
 - Arbre / Tige, thème Nuit et bulle coupée : disposition habituelle ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.10 - L'Habitacle disposé comme sa maquette : visière, écrans inclinés, frise, jauge de masse, gyroscope
+
+Suite de la demande de Fred du 27/11 (« J'aimerais vraiment que tu te rapproches de tes 4 façons proposées ») : après la Goutte (V1.1.9), l'Habitacle prend la disposition du poste de pilotage dessiné sur le canevas des pistes.
+
+Thème Habitacle, interface d'ordinateur :
+- **la visière**, partout : bandeau et ruban réunis au milieu en haut, suspendus, coins bas arrondis ;
+  - les commandes deviennent des **pods** carrés de 40 px (l'icône seule ; le nom et la fiche illustrée au survol) ;
+  - les groupes sont séparés par un point lumineux ; **▾** à droite de chaque groupe ouvre toujours sa liste complète (commandes non épinglées et raccourcis compris) ;
+  - la recherche de commandes garde sa largeur ;
+- en **CAO** (hors esquisse, assemblage et téléphone) :
+  - **écrans inclinés** plus marqués : à gauche l'**HISTORIQUE** (l'arborescence, le nom de la pièce en grand, la ligne choisie en orange), à droite les **RÉGLAGES** (panneau des paramètres, cadre et titre orange) ; ils se redressent au survol ou quand on y tape ;
+  - la **frise des fonctions** en bas au milieu : un rail cyan, un point par étape (plus petit pour une esquisse, orange et plus gros pour l'étape choisie, rouge si elle est en défaut) ; elle se recentre dans la place laissée par le panneau des réglages ;
+  - la **jauge de masse** en bas à gauche : masse, volume et matière des corps affichés (aluminium quand un corps n'a pas de matière, et c'est écrit) ; l'anneau = remplissage de la boîte englobante. Recalculée seulement quand la pièce change (relue chaque seconde) ;
+  - le **gyroscope** en bas à droite : le cube de vue dans un cercle, ceint de ses anneaux X (rouge) et Y (vert) ; il suit l'ouverture du panneau des réglages, la barre de vue et ⚙ aussi ;
+  - **sous le curseur** : la face survolée est nommée près de la souris (« Face 26 · Découpe Esquisse 2 (face) -6mm »), avec un trait orange ; lecture du noyau seulement quand la face change, cachée au clic, à la molette ou en tournant la vue ;
+  - en haut de la vue : « ESPACE CAO · PIÈCE », le nombre de fonctions et l'état (● enregistrée / ● modifiée) ;
+- jauge, état et lecture sous le curseur ne prennent aucun clic ; aucune animation sans fin.
+
+Menu 🎨 › **Disposition de la maquette** (cochée par défaut, retenue par thème) : décochée, l'Habitacle reprend la disposition habituelle avec ses couleurs (V1.1.6). Les autres thèmes ne changent pas ; la case est prévue pour le Plan vivant et la Table holographique.
+
+**Fichiers** :
+- `src/97-interface-themes-habitacle.js` (nouveau) : disposition, jauge de masse, état, lecture sous le curseur ;
+- `97-interface-themes-futur` : préférence « disposition de la maquette » commune (`MF_MAQUETTE`, classe `mq-lay`) ;
+- `97-interface-moderne` : la disposition suit le thème, case du menu 🎨.
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 11 contrôles (masse, volume, matière et remplissage de la jauge, case du menu, visière et pods, écrans inclinés, frise et gyroscope qui suivent le panneau, rien de cliquable ajouté sur la vue, aucune animation sans fin).
+
+**Vérifié dans Chromium** (Poche et Contour, 1646 × 837) :
+- visière de 1240 px avec ses pods, ▾ de Créer → 27 entrées ; jauge « 1,05 kg · 387,1 cm³ · alu par défaut », anneau 84 % ;
+- panneau des réglages ouvert : gyroscope et barre de vue décalés de sa largeur, frise recentrée ;
+- « SOUS LE CURSEUR · Face 26 · Découpe Esquisse 2 (face) -6mm » au survol du fond de la poche ;
+- au démarrage la disposition est en place (corrigé pendant l'essai : elle attendait un changement de thème) ;
+- case décochée puis recochée, thème Nuit, FAO : disposition habituelle sous la visière ; aucune erreur dans la console.
 
 CACHE_VER et FORMES_VER inchangés.

@@ -44,7 +44,8 @@ function mfTheme(t){
   mf3D(t);
   try{if(typeof mfEdgeSync==='function')mfEdgeSync();}catch(e){} // teinte des arêtes de la pièce
   try{if(typeof gtCacher==='function')gtCacher();}catch(e){} // V1.1.7 : bulle de la Goutte fermée
-  try{if(typeof gtLaySync==='function')gtLaySync(mfBuilt);}catch(e){} // V1.1.8 : disposition de la Goutte (tige, sans ruban)
+  try{if(typeof gtLaySync==='function')gtLaySync(mfBuilt);}catch(e){} // V1.1.9 : disposition de la Goutte (tige, sans ruban)
+  try{if(typeof mfMaquetteSync==='function')mfMaquetteSync(mfBuilt);}catch(e){} // V1.1.10 : disposition de la maquette (Habitacle…)
   mfLS('minifusion_theme',t);
   try{document.querySelectorAll('.mfThemeOpt').forEach(b=>b.classList.toggle('on',b.dataset.t===t));}catch(e){}
   try{if(typeof window.mepThemeApply==='function')window.mepThemeApply();}catch(e){} // espace PLAN : fond, papier, accent
@@ -327,7 +328,9 @@ function mfTopButtons(){
     const fut=typeof mfIsFutur==='function'?mfIsFutur:()=>false;
     // V1.1.7 : thème Goutte → sa bulle d'actions près de la souris, à couper ou remettre (97-interface-themes-goutte)
     const gtIt=cur==='goutte'&&typeof gtOn==='function'?[{html:'<span class="mfSw" style="display:inline-flex;align-items:center;justify-content:center;font-size:11px;border-color:transparent">'+(gtOn()?'☑':'☐')+'</span>Bulle d’actions près de la souris',fn:()=>gtSetOn(!gtOn())}]:[];
-    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),gtIt,
+    // V1.1.10 : interface disposée comme sa maquette (97-interface-themes-futur, mfMaquetteOn) — à couper ou remettre
+    const mqIt=typeof MF_MAQUETTE!=='undefined'&&MF_MAQUETTE.indexOf(cur)>=0?[{html:'<span class="mfSw" style="display:inline-flex;align-items:center;justify-content:center;font-size:11px;border-color:transparent">'+(mfMaquetteOn(cur)?'☑':'☐')+'</span>Disposition de la maquette',fn:()=>mfMaquetteSet(cur,!mfMaquetteOn(cur))}]:[];
+    mfPop(th,[{title:'Thème'}].concat(MF_THEMES.filter(x=>!fut(x[0])).map(thIt),[{title:'Interfaces du futur'}],MF_THEMES.filter(x=>fut(x[0])).map(thIt),gtIt,mqIt,
       [{title:'Icônes'}],MF_ICSTYLES.map(([k,l])=>({html:'<span class="mfIcSw">'+IS[k].map(c=>'<i style="background:'+c+'"></i>').join('')+'</span>'+l,cls:'mfIconOpt'+(k===ci?' on':''),data:{i:k},fn:()=>mfIcons(k)}))));};
   box.appendChild(th);
   const pv=document.getElementById('prodVer');

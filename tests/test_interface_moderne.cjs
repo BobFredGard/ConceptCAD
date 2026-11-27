@@ -118,4 +118,31 @@ const tl=fs.readFileSync(path.join(ROOT,'src','41-bandeau-timeline.js'),'utf8');
 A(/function tlbGapAt\(x,y\)/.test(tl)&&/D\.gap=tlbGapAt\(e\.clientX,e\.clientY\)/.test(tl)&&/y0:e\.clientY/.test(tl),'tige : glisser une fonction ou la pousse vers le haut / le bas');
 A(/gtLaySync\(mfBuilt\)/.test(src),'Goutte : la disposition suit le thème');
 A(/tige\?'':'mfTl'/.test(fs.readFileSync(path.join(ROOT,'src','93-piece-propose.js'),'utf8')),'la pièce qui propose : la tige compte comme l’arbre (la bande reste en bas)');
+// V1.1.10 : l'Habitacle disposé comme sa maquette (97-interface-themes-habitacle) — visière, écrans, frise, jauge, gyroscope
+const h=JSON.parse(vm.runInContext(`(function(){const o={};
+  o.m=[hbMesure([{v:1000,rho:7.85,mat:'Acier'}],2000),hbMesure([{v:2000,rho:0,mat:''}],0),hbMesure([{v:1000,rho:7.85,mat:'Acier'},{v:1000,rho:2.7,mat:'Alu'}],1000),hbMesure([],0)];
+  o.on=[mfMaquetteOn('habitacle'),mfMaquetteOn('nuit'),mfMaquetteOn('goutte')];
+  try{mfMaquetteSet('habitacle',false);}catch(e){}
+  o.off=[mfMaquetteOn('habitacle'),mfLS('minifusion_maquette_habitacle')];
+  try{mfMaquetteSet('habitacle',true);}catch(e){}
+  o.on2=mfMaquetteOn('habitacle');
+  let cap=null;const hd=document.head,old=hd.appendChild,gid=document.getElementById;
+  document.getElementById=()=>null;hd.appendChild=n=>{cap=n;return n;};
+  try{hbCss();}finally{document.getElementById=gid;hd.appendChild=old;}
+  o.css=(cap&&cap.textContent)||'';
+  o.fn=[typeof hbSync,typeof hbActif,typeof hbMasseMaj,typeof hbEtatMaj,typeof hbHudMaj].join(',');
+  return JSON.stringify(o);})()`,ctx));
+const m0=h.m[0],m1=h.m[1],m2=h.m[2];
+A(Math.abs(m0.g-7.85)<1e-9&&m0.cm3===1&&m0.mat==='Acier'&&m0.rempli===0.5,'Habitacle, jauge : masse, volume, matière et remplissage de la boîte (1 cm³ d’acier = 7,85 g, 50 %)');
+A(Math.abs(m1.g-5.4)<1e-9&&m1.mat==='alu par défaut'&&m1.rempli===0&&m1.alu===true,'Habitacle, jauge : un corps sans matière compte en aluminium, et le dit');
+A(m2.mat==='2 matières'&&m2.rempli===1&&h.m[3].g===0&&h.m[3].mat==='','Habitacle, jauge : plusieurs matières, remplissage borné à 100 %, pièce vide = rien');
+A(h.on.join()==='true,false,false'&&h.off[0]===false&&h.off[1]==='0'&&h.on2===true,'Habitacle : disposition de la maquette par défaut, 🎨 › « Disposition de la maquette » la coupe puis la remet');
+const H0='html body.ui-modern.mq-lay[data-theme="habitacle"]:not(.mf-mobile)',HC=H0+'[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
+A(h.css.includes(H0+' #mfRibbon{width:min(1240px')&&h.css.includes(H0+' #mfRibbon .mfRb{width:40px')&&h.css.includes(H0+' #mfRibbon .mfGrpT::after{content:"▾"'),'Habitacle : visière centrée, commandes en pods, ▾ garde la liste complète de chaque groupe');
+A(h.css.includes(HC+' #treeOverlay{transform:perspective(1100px) rotateY(16deg)')&&h.css.includes(HC+' #propsWrap>.right>.panel{transform:perspective(1100px) rotateY(-14deg)')&&h.css.includes('content:"HISTORIQUE"'),'Habitacle : écrans inclinés HISTORIQUE à gauche, RÉGLAGES à droite (redressés au survol)');
+A(h.css.includes(HC+' #mfTl{left:calc(50% - var(--mfPropsW,0px) / 2);right:auto;transform:translateX(-50%)')&&h.css.includes(HC+' #mfCube{top:auto!important;bottom:16px;right:calc(22px + var(--mfPropsW,0px))!important'),'Habitacle : frise en bas au milieu, gyroscope en bas à droite qui suit le panneau des réglages');
+A(/#hbMasse\{display:flex;[^}]*pointer-events:none/.test(h.css)&&/#hbHud\{[^}]*pointer-events:none/.test(h.css)&&/#hbEtat\{display:flex;[^}]*pointer-events:none/.test(h.css),'Habitacle : jauge, état et lecture sous le curseur ne prennent aucun clic');
+A(!/infinite/.test(h.css),'Habitacle : la disposition n’ajoute aucune animation sans fin');
+A(h.fn==='function,function,function,function,function','Habitacle : jauge de masse, état, lecture sous le curseur (fonctions présentes)');
+A(/mfMaquetteSync\(mfBuilt\)/.test(src)&&/Disposition de la maquette/.test(src)&&/mfMaquetteSet\(cur,!mfMaquetteOn\(cur\)\)/.test(src),'Habitacle : la disposition suit le thème ; case dans le menu 🎨');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);

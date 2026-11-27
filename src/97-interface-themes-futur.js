@@ -21,6 +21,21 @@
    mouvement. */
 const MF_FUTUR=['habitacle','holo','planvivant','goutte'];
 function mfIsFutur(t){return MF_FUTUR.indexOf(t)>=0;}
+/* V1.1.10 : « Disposition de la maquette » — Fred, 27/11 : « J'aimerais vraiment que tu te rapproches
+   de tes 4 façons proposées ». Une interface du futur peut DÉPLACER les choses comme sur sa maquette
+   (classe mq-lay sur body, règles du fichier de l'interface) ; 🎨 › « Disposition de la maquette » la
+   coupe (localStorage minifusion_maquette_<thème>). La Goutte suit sa bulle (gt-lay, 97-…-goutte). */
+const MF_MAQUETTE=['habitacle'];
+function mfMaquetteOn(t){try{return MF_MAQUETTE.indexOf(t)>=0&&mfLS('minifusion_maquette_'+t)!=='0';}catch(e){return false;}}
+function mfMaquetteSync(refaire){
+  try{
+    const t=document.body.getAttribute('data-theme')||'nuit';
+    document.body.classList.toggle('mq-lay',mfMaquetteOn(t));
+    if(t==='habitacle'&&typeof hbSync==='function')hbSync();
+    if(refaire&&typeof renderTimeline==='function')renderTimeline();
+  }catch(e){}
+}
+function mfMaquetteSet(t,on){try{mfLS('minifusion_maquette_'+t,on?'1':'0');}catch(e){}mfMaquetteSync(true);}
 // arêtes de la pièce [vives, tangentes] en RVB 0..1 — teintes foncées et saturées, lisibles sur
 // les pièces claires comme sur les sombres ; null = couleurs d'origine (noir / gris doux)
 function mfEdgeCols(){
