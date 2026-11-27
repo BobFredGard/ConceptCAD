@@ -4,9 +4,21 @@
 
 On dessine l'esquisse comme d'habitude, puis on cote **sur la pièce 3D**, comme dans Inventor. Une cote 3D lit toujours sa valeur sur la pièce. Une cote **pilotante** change en plus la pièce quand on tape une autre valeur : elle modifie pour cela une cote d'esquisse ou un réglage de fonction. Les cotes d'esquisse restent dans l'esquisse ; les deux sortes vivent ensemble.
 
-## Cotes posées à la création
+## Cotation automatique
 
-À chaque nouvelle fonction, ses cotes 3D se posent toutes seules sur la pièce, pilotantes :
+**On ne pose presque aucune cote à la main.** À chaque nouvelle fonction (extrusion, perçage, congé, répétition…), ConceptCAD pose tout seul sur la pièce les cotes qui la décrivent, quelques instants après le calcul exact de la pièce (jamais pendant que la fenêtre de l'extrusion est ouverte et que la pièce bouge encore).
+
+![Une bride faite en 4 fonctions : la hauteur 20, le perçage fraisé « 6× Ø9 ↧15 EQS / ⌵Ø18,4 × 90° », le Ø de perçage 80 et les angles 30° et 60° se sont posés tout seuls](../captures/cotes3d-creation.png)
+
+Ce qu'il faut savoir :
+
+- **Chaque cote lit sa valeur sur la pièce**, jamais une copie : si la pièce change, la cote change avec elle.
+- **Elle pilote** ce qui l'a faite : double-clic sur la valeur, on tape un autre nombre, la pièce suit (voir *Changer une valeur*). La cote modifie pour cela la cote d'esquisse ou le réglage de la fonction.
+- **Entre parenthèses**, « (60°) », c'est une cote **de référence** : elle renseigne mais ne pilote rien (rien ne la fait bouger, ou elle découle d'un autre réglage — l'angle entre 6 trous sur un tour complet vient du nombre de trous). **Encadrée**, « [Ø80] », c'est une cote théoriquement exacte (ISO 1101), posée par la *Localisation ISO*.
+- Une cote d'esquisse n'est reprise que si la pièce mesure exactement la même valeur ; **rien n'est posé deux fois** pour le même réglage.
+- Les cotes se placent **à côté de leurs faces**, couchées le long des axes de la pièce ; on les glisse ensuite où l'on veut (elles restent accrochées à leurs faces).
+
+Ce qui se pose, fonction par fonction :
 
 - **Extrusion** : sa hauteur (dessus ↔ dessous ; pour une découpe, fond ↔ face de départ). Le dessus d'un bossage rond se reconnaît aussi.
 - **Perçage** : la cote Ø du trou entier (« 2× Ø8 ↧12 »).
@@ -18,7 +30,13 @@ On dessine l'esquisse comme d'habitude, puis on cote **sur la pièce 3D**, comme
 - **Répétition circulaire** : le **Ø de perçage** et l'**angle du 1er trou depuis l'axe horizontal** (s'il n'est pas sur un axe ; voir *Cercle de trous (ISO)*), puis le **pas angulaire** entre la source et le premier exemplaire (de référence, entre parenthèses, sur un tour complet) — pour des trous, l'angle autour de l'axe de la répétition, avec l'arc qui passe par les centres des trous (60° pour 6 trous). Changer ce pas change l'angle de la répétition (6 trous à 45° couvrent 225°). À la main : coter l'entraxe de deux trous de la répétition, puis **Angle autour de l'axe** dans la bande « Qu'est-ce qui bouge ? » — la cote devient l'angle entre ces deux trous (120° entre la source et le 2e exemplaire) et pilote l'angle de la répétition.
 - **Cotes de l'esquisse**, reprises sur la pièce : écart de deux flancs parallèles, Ø d'un cercle, entraxe, axe ↔ flanc. La cote 3D pilote la cote d'esquisse ; elle n'est gardée que si elle mesure exactement la même valeur.
 
-Rien n'est posé deux fois pour le même réglage. Pour une fonction plus ancienne (fichier ouvert), clic droit sur la fonction dans l'arbre → **📐 Poser ses cotes 3D**. Pour couper l'automatique : clic droit sur une cote → **Cotes 3D posées à chaque création** (coché = en marche). Les cotes déjà posées restent.
+**Une pièce déjà faite** (fichier ouvert, pièce d'avant V1.0.20) : clic droit sur une fonction dans l'arbre → **📐 Poser ses cotes 3D** ; à refaire sur chaque fonction voulue. Sur l'exemple *Perçages*, les 10 fonctions donnent 19 cotes : hauteurs, entraxes, Ø de perçage, tous les trous avec leur profondeur, leur lamage ou leur filetage, le congé R4,2 et le chanfrein 1 × 45°.
+
+![L'exemple Perçages après « Poser ses cotes 3D » sur chaque fonction : 19 cotes, toutes lues sur la pièce](../captures/cotes3d-piece.png)
+
+**Couper l'automatique** : clic droit sur une cote → **Cotes 3D posées à chaque création** (coché = en marche) ; le choix est gardé sur ce poste. Les cotes déjà posées restent. **Trop de cotes** : l'œil de la barre de vue (ou `Maj+D`) les cache toutes, le clic droit cache une cote ou toutes celles d'une fonction, `Suppr` en retire une.
+
+**Sur le plan**, la cotation automatique continue : onglet PLAN, bouton **Cotes 3D**, les cotes de la pièce arrivent dans les vues où elles se lisent en vraie grandeur, rangées sans se chevaucher (voir *Dans la mise en plan*).
 
 La vue complète (recadrage, Iso) englobe les cotes 3D visibles.
 
@@ -163,7 +181,9 @@ Les cotes 3D sont enregistrées dans le fichier de la pièce. Elles n'entrent pa
 
 ## Dans la mise en plan
 
-Rien n'arrive tout seul sur le plan : c'est le dessinateur qui décide, **vue par vue**.
+Rien n'arrive tout seul sur le plan : c'est le dessinateur qui décide, **vue par vue**. Un clic suffit ensuite : les cotes se rangent toutes seules.
+
+![La bride sur une planche A3 après « Cotes 3D » (aucune vue choisie) : hauteur dans la vue de face, Ø de perçage et angles encadrés, cotation de perçage complète avec EQS et cadre ⌖ Ø0.1 A B dessous, références A et B](../captures/cotes3d-plan.png)
 
 - **Une vue choisie** : onglet **PLAN**, groupe Cotes → **Cotes 3D** met dans **cette vue** toutes les cotes 3D qui s'y lisent en vraie grandeur ; un nouveau clic les retire **de cette vue**. Les autres vues ne bougent pas.
 - **Clic droit sur une vue** : **Cotes 3D dans cette vue** (ou *manquantes*, s'il y en a déjà) et **Retirer les cotes 3D de cette vue (n)**.

@@ -29,6 +29,22 @@ const espace=(page,w)=>page.locator('[data-mfws="'+w+'"]').first().click().then(
 const calme=page=>page.evaluate(()=>{try{faceEl.textContent='';}catch(e){}});
 const photo=(page,nom)=>page.screenshot({path:path.join(SORTIE,nom+'.png')}).then(()=>console.log('  '+nom+'.png'));
 
+// V1.1.0 : bride 140 × 110 × 20, 6 perçages fraisés Ø9 ↧15 répétés sur un tour, alésage central — repère de l'origine
+// masqué (il se voyait par l'alésage)
+async function bride(page){
+  const r=await page.evaluate(()=>{mfScriptRun([{op:'new',name:'Bride'}]);const SK=()=>doc.sketches[doc.sketches.length-1].id;
+    let r=mfScriptRun([{op:'sketch',plane:'XY',shapes:[{rect:[-70,-55,70,55]}]}]);if(r.ok)r=mfScriptRun([{op:'extrude',distance:20,sketch:SK()}]);
+    if(r.ok)r=mfScriptRun([{op:'sketch',id:'sh',plane:'XY',offset:20,shapes:[{hole:[34.641,20]}]},{op:'hole',sketch:'sh',d:9,depth:15,csink:{d:18.4,angle:90}}]);
+    const h=doc.features[doc.features.length-1];
+    if(r.ok)r=mfScriptRun([{op:'pattern',features:[h.id],type:'circular',count:6,axis:'Z'}]);
+    if(r.ok)r=mfScriptRun([{op:'sketch',plane:'XY',shapes:[{circle:[0,0,10]}]}]);if(r.ok)r=mfScriptRun([{op:'extrude',distance:20,cut:true,sketch:SK()}]);
+    try{if(axHelper)axHelper.visible=false;['XY','XZ','YZ'].forEach(p=>{originVis[p]=false;});updateOriginPlanes();markDirty();}catch(e){}
+    return r.ok?'':r.error;});
+  if(r)throw new Error('bride : '+r);
+  await page.waitForFunction(()=>rebuildDepth===0&&builtEngine==='exact'&&bodies.some(b=>b.shape),null,{timeout:120000});
+  await page.waitForTimeout(2500); // cotes posées après le rejeu exact
+}
+const calmeC3=page=>page.evaluate(()=>{try{c3Say('');c3Select(null);c3Wake();}catch(e){}}).then(()=>page.waitForTimeout(600));
 const ruban=(page,nom)=>page.locator('#mfRibbon button.mfRb:visible',{hasText:nom}).first();
 // Parcours de tout le posage recalculés (les trajectoires embarquées d'un ancien moteur sont refusées).
 async function regenerer(page){
@@ -74,6 +90,32 @@ const CAPTURES={
   },
   async plan(page){await ouvrir(page,'Perçages');await espace(page,'plan');await photo(page,'plan-percages');},
   async planCrochet(page){await ouvrir(page,'Crochet');await espace(page,'plan');await photo(page,'plan-crochet');},
+  // V1.1.0 : cotation automatique (cotes 3D) — une bride faite pièce par pièce : ses cotes se posent à la création
+  async cotes3d(page){
+    await bride(page);
+    await page.evaluate(()=>{camera.position.set(120,-150,160);controls.target.set(0,0,0);camera.lookAt(0,0,0);controls.update();c3Wake();});
+    await page.waitForTimeout(1500);await calme(page);await calmeC3(page);
+    await photo(page,'cotes3d-creation');
+  },
+  // les cotes de toutes les fonctions d'une pièce existante (« 📐 Poser ses cotes 3D » sur chacune)
+  async cotes3dPiece(page){
+    await ouvrir(page,'Perçages');
+    await page.evaluate(()=>{(doc.features||[]).filter(f=>f&&!f.repeatId).forEach(f=>c3AutoNew(f));c3AutoRun();});
+    await page.waitForTimeout(1500);await calme(page);await calmeC3(page);
+    await photo(page,'cotes3d-piece');
+  },
+  // la même bride, ⌖ Localisation ISO, puis PLAN › Cotes 3D sur toute la planche (rangement automatique)
+  async cotes3dPlan(page){
+    await bride(page);
+    await page.evaluate(()=>{c3IsoLoc(c3List().find(x=>x.k==='dia'&&c3HoleOf(x)));});
+    await page.evaluate(()=>{mepSetActive(true);const sh=doc.mep.sheets[doc.mep.cur];sh.views.length=0;sh.dims.length=0;
+      ['front','top','right'].forEach(k=>mepAddViewStd(k));const V=sh.views;[[120,100],[120,185],[250,100]].forEach((q,i)=>{if(V[i]){V[i].x=q[0];V[i].y=q[1];V[i].scale=1;}});
+      V.length=Math.min(V.length,3);window.mepReprojectAll();__mepTest.setViewSel(null);}); // aucune vue choisie : toute la planche
+    await page.waitForTimeout(2500);
+    await page.evaluate(()=>mepToggle3D());
+    await page.waitForTimeout(1500);await calmeC3(page);
+    await photo(page,'cotes3d-plan');
+  },
   async rendu(page){
     await ouvrir(page,'Support Pédale Déportée R1200RT 2011');
     // apparence de rendu posée dans la page seulement (le fichier n'est pas réécrit)
@@ -121,6 +163,7 @@ const CAPTURES={
       const page=await ctx.newPage();
       page.on('pageerror',e=>console.log('  [page] '+e.message));
       page.on('dialog',d=>d.dismiss().catch(()=>{}));
+      if(nom==='cotes3dPlan')await page.addInitScript(()=>{window.__MEP_TEST_HOOKS__=true;}); // choix de vue vidé
       await demarrer(page);
       await fn(page);
       await ctx.close();

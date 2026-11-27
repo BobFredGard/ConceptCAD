@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**805 versions**, de `2026-09-28b` à `V1.0.20` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**806 versions**, de `2026-09-28b` à `V1.1.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8982,3 +8982,15 @@ Fred, 27/11 : « un outil de cotation dans le monde CAO, mais sur la 3D… ces c
 **Mise en plan** (`src/98-mep-77-cotes-3d.js`, bouton Cotes 3D, clic droit sur une vue) : les cotes 3D reprises vue par vue, une cote dans une seule vue, rangées sans chevauchement (écart réglable), Ø d'un trou de Perçage repris en cotation de perçage complète (« 6× Ø9 ↧15 EQS / Fraisure Ø18.4 x 90° »), cadres de tolérance sous le trait souligné et calés du côté du trait, axes du cercle de trous, DXF compris.
 
 **Test** : `test_cotes_3d` (186 contrôles) inscrit dans `run` et `run-fast` ; manuels Cotes 3D, Esquisse et Plan, README. Essais dans Chromium (Playwright) à chaque lot, sans erreur. CACHE_VER et FORMES_VER inchangés (les cotes 3D sont enregistrées avec le document, hors empreinte).
+
+## V1.1.0 - Cotation automatique expliquée, avec images
+
+Fred, 27/11 : « Livre la V1.1.0 avec des explication sur la cotation automatique et images » (V1.1.0 = les cotes 3D de V1.0.20, première version publiée qui les contient)
+
+**Manuel** (`docs/manuel/cotes-3d.md`, partie *Cotation automatique*, qui remplace *Cotes posées à la création*) : quand les cotes se posent, ce qu'elles lisent et pilotent, cote de référence entre parenthèses ou encadrée, reprise des cotes d'esquisse, pièce déjà faite (« 📐 Poser ses cotes 3D »), couper l'automatique, cacher ou retirer, suite sur le plan ; trois images.
+
+**README** : partie *Cotes 3D et cotation automatique* (deux images) et annonce de V1.1.0.
+
+**Images** (`docs/captures/`, refaites par `node tools/captures.cjs docs/captures cotes3d cotes3dPiece cotes3dPlan`) : `cotes3d-creation.png` (bride faite en 4 fonctions, cotes posées toutes seules), `cotes3d-piece.png` (exemple Perçages, 19 cotes), `cotes3d-plan.png` (la bride sur une planche A3 après « Cotes 3D »).
+
+**Test** : `npm run ci` vert. Aucun changement dans le code de l'application. CACHE_VER et FORMES_VER inchangés.
