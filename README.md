@@ -12,7 +12,7 @@ Ou installez-le depuis le site, dans Chrome ou Edge : icône d’installation de
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Version actuelle : **V1.1.2** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+Version actuelle : **V1.1.3** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
 
 > **V1.1.0 : les cotes 3D et la cotation automatique.** Chaque fonction pose ses cotes sur la pièce, et chaque cote pilote la pièce ([Cotation automatique](#cotes-3d-et-cotation-automatique)).
 

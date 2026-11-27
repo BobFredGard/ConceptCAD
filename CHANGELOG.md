@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**808 versions**, de `2026-09-28b` à `V1.1.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**809 versions**, de `2026-09-28b` à `V1.1.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9027,3 +9027,22 @@ Un nombre garde le nom ; sans nom, il remplace la formule (même à valeur égal
 - frappe au clavier avec la liste des paramètres.
 
 CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.3 - La pièce qui propose : une suite après un plot ou un perçage
+
+Fred, 27/11, après V1.1.1 : « rien » — en V1.1.1, après « une esquisse une extrusion »
+
+**Cause** : la suite n'était proposée qu'après une poche (coins vifs creux à arrondir), un congé ou un chanfrein (le même sur les arêtes pareilles), ou quand une habitude de la séance s'appliquait. Après un plot (extrusion qui ajoute de la matière, sans coin creux), rien n'était proposé.
+
+**Correctif** (`src/93-piece-propose.js`, partie 4 de `ppSuggestCtx`) : quand ni les coins ni les habitudes n'ont rien à proposer, les arêtes vives de ce que l'on vient de faire sont proposées :
+- **arrondir les arêtes verticales** (saillantes, dans l'axe d'outil) : rayon du dernier congé (10 mm au plus), sinon valeur ronde du dixième de la largeur (`ppNice`, `ppExtent`) ;
+- **chanfrein sur les arêtes du dessus** (ou du bord, ou **à l'entrée des trous** après un Perçage) : dernier chanfrein (2 mm au plus), sinon 0,5 sur une pièce de moins de 80 mm, 1 au-delà ;
+- **congé au pied** d'un plot posé sur la pièce : dernier congé (5 mm au plus), sinon valeur ronde du vingtième de la largeur.
+
+Une poche ne propose toujours que ses coins : la bande ne devient pas plus envahissante.
+
+**Vérifié dans Chromium** (MERLIN-39-005, brouillon remis tel quel après l'essai) : esquisse, Extrusion, hauteur 3, OK → en 0,45 s « Arrondir les 4 arêtes verticales de Extrusion Esquisse 4 · R1 », « Chanfrein 0,5 sur les 4 arêtes du dessus de Extrusion Esquisse 4 », « Congé R0,5 au pied de Extrusion Esquisse 4 (4 arêtes) » ; aucune erreur.
+
+**Manuel** : `docs/manuel/piece-propose.md`, tableau *La suite après chaque fonction* (plot, perçage).
+
+**Test** : `test_piece_propose` (106 contrôles, +5 : bloc seul, plot sur la pièce, perçage, habitude prioritaire ; le 31 dit maintenant que la poche de côté propose seulement les arêtes verticales de sa bouche) ; `npm run ci` vert. CACHE_VER et FORMES_VER inchangés.

@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.1.2';
+const APP_VER='V1.1.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -93128,7 +93128,50 @@ function ppSuggestCtx(Rs,act,prev){
       why:'Comme tu l’as fait sur '+h.from+'.',
       lines:L.map(x=>x.e.pts),cmds:()=>ppEdgeCmds(kind,pick(L),h.v)});
   });
+  // ── 4. V1.1.3 : les arêtes vives de ce que l'on vient de faire (Fred, 27/11 : « une esquisse une extrusion »
+  //    → « rien ») — arêtes verticales d'un plot, arêtes du dessus (ou du bord d'une poche, entrée des trous),
+  //    pied d'un plot posé sur la pièce ; seulement quand ni les coins ni les habitudes n'ont rien à dire
+  //    (une poche ne propose toujours que ses coins : pas envahissante) ──
+  if(S.length)return ppKeep(S);
+  const libre=L=>L.length>0;
+  const dims=ppExtent(all.filter(mine),up),hole=ppIsHole(F.id);
+  const outM=all.filter(x=>mine(x)&&x.c.conv==='out'&&ppSharp(x.e,'out'));
+  const vert=outM.filter(x=>x.c.ori==='ax'&&x.e.len>=1);
+  if(libre(vert)&&!hole){
+    const hr=ppHabit(false,10),r=hr||ppNice(dims.min/10);
+    S.push({key:'plot:'+F.id+':vert',score:1.9,kind:'fillet',
+      title:'Arrondir '+(vert.length>1?'les '+vert.length+' arêtes verticales':'l’arête verticale')+' de '+nm+' · R'+ppNum(r),
+      why:hr?'Au rayon de ton dernier congé : une arête vive blesse et s’abîme.':'Une arête vive blesse et s’abîme : R'+ppNum(r)+', environ le dixième de la largeur.',
+      lines:vert.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('fillet',pick(vert),r)});
+  }
+  const hiOf=x=>Math.max(...x.e.pts.map(p=>ppDot(p,up)));
+  const zt=outM.length?Math.max(...outM.map(hiOf)):0;
+  const top=outM.filter(x=>x.c.ori!=='ax'&&x.e.pts.every(p=>Math.abs(ppDot(p,up)-zt)<0.01));
+  if(libre(top)){
+    const v=ppHabit(true,2)||(Math.hypot(...B.size)<80?0.5:1),bord=top.every(x=>x.c.role==='bord');
+    const n=top.length,lieu=hole?(n>1?'à l’entrée des '+n+' trous':'à l’entrée du trou'):(n>1?'sur les '+n+' arêtes du '+(bord?'bord':'dessus'):'sur l’arête du '+(bord?'bord':'dessus'));
+    S.push({key:'plot:'+F.id+':haut',score:1.8,kind:'chamfer',title:'Chanfrein '+ppNum(v)+' '+lieu+' de '+nm,
+      why:'Casser les angles vifs'+(hole?' : le trou s’ouvre sans bavure, la vis entre droit.':' : rien ne coupe, rien ne s’abîme.'),
+      lines:top.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('chamfer',pick(top),v)});
+  }
+  const pied=all.filter(x=>mine(x)&&x.c.conv==='in'&&x.c.ori!=='ax'&&x.c.role==='bord'&&ppSharp(x.e,'in'));
+  if(libre(pied)&&!hole){
+    const r=ppHabit(false,5)||Math.min(5,ppNice(dims.min/20));
+    S.push({key:'plot:'+F.id+':pied',score:1.7,kind:'fillet',
+      title:'Congé R'+ppNum(r)+' au pied de '+nm+' ('+pied.length+' arête'+(pied.length>1?'s':'')+')',
+      why:'Un congé au pied renforce '+nm+' et évite l’angle vif où la pièce casse.',
+      lines:pied.map(x=>x.e.pts),cmds:()=>ppEdgeCmds('fillet',pick(pied),r)});
+  }
   return ppKeep(S);
+}
+const PP_NICE=[0.5,1,1.5,2,2.5,3,4,5,6,8,10,12,15,20,25];
+function ppNice(v){let b=PP_NICE[0];PP_NICE.forEach(n=>{if(Math.abs(n-v)<Math.abs(b-v))b=n;});return b;} // valeur ronde la plus proche
+function ppExtent(L,up){
+  // largeur et longueur de ce que l'on vient de faire, vues dans l'axe d'outil
+  const ref=Math.abs(up[0])<0.9?[1,0,0]:[0,1,0],u=ppNorm(ppCross(up,ref)),v=ppCross(up,u);
+  let a0=Infinity,a1=-Infinity,b0=Infinity,b1=-Infinity;
+  L.forEach(x=>x.e.pts.forEach(p=>{const a=ppDot(p,u),b=ppDot(p,v);if(a<a0)a0=a;if(a>a1)a1=a;if(b<b0)b0=b;if(b>b1)b1=b;}));
+  return a1>a0&&b1>b0?{min:Math.min(a1-a0,b1-b0),max:Math.max(a1-a0,b1-b0)}:{min:10,max:10};
 }
 function ppTapSize(w){return w<30?'M3':w<60?'M4':w<120?'M6':'M8';}
 function ppTopFace(Rs,ztop){
