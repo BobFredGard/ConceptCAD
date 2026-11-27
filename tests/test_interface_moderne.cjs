@@ -88,4 +88,34 @@ A(g.actif===false&&g.sig,'Goutte : muette hors du thème Goutte');
 const gsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-goutte.js'),'utf8');
 A(/mfPickForce=F;\s*try\{wirePick\._up\(fake\);\}finally\{mfPickForce=null;\}/.test(gsrc),'Goutte : le clic d’origine est rejoué dans l’outil (comme le clic long), le forçage toujours relâché');
 A(/gtCacher\(\)/.test(src)&&/gtSetOn\(!gtOn\(\)\)/.test(src),'Goutte : fermée au changement de thème / d’espace ; bulle à cocher dans le menu 🎨');
+// V1.1.8 : la Goutte disposée comme sa maquette (97-interface-themes-goutte-disposition) — tige, sans ruban
+const d=JSON.parse(vm.runInContext(`(function(){const o={};
+  const st=(kind,o2)=>({kind,o:o2,id:'x'});
+  o.det=[gtTigeDetail(st('feature',{type:'extrude',distance:30,op:'add'})),gtTigeDetail(st('feature',{type:'extrude',distance:-6,op:'cut'})),
+    gtTigeDetail(st('feature',{type:'hole',d:9,end:'through'})),gtTigeDetail(st('feature',{type:'hole',d:5.5,end:'blind',depth:12})),
+    gtTigeDetail(st('feature',{type:'xfillet',chamfer:true,edges:[{}]})),gtTigeDetail(st('feature',{type:'xfillet',edges:[{},{},{}]})),
+    gtTigeDetail(st('sketch',{name:'Esquisse 1'})),gtTigeDetail(st('feature',{type:'revolve',angle:360})),gtTigeDetail(st('feature',{type:'import'}))];
+  o.val=[gtValeur({type:'extrude',distance:-6,op:'cut'}),gtValeur({type:'extrude',distance:25,op:'add'}),gtValeur({type:'extrude',distance:10,upto:{f:1}}),
+    gtValeur({type:'hole',d:9}),gtValeur({type:'xfillet',edges:[]}),gtValeur({type:'extrude',distance:8,expr:{distance:'ep*2'}})];
+  let cap=null;const hd=document.head,old=hd.appendChild,gid=document.getElementById;
+  document.getElementById=()=>null;hd.appendChild=n=>{cap=n;return n;};
+  try{gtLayCss();}finally{document.getElementById=gid;hd.appendChild=old;}
+  o.css=(cap&&cap.textContent)||'';
+  o.fn=[typeof gtOutils,typeof gtGroupes,typeof gtRien,typeof gtLayCao,typeof tlbVert,typeof gtPoser].join(',');
+  return JSON.stringify(o);})()`,ctx));
+A(d.det.join('|')==='30 mm|découpe 6 mm|Ø9 débouchant|Ø5,5 × 12|chanfrein · 1 arête|congé · 3 arêtes|esquisse|360°|','Goutte, tige : nom et valeur de chaque étape (« découpe 6 mm », « Ø9 débouchant »…) : '+d.det.join(' | '));
+A(d.val[0].l==='Profondeur'&&d.val[0].v===6&&d.val[0].k==='distance'&&d.val[1].l==='Hauteur'&&d.val[2]===null&&d.val[3].l==='Diamètre'&&d.val[4]===null&&d.val[5].fx===true,
+  'Goutte : la valeur de la fonction créatrice dans la bulle (profondeur d’une découpe, Ø d’un perçage ; rien « jusqu’à une face » ; formule ƒx non écrasée)');
+const C0='html body.ui-modern.gt-lay[data-theme="goutte"]:not(.mf-mobile)[data-ws="cao"]:not(.mf-sk):not([data-asm="1"])';
+A(d.css.includes(C0+' #mfRibbon,'+C0+' #mfBrTabs{display:none!important}'),'Goutte : plus de ruban en CAO (hors esquisse, assemblage, téléphone) — FAO et PLAN le gardent');
+A(d.css.includes(C0+' #mfTl .tlbR{order:4;flex:0 1 auto;min-height:0;flex-direction:column-reverse'),'Goutte : l’historique en tige verticale, la plus ancienne en bas');
+A(d.css.includes(C0+':not(.gt-arbre) #treeWrap{display:none!important}')&&d.css.includes(C0+'.gt-arbre #mfTl{display:none!important}'),'Goutte : bascule Tige · Arbre');
+A(/position:absolute;left:50%;top:50%;transform:translate\(-50%,-50%\)/.test(d.css),'Goutte : espaces en galets au milieu du bandeau');
+A(!/infinite/.test(d.css),'Goutte : la disposition n’ajoute aucune animation sans fin');
+A(/#mfTl\{[^}]*pointer-events:none/.test(d.css)&&/#mfTl>\*\{pointer-events:auto\}/.test(d.css),'Goutte : le vide autour de la tige laisse passer les clics vers la pièce');
+A(d.fn==='function,function,function,function,function,function','Goutte : goutte de toutes les commandes, clic dans le vide, tige verticale (fonctions présentes)');
+const tl=fs.readFileSync(path.join(ROOT,'src','41-bandeau-timeline.js'),'utf8');
+A(/function tlbGapAt\(x,y\)/.test(tl)&&/D\.gap=tlbGapAt\(e\.clientX,e\.clientY\)/.test(tl)&&/y0:e\.clientY/.test(tl),'tige : glisser une fonction ou la pousse vers le haut / le bas');
+A(/gtLaySync\(mfBuilt\)/.test(src),'Goutte : la disposition suit le thème');
+A(/tige\?'':'mfTl'/.test(fs.readFileSync(path.join(ROOT,'src','93-piece-propose.js'),'utf8')),'la pièce qui propose : la tige compte comme l’arbre (la bande reste en bas)');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);

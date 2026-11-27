@@ -32,7 +32,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
-  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) — rien ne change de place, tout reste là où vous l'attendez ; c'est l'allure de toute l'application qui change, vue 3D comprise :
+  - **quatre interfaces du futur** (partie « Interfaces du futur » du même menu) : c'est l'allure de toute l'application qui change, vue 3D comprise ; la Goutte change aussi la disposition (voir plus bas) :
     - **Habitacle** : poste de pilotage bleu nuit, traits cyan lumineux, coins de visée sur la vue ; l'arborescence et les paramètres sont inclinés comme des écrans de cockpit et se redressent dès que la souris y va ;
     - **Table holographique** : noir profond, sarcelle et ambre, anneau de lumière sous la pièce, espaces de travail sur un arc de lumière ;
     - **Plan vivant** : bleu d'architecte, vue quadrillée dans un cadre de planche, angles vifs, boutons en pochoir (blancs quand ils sont choisis) ; l'espace PLAN prend le même bleu ;
@@ -42,7 +42,15 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
       - arête : *Congé*, *Chanfrein*, *Coter* ;
       - pour une face, *Modifier « … »* ouvre la fonction qui l'a créée (la poche, l'extrusion…), comme un double-clic dans la timeline.
 
-      La commande démarre avec la face ou l'arête **déjà prise** : le congé a son arête, le déplacement sa face ; il ne reste qu'à régler la valeur. La bulle se ferme au moindre geste ailleurs (clic, molette, touche, `Échap`) et ne vient jamais pendant un outil, en esquisse ni en tournant la vue. *Ne plus montrer* (dans la bulle) la coupe ; menu 🎨 › *Bulle d'actions près de la souris* la remet.
+      La commande démarre avec la face ou l'arête **déjà prise** : le congé a son arête, le déplacement sa face ; il ne reste qu'à régler la valeur. La bulle d'une face montre aussi la **valeur de la fonction qui l'a créée** (profondeur d'une découpe, hauteur d'une extrusion, Ø d'un perçage, angle) : la changer puis `Entrée` refait la pièce, `Ctrl+Z` revient. La bulle se ferme au moindre geste ailleurs (clic, molette, touche, `Échap`) et ne vient jamais pendant un outil, en esquisse ni en tournant la vue. *Ne plus montrer* (dans la bulle) la coupe ; menu 🎨 › *Bulle d'actions près de la souris* la remet.
+
+      Avec la bulle, la Goutte a **sa propre disposition** en CAO, celle de sa maquette :
+      - **plus de ruban** : toutes les commandes viennent dans une goutte, d'un clic dans le vide quand rien n'est sélectionné, ou sur **+ la suite** en haut de la tige ; elles y sont rangées en galets (Créer, Modifier…), un galet ouvre ses commandes. `Ctrl+K` et les raccourcis restent ;
+      - **l'historique pousse en tige** à gauche, de bas en haut : un bourgeon par fonction, une feuille par esquisse, avec leur nom et leur valeur. La pousse verte du haut est le marqueur temps : la glisser vers le bas rejoue la pièce plus tôt. Clic, double-clic et glisser d'une fonction marchent comme dans la timeline ;
+      - **Tige · Arbre**, en haut à gauche de la vue, montre l'un ou l'autre ;
+      - en haut, les espaces en galets au milieu et des orbes à droite : annuler, rétablir, enregistrer (les autres boutons de fichier sortent au survol).
+
+      FAO, PLAN, esquisse et assemblage gardent leur ruban ; couper la bulle rend la disposition habituelle.
     Les arêtes de la pièce prennent la teinte du thème (foncée, lisible sur une pièce claire comme sur une sombre). Au repos, rien ne bouge : la vue en veille ne fait pas souffler la carte graphique ;
   - **fiches illustrées au survol**, façon dessin animé (actives par défaut, ⚙ → Affichage pour les couper) : une image avant → après qui s'anime, une phrase simple, les étapes et le raccourci de chaque icône ;
   - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.

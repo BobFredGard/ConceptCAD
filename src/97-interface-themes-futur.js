@@ -180,7 +180,22 @@ function mfFuturCss(){
     B(G,'#treeOverlay','padding-left:14px;padding-right:14px'),
     B(G,'#mfBrTabs,#viewbar','border-radius:999px!important'),
     B(G,'#mfTl','border-radius:999px!important;padding-left:14px;padding-right:14px'),
-    B(G,'#mfTl .tlbS.sel','background:var(--fx)!important;border-color:var(--fx)!important;color:#1a0d08!important'),
+    // V1.1.8 : la tige — l'historique pousse comme une plante (éclosion : gtTigeSync, 97-interface-themes-goutte)
+    B(G,'#mfTl .tlbR','gap:9px;padding:6px 10px 5px;background:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 16%27%3E%3Cpath d=%27M0 8C10 3 10 3 20 8S30 13 40 8%27 fill=%27none%27 stroke=%27%23968a7d%27 stroke-width=%272.2%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") repeat-x 0 50%/40px 16px local'),
+    B(G,'#mfTl .tlbS','min-width:32px;height:32px;padding:0 5px;border:1px solid rgba(255,250,242,.55);background:radial-gradient(circle at 34% 28%,#fffaf2 0%,#e9e1d5 52%,#bfb4a6 100%);box-shadow:0 3px 8px rgba(0,0,0,.35);color:#1a1614'),
+    B(G,'#mfTl .tlbS.sk','min-width:26px;height:26px;padding:0 3px;border-radius:70% 0 70% 0 / 70% 0 70% 0!important;border-color:rgba(205,240,218,.7);background:linear-gradient(135deg,#d6f2e1 0%,#9fd8b8 55%,#5fa883 100%)'),
+    B(G,'#mfTl .tlbS.cg','border-style:dashed;background:radial-gradient(circle at 34% 28%,#fff7da,#e8d9a6 70%)'),
+    B(G,'#mfTl .tlbS:hover','border-color:#ff9a7f;box-shadow:0 0 0 3px rgba(255,122,89,.25),0 3px 8px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbS.sel','background:radial-gradient(circle at 34% 28%,#ffc4b2 0%,#ff7a59 60%,#d9573a 100%)!important;border-color:#ffb39f!important;color:#1a0d08!important;box-shadow:0 0 0 4px rgba(255,122,89,.28),0 3px 10px rgba(0,0,0,.4)'),
+    B(G,'#mfTl .tlbS.warn','border-color:#ff453a;box-shadow:inset 0 0 0 1px #ff453a,0 3px 8px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbS.rsrc,#mfTl .tlbS.rsrc.rcand','background:radial-gradient(circle at 34% 28%,#c9f7d6,#30d158 75%)'),
+    B(G,'#mfTl .tlbS.rcand','background:rgba(48,209,88,.12)'),
+    // le marqueur temps = la pousse verte au bout de la tige
+    B(G,'#mfTl .tlbM','width:13px;height:26px;margin:0 4px;border-radius:0 100% 0 100%;background:linear-gradient(135deg,#e2f7ea,#7fc9a0 55%,#4f9a74);box-shadow:0 2px 6px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbM::before','display:none'),
+    B(G,'#mfTl .tlbM.on','box-shadow:0 0 0 3px rgba(159,216,184,.45),0 2px 6px rgba(0,0,0,.35)'),
+    B(G,'#mfTl .tlbS.gtNeuf','animation:gtEclot .9s cubic-bezier(.3,1.5,.5,1) both'),
+    '@keyframes gtEclot{0%{transform:scale(0) translateY(12px);opacity:0}55%{transform:scale(1.25);opacity:1}75%{transform:scale(.94)}100%{transform:none}}',
     B(G,'.ovlTitle,.panel-title','color:#e9e1d6!important;font-weight:600'),
     B(G,'input,select,textarea','border-radius:12px'),
     // menus ouverts = gouttes : forme irrégulière qui ondule tant qu'elles sont ouvertes
@@ -191,7 +206,7 @@ function mfFuturCss(){
     B(G,'#vpwrap::after','content:"";position:absolute;inset:0;pointer-events:none;z-index:1;border-radius:inherit;'+
       'background:radial-gradient(70% 60% at 42% 38%,rgba(255,220,190,.05),transparent 70%),radial-gradient(130% 95% at 50% 50%,transparent 62%,rgba(10,6,8,.42))'),
     '@keyframes mfGoutte{0%,100%{border-radius:22px 28px 24px 30px / 26px 22px 30px 24px}50%{border-radius:30px 22px 28px 24px / 22px 30px 24px 28px}}',
-    '@media (prefers-reduced-motion:reduce){html body[data-theme="goutte"] :is('+M+'){animation:none!important}html body[data-theme="habitacle"] :is(#treeOverlay,#propsWrap>.right>.panel){transition:none}}'
+    '@media (prefers-reduced-motion:reduce){html body[data-theme="goutte"] :is('+M+'){animation:none!important}html body[data-theme="habitacle"] :is(#treeOverlay,#propsWrap>.right>.panel){transition:none}html body[data-theme="goutte"] #mfTl .tlbS.gtNeuf{animation:none!important}}'
   );
   st.textContent=R.join('\n');
   document.head.appendChild(st);

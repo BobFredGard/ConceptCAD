@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**814 versions**, de `2026-09-28b` à `V1.1.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**815 versions**, de `2026-09-28b` à `V1.1.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9165,3 +9165,46 @@ Fred, 27/11, après la livraison de V1.1.5 arrêtée en route : « Oui, corrige-
 - tag, main poussé, fusion et site sur le code contrôlé.
 
 Essai à blanc (`--essai`) sur le vrai dépôt : « Livraison de V1.1.7 … — code 17108eee2 ». Aucun changement dans l'application ; CACHE_VER et FORMES_VER inchangés.
+
+## V1.1.9 - La Goutte disposée comme sa maquette : sans ruban, l'historique en tige
+
+Fred, 27/11, devant les quatre interfaces du futur (V1.1.6) : « Pour le moment, les interfaces sont proches de l'agencement de l'interface de ConceptCAD actuel. J'aimerais vraiment que tu te rapproches de tes 4 façons proposées. » Une interface à la fois ; d'abord la Goutte, disposée comme sur le canevas des pistes.
+
+Thème Goutte avec sa bulle d'actions, espace CAO (hors esquisse, assemblage et téléphone) :
+- **plus de ruban** : la pièce prend toute la hauteur. Les commandes viennent dans la goutte :
+  - sur une face ou une arête, ce qu'on peut y faire (V1.1.7) ;
+  - dans le vide quand rien n'est sélectionné, ou sur **« + la suite »** au bout de la tige : toutes les commandes de la CAO, rangées en galets (les groupes du ruban : Esquisse, Créer, Construire, Modifier, Ensembles, Fichier, Assembler ; épinglées ou non). Un galet ouvre ses commandes, « ‹ Toutes les commandes » revient ;
+  - `Ctrl+K` et les raccourcis restent ;
+- **l'historique pousse en tige** verticale à gauche, de bas en haut :
+  - bourgeons ronds pour les fonctions, feuilles vertes pour les esquisses, la tige ondule de l'un à l'autre ;
+  - à côté de chaque bourgeon, son nom et sa valeur (« découpe 6 mm », « Ø9 débouchant », « chanfrein · 1 arête ») ;
+  - la pousse verte du haut est le marqueur temps : la glisser vers le bas rejoue la pièce plus tôt (« rejouée jusqu'ici ») ;
+  - on glisse toujours une fonction pour la réordonner, clic et double-clic comme avant ;
+  - la fonction qui vient d'être créée éclot (son bourgeon pousse en grossissant, moins de 1 s ; rien si l'ordinateur demande moins de mouvement, rien à l'ouverture d'un fichier) ;
+  - bulle coupée : la timeline revient en bas, en tige ondulée horizontale ;
+- **l'arbre se range** : bascule **Tige · Arbre** en haut à gauche de la vue (gardée d'une séance à l'autre) ;
+- **la bulle d'une face** montre la valeur de la fonction qui l'a créée, réglable sur place : profondeur d'une découpe, hauteur d'une extrusion, Ø d'un perçage, angle d'une révolution ou d'une dépouille. Entrée applique, Ctrl+Z annule ; une valeur donnée par une formule ƒx n'est pas écrasée ;
+- **en haut** : logo et nom de la pièce à gauche, les espaces CAO · FAO · PLAN · RENDU en galets au milieu, des orbes à droite (annuler, rétablir, enregistrer ; nouveau, ouvrir, récents, enregistrer sous, dossier et pilotage sortent au survol). La recherche est un galet court qui s'allonge quand on y tape.
+
+FAO, PLAN, esquisse et assemblage gardent leur ruban. *Ne plus montrer* (bulle) ou 🎨 › *Bulle d'actions* décoché : la disposition habituelle revient, ruban compris. Les autres thèmes ne changent pas.
+
+**Fichiers** :
+- `src/97-interface-themes-goutte-disposition.js` (nouveau) : disposition, goutte de toutes les commandes, noms de la tige, valeur dans la bulle ;
+- `97-interface-themes-goutte` : clic dans le vide, valeur, tige habillée ;
+- `41-bandeau-timeline` : `tlbVert`, glisser et défiler en hauteur quand la rangée est verticale ;
+- `97-interface-moderne` : la disposition suit le thème ;
+- `93-piece-propose` : la tige compte comme l'arbre (la bande « Ensuite ? » reste en bas, à droite de la tige).
+
+**Manuel** : *Interface › Apparence*.
+
+**Test** : `test_interface_moderne` + 13 contrôles (noms et valeurs de la tige, valeur de la bulle, plus de ruban en CAO seulement, tige verticale, bascule, espaces au milieu, aucune animation sans fin, clics qui traversent le vide autour de la tige, glisser vertical).
+
+**Vérifié dans Chromium** (Poche et Contour, 1440 × 900) :
+- ruban absent en CAO, présent en FAO ; tige de 7 étapes, la plus ancienne en bas ;
+- « + la suite » → 7 galets, Créer → 9 commandes ; Modifier › Congé ouvre le congé, Échap le ferme ;
+- clic dans le vide : le 1er désélectionne, le 2e ouvre toutes les commandes ;
+- profondeur de la découpe 6 → 7 dans la bulle, puis Ctrl+Z → 6 ;
+- pousse glissée vers le bas → pièce rejouée après l'extrusion, puis remise au bout ;
+- Arbre / Tige, thème Nuit et bulle coupée : disposition habituelle ; aucune erreur dans la console.
+
+CACHE_VER et FORMES_VER inchangés.

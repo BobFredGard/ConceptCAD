@@ -44,6 +44,7 @@ function mfTheme(t){
   mf3D(t);
   try{if(typeof mfEdgeSync==='function')mfEdgeSync();}catch(e){} // teinte des arêtes de la pièce
   try{if(typeof gtCacher==='function')gtCacher();}catch(e){} // V1.1.7 : bulle de la Goutte fermée
+  try{if(typeof gtLaySync==='function')gtLaySync(mfBuilt);}catch(e){} // V1.1.8 : disposition de la Goutte (tige, sans ruban)
   mfLS('minifusion_theme',t);
   try{document.querySelectorAll('.mfThemeOpt').forEach(b=>b.classList.toggle('on',b.dataset.t===t));}catch(e){}
   try{if(typeof window.mepThemeApply==='function')window.mepThemeApply();}catch(e){} // espace PLAN : fond, papier, accent

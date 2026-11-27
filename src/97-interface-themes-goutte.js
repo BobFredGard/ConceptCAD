@@ -26,7 +26,7 @@ let gtBulle=null;   // {el, perles, cx, cy, force, ctx}
 let gtAvant='';     // empreinte de la sélection à l'appui (la bulle ne vient que si le clic l'a changée)
 let gtAppui=null;   // position de l'appui sur la vue
 function gtOn(){return (typeof mfLS==='function'?mfLS('minifusion_goutte_bulle'):null)!=='0';}
-function gtSetOn(on){try{mfLS('minifusion_goutte_bulle',on?'1':'0');}catch(e){}if(!on)gtCacher();}
+function gtSetOn(on){try{mfLS('minifusion_goutte_bulle',on?'1':'0');}catch(e){}if(!on)gtCacher();try{gtLaySync(true);}catch(e){}} // V1.1.8 : la disposition suit la bulle
 function gtActif(){
   try{
     const b=document.body;
@@ -175,19 +175,13 @@ function gtMontrer(cx,cy){
   no.onclick=ev=>{ev.stopPropagation();gtSetOn(false);try{faceEl.textContent='Bulle de la Goutte coupée — 🎨 › « Bulle d’actions » pour la remettre.';}catch(e){}};
   const esc=document.createElement('span');esc.textContent='Échap pour fermer';
   ft.appendChild(no);ft.appendChild(esc);
-  el.appendChild(t);el.appendChild(s);el.appendChild(g);el.appendChild(ft);
+  el.appendChild(t);el.appendChild(s);el.appendChild(g);
+  // V1.1.8 : la valeur de la fonction qui a créé la face, réglable ici (la maquette : « Profondeur 12 mm »)
+  try{const f=S.fid&&(doc.features||[]).find(x=>x.id===S.fid),V=f&&typeof gtValeurRang==='function'?gtValeurRang(B,f):null;if(V)el.appendChild(V);}catch(e){}
+  el.appendChild(ft);
   document.body.appendChild(el);
-  let R={left:0,top:0,right:window.innerWidth,bottom:window.innerHeight};
-  try{const r=document.getElementById('vpwrap').getBoundingClientRect();if(r.width>200)R=r;}catch(e){}
-  const w=el.offsetWidth||330,h=el.offsetHeight||220,p=gtPlace(cx,cy,w,h,R);
-  el.style.left=p.x+'px';el.style.top=p.y+'px';
-  // deux perles du curseur vers la goutte
-  const tx=p.x<cx?p.x+w-18:p.x+18,ty=p.y+h*0.55;
-  [[0.3,12],[0.64,20]].forEach(([k,d])=>{
-    const q=document.createElement('div');q.className='gtPerle';
-    q.style.width=q.style.height=d+'px';q.style.left=(cx+(tx-cx)*k-d/2)+'px';q.style.top=(cy+(ty-cy)*k-d/2)+'px';
-    document.body.appendChild(q);B.perles.push(q);
-  });
+  // à côté du curseur, deux perles du curseur vers la goutte (97-interface-themes-goutte-disposition)
+  gtPoser(B);
   gtBulle=B;
 }
 function gtAgir(B,k){
@@ -217,21 +211,58 @@ function gtRejoue(B){
     try{wirePick._up(fake);}finally{mfPickForce=null;}
   }catch(e){}
 }
+/* ----- la tige (V1.1.8) : l'historique pousse comme une plante ----------------------------
+   Thème Goutte : le bandeau du bas devient une tige ondulée (CSS de mfFuturCss, 97-interface-
+   themes-futur) ; les fonctions sont des bourgeons ronds, les esquisses des feuilles, le marqueur
+   temps la pousse verte du bout. Ici : la fonction (ou l'esquisse) qui vient d'être créée éclot —
+   seulement une ou deux étapes neuves d'un coup (une fonction, son esquisse) ; un fichier ouvert,
+   une annulation qui en remet plusieurs, ne font rien éclore. */
+let gtTigeIds=null; // étapes déjà vues dans le bandeau (null : rien vu encore)
+function gtTigeNeuves(avant,ids){
+  // Pur : les étapes à faire éclore — 1 ou 2 nouvelles, jamais au premier passage ni en masse
+  if(!avant)return [];
+  const n=ids.filter(id=>!avant.has(id));
+  return n.length>=1&&n.length<=2?n:[];
+}
+function gtTigeSync(R,S){
+  if(!R||!R.querySelectorAll)return;
+  const els=[...R.querySelectorAll('.tlbS')],ids=els.map(e=>e.dataset&&e.dataset.id).filter(Boolean);
+  let goutte=false;try{goutte=document.body.getAttribute('data-theme')==='goutte';}catch(e){}
+  if(goutte)try{gtTigeHabille(R,S);}catch(e){} // V1.1.8 : nom et valeur de chaque étape, « + la suite »
+  const neuves=goutte?gtTigeNeuves(gtTigeIds,ids):[];
+  gtTigeIds=new Set(ids);
+  // le bandeau est refait à chaque rejeu / sélection : l'éclosion reprend où elle en était
+  const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  neuves.forEach(id=>gtTigeEclos.set(id,now));
+  gtTigeEclos.forEach((t,id)=>{
+    const dt=now-t;if(dt>GT_ECLOS_MS||!goutte){gtTigeEclos.delete(id);return;}
+    const el=els.find(e=>e.dataset.id===id);if(!el)return;
+    el.classList.add('gtNeuf');el.style.animationDelay=(-Math.round(dt))+'ms';
+  });
+}
+const GT_ECLOS_MS=900;
+const gtTigeEclos=new Map(); // étape → instant où elle a éclos
 /* ----- écoute : au niveau du document (la vue n'existe pas encore au chargement) ----- */
 (function gtEcoute(){
   try{
     const vue=e=>{try{return typeof renderer!=='undefined'&&renderer&&e.target===renderer.domElement;}catch(err){return false;}};
     document.addEventListener('pointerdown',e=>{
       if(gtBulle&&!gtBulle.el.contains(e.target))gtCacher();
-      if(vue(e)){gtAppui={x:e.clientX,y:e.clientY};gtAvant=gtSig();}else gtAppui=null;
+      if(vue(e)){gtAppui={x:e.clientX,y:e.clientY,rien:typeof gtRien==='function'&&gtRien()};gtAvant=gtSig();}else gtAppui=null;
     },true);
     // relâcher sur la vue : le clic ordinaire a déjà sélectionné (écouteur de la vue, avant le document)
     document.addEventListener('pointerup',e=>{
       if(!vue(e)||!gtAppui||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
       if(Math.hypot(e.clientX-gtAppui.x,e.clientY-gtAppui.y)>6)return;
       if(!gtActif())return;
-      const cx=e.clientX,cy=e.clientY,avant=gtAvant;
-      setTimeout(()=>{if(gtActif()&&gtSig()!==avant)gtMontrer(cx,cy);},30);
+      const cx=e.clientX,cy=e.clientY,avant=gtAvant,rien=gtAppui.rien;
+      setTimeout(()=>{
+        if(!gtActif())return;
+        if(gtSig()!==avant){gtMontrer(cx,cy);return;}
+        // V1.1.8 : clic dans le vide, rien de sélectionné avant ni après (disposition de la maquette, sans ruban) → toutes les commandes
+        let vide=false;try{vide=rien&&gtLayCao()&&gtRien()&&!pick({clientX:cx,clientY:cy});}catch(err){vide=false;}
+        if(vide)gtOutils(cx,cy);
+      },30);
     });
     document.addEventListener('wheel',e=>{if(gtBulle&&!gtBulle.el.contains(e.target))gtCacher();},{capture:true,passive:true});
     // clavier : Échap ferme ; ailleurs que dans la goutte, toute touche ferme (Tab / Entrée y restent permis)
