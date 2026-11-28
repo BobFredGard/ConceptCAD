@@ -109,7 +109,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Journal d’erreurs** : les plantages sont notés sur l’ordinateur, sans aucun envoi ni contenu de la pièce. Dans l’**Aide** (F1 hors esquisse) : enregistrer, copier ou vider le journal, pour faire analyser les pannes.
 
 ---
-# Les diiférentes interface futuristes :
+# Les diiférentes interfaces futuristes :
 
 ## L'habitacle
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/5cd2e16b-b7c1-40e9-821a-106e24bd9651" />
