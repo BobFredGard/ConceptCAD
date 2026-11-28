@@ -175,7 +175,7 @@ async function mffWrite(h,opt){
       enregistrement raté ne remplace jamais un bon fichier ;
    2. la version précédente est COPIÉE : « nom.miniFusion.bak » à côté du fichier quand il est
       dans le dossier de projets (le navigateur n'écrit qu'où on lui a donné accès), et toujours
-      dans le stockage du navigateur (IndexedDB, une copie par fichier) ;
+      dans le stockage du navigateur (IndexedDB, une copie par fichier ; retirée en V1.2.5) ;
    3. l'écriture passe par le fichier d'échange du navigateur, qui ne remplace l'original qu'à la
       fermeture ; en cas d'erreur elle est abandonnée (l'original reste intact) ;
    4. relecture : la taille écrite doit être celle du contenu, sinon la copie est remise. */
@@ -198,7 +198,7 @@ async function mffDirOf(h){
   }catch(e){return null;}
 }
 async function mffBackup(h,old,opt){
-  // Copie de la version précédente → {disk: nom du .bak ou '', idb: bool, idbP: promesse de la copie du navigateur}
+  // Copie de la version précédente → {disk: nom du .bak ou ''}
   // V1.2.3 (Fred, 28/11 : bandeau « copie de la version précédente (70 s) », enregistrement jamais fini) : la
   // copie dans le navigateur (IndexedDB) n'avait pas de durée limite ; une écriture IndexedDB attend derrière
   // celles d'une autre fenêtre ou d'un autre onglet ConceptCAD (même mémoire du navigateur). La copie est un
@@ -206,11 +206,10 @@ async function mffBackup(h,old,opt){
   // V1.2.4 (Fred, 28/11 : « Pourquoi c'est si long pour un fichier de 268 Ko ? ») : faite APRÈS l'écriture
   // du fichier et sans l'attendre (la version précédente est en mémoire) ; aucune en quittant la pièce
   // (Nouveau / Ouvrir : « pas la peine de le remettre en mémoire »), la copie .bak du disque reste.
-  const out={disk:'',idb:false,idbP:null};
-  if(!(opt&&opt.quitte)){
-    try{out.idbP=mffDelai(idbSet('mff:bak:'+h.name,{name:h.name,at:Date.now(),txt:old}),MFF_DELAI.copie*12,'copie de secours dans le navigateur')
-      .then(()=>{out.idb=true;},e=>{try{log('Enregistrement : copie de secours dans le navigateur abandonnée ('+(e&&e.message||e)+')');}catch(e2){}});}catch(e){}
-  }
+  // V1.2.5 (Fred, 28/11 : « pourquoi avoir une copie en mémoire dans le navigateur ? » — « Yes ») : plus de copie
+  // dans le navigateur. Le fichier écrit est relu et comparé (version précédente remise sinon) ; la copie .bak
+  // à côté du fichier (dossier de projets) reste ; le brouillon garde la pièce en cours.
+  const out={disk:''};
   mffEtape('copie de secours sur le disque');
   try{
     const d=await mffDelai(mffDirOf(h),MFF_DELAI.copie,'dossier de projets');
@@ -246,7 +245,7 @@ async function mffWriteSafe(h,data,opt){
   const bad=mffCheckData(data);if(bad)throw new Error('enregistrement annulé : '+bad+' — le fichier sur le disque n’a pas été touché');
   mffEtape('lecture de la version précédente');
   let old=null;try{old=await mffDelai(h.getFile().then(mffFileText),mffLimite(h,MFF_DELAI.disque),'lecture du fichier');}catch(e){old=null;}
-  let bak={disk:'',idb:false};
+  let bak={disk:''};
   mffEtape('compression');
   const bin=await mffPack(data);
   mffEtape(h&&h.numplans?'envoi à NumPLans':'écriture sur le disque');
@@ -271,12 +270,24 @@ async function mffWriteSafe(h,data,opt){
   return {bak};
 }
 let mffLastBak=null;
+/* V1.2.5 : les copies de secours gardées dans le navigateur par les versions d'avant (mff:bak:*) ne servent plus :
+   retirées une fois, en fond, quelques secondes après le démarrage (place rendue à la mémoire du navigateur). */
+async function mffBakPurge(){
+  try{
+    const ks=await idbKeys('mff:bak:');if(!ks.length)return 0;
+    const db=await idbOpen();
+    await new Promise(res=>{try{const tx=db.transaction('kv','readwrite');const st=tx.objectStore('kv');ks.forEach(k=>st.delete(k));
+      tx.oncomplete=tx.onerror=tx.onabort=()=>res();}catch(e){res();}});
+    try{db.close();}catch(e){}
+    return ks.length;
+  }catch(e){return 0;}
+}
+try{if(typeof window!=='undefined'&&typeof indexedDB!=='undefined')setTimeout(()=>{mffBakPurge();},8000);}catch(e){}
 async function mffBakFind(h){
   // Copies de secours du fichier courant : sur le disque (.bak) et dans le navigateur
   const out=[];if(!h)return out;
   try{const d=await mffDirOf(h);if(d){const b=await d.getFileHandle(h.name+'.bak');const f=await b.getFile();
     out.push({where:'disk',label:'📁 '+b.name,at:f.lastModified||0,txt:async()=>await mffFileText(f)});}}catch(e){}
-  try{const r=await idbGet('mff:bak:'+h.name);if(r&&typeof r.txt==='string')out.push({where:'idb',label:'🗄 copie du navigateur',at:r.at||0,txt:async()=>r.txt});}catch(e){}
   return out.sort((a,b)=>b.at-a.at);
 }
 async function mffBakOpen(c){
@@ -324,7 +335,7 @@ async function mffSaveNow(attendu,opt){
       const r=await mffWrite(mffHandle,opt);fileHandle=mffHandle;mffMark();mffRecentAdd(mffHandle);
       if(opt&&opt.quitte){try{if(pcEcrT){clearTimeout(pcEcrT);pcEcrT=null;}}catch(e){}} // ni image ni brouillon d'une pièce quittée
       else try{autosave();}catch(e){}
-      const bk=r&&r.bak&&r.bak.disk?' — version précédente : '+r.bak.disk:(r&&r.bak&&r.bak.idbP?' — version précédente gardée dans le navigateur':'');
+      const bk=r&&r.bak&&r.bak.disk?' — version précédente : '+r.bak.disk:'';
       mffToast('Enregistré dans '+mffHandle.name+bk+mffEtBilan()+'.'+mffManque(),'ok');mffEt=null;
       return true;
     }catch(e){

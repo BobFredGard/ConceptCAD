@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**824 versions**, de `2026-09-28b` à `V1.2.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**825 versions**, de `2026-09-28b` à `V1.2.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9427,5 +9427,21 @@ Fred, 28/11 : « Pourquoi c'est si long pour un fichier de 268 Ko ? » ; à la p
 **Test** : `test_enregistrement_sur` 35 contrôles (+2 : copie du navigateur qui ne finit pas → pièce enregistrée tout de suite ; « Enregistrer » avant Nouveau / Ouvrir → aucune copie dans le navigateur).
 
 **Vérifié dans Chromium** : Perçages, mémoire du navigateur bloquée par une écriture gardée ouverte : Ctrl+S en 3 s (V1.2.3 : 15 s ; V1.2.2 : jamais), Nouveau → Enregistrer en 3 s, cote relue dans le fichier ; mémoire libre : comme avant.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.5 - Plus de copie de secours dans le navigateur
+
+Fred, 28/11 : « pourquoi avoir une copie en mémoire dans le navigateur ? Peut-être que cela ne sert plus à rien aujourd'hui puisque j'ouvre les pièces à chaque fois… Et autre réflexion, la copie interne c'est déjà la pièce active non ? » — expliqué : le brouillon est la pièce active, la copie de secours était la version d'AVANT l'enregistrement ; utile seulement hors du dossier de projets ; c'est elle qui bloquait l'enregistrement (V1.2.3) — « Yes » pour la retirer.
+
+**Correctif** : `mffBackup` n'écrit plus `mff:bak:<nom>` dans IndexedDB (le fichier écrit reste relu et comparé, version précédente remise sinon ; `.bak` à côté du fichier dans le dossier de projets gardé ; brouillon inchangé) ; menu des copies de secours : celle du disque seulement ; `mffBakPurge` retire une fois, 8 s après le démarrage, les copies laissées par les versions d'avant. Aussi : `pcVersFichier` n'attend plus la fin d'un calcul qui ne tourne pas (pièce marquée modifiée sans rejeu : 1,5 s pour qu'un calcul démarre, sinon rien ; avant : les 20 s entières, vu en vérifiant).
+
+**Fichiers** : `97-fichiers-projets`, `20-75-piece-gardee`.
+
+**Manuel** : *Fichiers* (enregistrement sûr).
+
+**Test** : `test_enregistrement_sur` 36 contrôles (6, 11, 14, 34 revus : rien dans la mémoire du navigateur ; +1 : anciennes copies retirées, le reste de la mémoire gardé).
+
+**Vérifié dans Chromium** : Perçages, cote changée puis Ctrl+S : 0,15 s, image jointe, aucune `mff:bak:` dans la mémoire, anciennes copies effacées au démarrage ; pièce marquée modifiée sans recalcul : 1,6 s (avant : 20 s).
 
 CACHE_VER et FORMES_VER inchangés.

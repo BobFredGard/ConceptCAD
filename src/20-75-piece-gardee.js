@@ -365,7 +365,11 @@ async function pcVersFichier(docTxt){
         try{log('Enregistrement : fin du calcul attendue pour joindre l’image de la pièce…');}catch(x){}
         try{if(typeof mffEtape==='function')mffEtape('attente de la fin du calcul de la pièce');}catch(x){}
         const t0=Date.now();
-        while(occupe()&&Date.now()-t0<PC_ATTENTE_ENR)await new Promise(r=>setTimeout(r,250));
+        // V1.2.5 : affichage périmé sans aucun calcul en cours (pièce marquée modifiée sans rejeu : annotation…) :
+        // 1,5 s pour qu'un calcul démarre, sinon pas d'attente (avant : les 20 s entières, pour rien)
+        const tourne=()=>rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)||pcChauffe||occThrPending
+          ||(typeof delWkPending==='function'&&delWkPending());
+        while(occupe()&&Date.now()-t0<PC_ATTENTE_ENR&&(tourne()||Date.now()-t0<1500))await new Promise(r=>setTimeout(r,250));
         // document changé pendant l'attente : son image n'irait pas avec le texte enregistré
         try{if(pcSigDoc(JSON.stringify(JSON.parse(serialise())))!==pcSigDoc(docTxt))return null;}catch(x){return null;}
         cle=pcCle();if(!cle)return null;

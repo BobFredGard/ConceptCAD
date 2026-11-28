@@ -44,7 +44,7 @@ const vm=require('vm');
     r=await mffWriteSafe(h,v2);
     att(FS['projets/pieces/Bride.miniFusion']===v2,'4 : nouvelle version écrite');
     att(FS['projets/pieces/Bride.miniFusion.bak']===v1&&r.bak.disk==='Bride.miniFusion.bak','5 : version précédente copiée en « Bride.miniFusion.bak » à côté du fichier');
-    att(IDB['mff:bak:Bride.miniFusion']&&IDB['mff:bak:Bride.miniFusion'].txt===v1,'6 : et gardée dans le navigateur');
+    att(!Object.keys(IDB).some(k=>/^mff:bak:/.test(k)),'6 : V1.2.5 : rien gardé dans la mémoire du navigateur');
     // même contenu : pas de copie inutile
     r=await mffWriteSafe(h,v2);
     att(FS['projets/pieces/Bride.miniFusion.bak']===v1&&!r.bak.disk,'7 : contenu inchangé : la copie n’est pas écrasée');
@@ -61,7 +61,7 @@ const vm=require('vm');
     // ── 7. fichier hors du dossier de projets : copie dans le navigateur seulement ──
     FS['ailleurs/Axe.conceptcad']=v1;const hx=mkFile('ailleurs/Axe.conceptcad');
     r=await mffWriteSafe(hx,v2);
-    att(FS['ailleurs/Axe.conceptcad']===v2&&!r.bak.disk&&r.bak.idb&&!('ailleurs/Axe.conceptcad.bak' in FS),'11 : hors du dossier de projets : pas de .bak sur le disque, copie dans le navigateur');
+    att(FS['ailleurs/Axe.conceptcad']===v2&&!r.bak.disk&&!('ailleurs/Axe.conceptcad.bak' in FS),'11 : hors du dossier de projets : écrit, pas de .bak sur le disque');
     // ── 8. Ctrl+S complet ──
     mffHandle=h;doc.params[0].expr='16';doc.params[0].value=16;
     const ok=await mffSave();
@@ -69,7 +69,7 @@ const vm=require('vm');
     att(mffCheckData(FS['projets/pieces/Bride.miniFusion'])===''&&FS['projets/pieces/Bride.miniFusion.bak']===v2,'13 : projet complet écrit, copie = version d’avant');
     // ── 9. copies trouvées, ouverture de la copie ──
     const L=await mffBakFind(h);
-    att(L.length===2&&L.some(c=>c.where==='disk')&&L.some(c=>c.where==='idb'),'14 : deux copies de secours proposées (disque, navigateur)');
+    att(L.length===1&&L[0].where==='disk','14 : copie de secours proposée : celle du disque');
     mffAsk=async()=>'drop';
     const cd=L.find(c=>c.where==='disk');
     await mffBakOpen(cd);
@@ -168,13 +168,19 @@ const vm=require('vm');
     const cwB=h.createWritable;
     mffHandle=h;doc.params[0].expr='36';doc.params[0].value=36;
     const t36=Date.now();const r36=await Promise.race([mffSave(),lent(3000).then(()=>'bloqué')]);
-    att(r36===true&&Date.now()-t36<1500&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===36&&ordre.filter(k=>/^mff:bak:/.test(k)).length===1,
-      '34 : copie dans le navigateur qui ne finit pas : la pièce est enregistrée tout de suite (e = 36, '+(Date.now()-t36)+' ms) '+JSON.stringify([r36,JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value,ordre,feTxt]));
+    att(r36===true&&Date.now()-t36<1500&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===36&&!ordre.some(k=>/^mff:bak:/.test(k)),
+      '34 : mémoire du navigateur qui ne répond pas : la pièce est enregistrée tout de suite, sans copie dans le navigateur (e = 36, '+(Date.now()-t36)+' ms) '+JSON.stringify([r36,JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value,ordre,feTxt]));
     // avant Nouveau / Ouvrir : aucune copie dans le navigateur
     ordre.length=0;doc.params[0].expr='38';doc.params[0].value=38;mffAsk=async()=>'save';
     const r38=await Promise.race([mffConfirmDiscard(),lent(3000).then(()=>'bloqué')]);idbSet=idbSet0;
     att(r38===true&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===38&&!ordre.some(k=>/^mff:bak:/.test(k)),
       '35 : « Enregistrer » avant Nouveau / Ouvrir : fichier écrit (e = 38), rien remis dans la mémoire du navigateur ('+ordre.join(',')+')');
+    // ── 17. V1.2.5 : anciennes copies du navigateur retirées ──
+    IDB['mff:bak:Vieux.conceptcad']={txt:'x'};IDB['faoMoves:a:b']={v:1};
+    idbKeys=async p=>Object.keys(IDB).filter(k=>!p||k.indexOf(p)===0);
+    idbOpen=async()=>({close(){},transaction(){const tx={objectStore(){return {delete(k){delete IDB[k];}};}};setTimeout(()=>tx.oncomplete&&tx.oncomplete(),0);return tx;}});
+    const nP=await mffBakPurge();
+    att(nP>=1&&!Object.keys(IDB).some(k=>/^mff:bak:/.test(k))&&IDB['faoMoves:a:b'],'36 : anciennes copies du navigateur retirées, le reste de la mémoire gardé ('+nP+')');
     delete fe.textContent;
     return {ATT,OK};
   `;
