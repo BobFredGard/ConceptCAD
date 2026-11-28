@@ -879,6 +879,101 @@ function occMeshShape(shape,defl,ang){
   const m=new occt.BRepMesh_IncrementalMesh_2(shape,defl,false,ang,false);
   try{m.delete();}catch(e){}
 }
+function occMeshSeul(f,defl,ang){
+  // Copie de la face `f` (sans maillage), maillée seule de plus en plus grossièrement jusqu'à
+  // obtenir des triangles → face copiée (à libérer) ou null.
+  let cp=null,c=null;
+  try{
+    cp=new occt.BRepBuilderAPI_Copy_2(f,true,false);
+    c=occCastLibre(cp.Shape(),s=>occt.TopoDS.Face_1(s));
+    for(const k of [1,3,10,30]){
+      const m=new occt.BRepMesh_IncrementalMesh_2(c,Math.max(defl*k,0.05),false,Math.min(ang*(k>1?2:1),0.8),false);
+      try{m.delete();}catch(e){}
+      const loc=new occt.TopLoc_Location_1();let h=null;
+      try{h=occt.BRep_Tool.Triangulation(c,loc);if(h&&!h.IsNull()&&h.get().NbTriangles()){const r=c;c=null;return r;}}
+      finally{occFree(h);try{loc.delete();}catch(e){}}
+    }
+    return null;
+  }catch(e){return null;}
+  finally{occFree(c);try{if(cp)cp.delete();}catch(e){}}
+}
+function occTrouBord(shape,f,pos,nrm){
+  // Face sans triangles : bouchée avec les POINTS DE BORD DÉJÀ POSÉS par ses voisines (polygone de
+  // chaque arête sur la triangulation d'une face voisine), triangulés à plat (oreilles). Le raccord
+  // est donc exact : remaillée seule, même un peu plus grossièrement, la face laissait une fente
+  // visible le long du bord (retour du 09/11). Petites faces seulement (la courbure est ignorée).
+  // → nombre de triangles ajoutés (0 = échec, rien n'est ajouté).
+  const bin=[];
+  try{
+    const w=occt.BRepTools.OuterWire(f);bin.push(w);
+    if(!w||w.IsNull())return 0;
+    const faces=occSubShapes(shape,'TopAbs_FACE');bin.push(...faces);
+    const P=[];
+    const we=occBinPush(bin,new occt.BRepTools_WireExplorer_2(w,f));
+    for(;we.More();we.Next()){
+      const e=occBinPush(bin,we.Current());
+      if(occt.BRep_Tool.Degenerated(e))continue;
+      const rev=we.Orientation()===occt.TopAbs_Orientation.TopAbs_REVERSED;
+      let pts=null;
+      for(const g of faces){
+        if(g.IsSame(f))continue;
+        const es=occSubShapes(g,'TopAbs_EDGE');const has=es.some(x=>x.IsSame(e));occDispose(es);
+        if(!has)continue;
+        const gf=occBinPush(bin,occt.TopoDS.Face_1(g)),L=occBinPush(bin,new occt.TopLoc_Location_1());
+        const T=occBinPush(bin,occt.BRep_Tool.Triangulation(gf,L));
+        if(!T||T.IsNull())continue;
+        const pl=occBinPush(bin,occt.BRep_Tool.PolygonOnTriangulation(e,T,L));
+        if(!pl||pl.IsNull())continue;
+        const t=T.get(),nd=pl.get().Nodes(),tr=L.IsIdentity()?null:occBinPush(bin,L.Transformation());
+        pts=[];
+        for(let i=nd.Lower();i<=nd.Upper();i++){
+          let q=t.Node(nd.Value(i));
+          if(tr){const r=q.Transformed(tr);q.delete();q=r;}
+          pts.push([q.X(),q.Y(),q.Z()]);q.delete();
+        }
+        break;
+      }
+      if(!pts||pts.length<2)return 0;
+      if(rev)pts.reverse();
+      for(const p of pts){const l=P[P.length-1];if(!l||Math.hypot(p[0]-l[0],p[1]-l[1],p[2]-l[2])>1e-9)P.push(p);}
+    }
+    {const a=P[0],b=P[P.length-1];if(P.length>1&&Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2])<=1e-9)P.pop();}
+    if(P.length<3)return 0;
+    // normale du polygone (Newell), orientée comme la normale sortante de la face
+    let N=[0,0,0];
+    for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];N[0]+=(a[1]-b[1])*(a[2]+b[2]);N[1]+=(a[2]-b[2])*(a[0]+b[0]);N[2]+=(a[0]-b[0])*(a[1]+b[1]);}
+    const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
+    const bf=occBinPush(bin,new occt.BRepGProp_Face_2(f,false)),gP=occBinPush(bin,new occt.gp_Pnt_1()),gV=occBinPush(bin,new occt.gp_Vec_1());
+    bf.Normal((ad.FirstUParameter()+ad.LastUParameter())/2,(ad.FirstVParameter()+ad.LastVParameter())/2,gP,gV);
+    if(N[0]*gV.X()+N[1]*gV.Y()+N[2]*gV.Z()<0){P.reverse();N=N.map(v=>-v);}
+    const ln=Math.hypot(...N);if(!(ln>1e-14))return 0;
+    const n=N.map(v=>v/ln),ax=Math.abs(n[0])<0.9?[1,0,0]:[0,1,0];
+    const u=occCross3(ax,n),lu=Math.hypot(...u),U=u.map(v=>v/lu),V=occCross3(n,U);
+    const Q=P.map(p=>[occDot3(p,U),occDot3(p,V)]);
+    // oreilles (polygone simple, sens direct autour de n)
+    const idx=Q.map((q,i)=>i),tri=[];
+    const cr=(a,b,c)=>(Q[b][0]-Q[a][0])*(Q[c][1]-Q[a][1])-(Q[b][1]-Q[a][1])*(Q[c][0]-Q[a][0]);
+    const dedans=(p,a,b,c)=>cr(a,b,p)>=0&&cr(b,c,p)>=0&&cr(c,a,p)>=0;
+    let garde=0;
+    while(idx.length>3&&garde++<5000){
+      let fait=false;
+      for(let k=0;k<idx.length;k++){
+        const a=idx[(k+idx.length-1)%idx.length],b=idx[k],c=idx[(k+1)%idx.length];
+        if(cr(a,b,c)<=1e-18)continue;
+        if(idx.some(p=>p!==a&&p!==b&&p!==c&&dedans(p,a,b,c)))continue;
+        tri.push([a,b,c]);idx.splice(k,1);fait=true;break;
+      }
+      if(!fait){ // reste dégénéré : éventail
+        for(let k=1;k+1<idx.length;k++)tri.push([idx[0],idx[k],idx[k+1]]);
+        idx.length=0;
+      }
+    }
+    if(idx.length===3)tri.push(idx.slice());
+    for(const t of tri)for(const k of t){pos.push(P[k][0],P[k][1],P[k][2]);if(nrm)nrm.push(NaN,NaN,NaN);}
+    return tri.length;
+  }catch(e){return 0;}
+  finally{occDispose(bin);}
+}
 function occTriPos(shape,defl,ang,wantN){
   // BRep -> triangles bruts {pos:[x,y,z × 3 par triangle], groups:[{f,start,count}]} (V0.8.2 :
   // aussi pour les rayons des bulles de la mise en plan, qui n'ont pas besoin de THREE)
@@ -893,12 +988,23 @@ function occTriPos(shape,defl,ang,wantN){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   while(ex.More()){
-    const f=occFaceCur(ex);
+    let f=occFaceCur(ex);
     const loc=new occt.TopLoc_Location_1();
     const triStart=pos.length/9;
     let h=null; // t = h.get() appartient à h : on ne libère que h
     try{
       h=occt.BRep_Tool.Triangulation(f,loc);
+      if(!h||h.IsNull()||!h.get().NbTriangles()){
+        // Face laissée SANS triangles par le mailleur = un trou à l'écran (retour du 09/11 : deux
+        // faces de 0,8 mm² au bout d'un congé, vides à 0,11 mm). Bouchée par les points de bord
+        // des voisines (raccord exact) ; à défaut, maillée À PART sur une copie, plus grossièrement
+        // (remailler la face sur place redécoupait les bords des voisines).
+        if(occTrouBord(shape,f,pos,nrm)){occFree(h);h=null;}
+        else{
+          const c=occMeshSeul(f,defl,ang);
+          if(c){occFree(h);occFree(f);f=c;h=occt.BRep_Tool.Triangulation(f,loc);}
+        }
+      }
       if(h&&!h.IsNull()){
         const t=h.get(),nt=t.NbTriangles();
         // Orientation_1() rend un objet-enum (identité stricte, pas un nombre).
