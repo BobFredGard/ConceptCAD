@@ -47,6 +47,7 @@ function mfTheme(t){
   try{if(typeof gtLaySync==='function')gtLaySync(mfBuilt);}catch(e){} // V1.1.9 : disposition de la Goutte (tige, sans ruban)
   try{if(typeof mfMaquetteSync==='function')mfMaquetteSync(mfBuilt);}catch(e){} // V1.1.10 : disposition de la maquette (Habitacle…)
   mfLS('minifusion_theme',t);
+  try{if(typeof mfIcThemeSync==='function')mfIcThemeSync();}catch(e){} // V1.2.6 : icônes propres au thème
   try{document.querySelectorAll('.mfThemeOpt').forEach(b=>b.classList.toggle('on',b.dataset.t===t));}catch(e){}
   try{if(typeof window.mepThemeApply==='function')window.mepThemeApply();}catch(e){} // espace PLAN : fond, papier, accent
 }
@@ -579,13 +580,13 @@ const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette',
 // raccourcis existants (90-10-selection-mesure : E R H F C M ; 98-mep-95 : Ctrl+P)
 const MF_RB_KEYS={'Créer/Extrusion':'E','Créer/Révolution':'R','Créer/Perçage':'H','Modifier/Congé':'F','Modifier/Chanfrein':'C',
   'Ensembles/Répétition':'M','Sortie/Imprimer':'Ctrl+P','Sortie/PDF':'Ctrl+P'};
-function mfRbPins(){try{return JSON.parse(mfLS('minifusion_rbpins')||'{}')||{};}catch(e){return {};}}
+function mfRbPins(){try{return JSON.parse(mfIcLire('minifusion_rbpins')||'{}')||{};}catch(e){return {};}} // V1.2.6 : par thème (97-interface-icones)
 function mfRbShown(fi,pins){pins=pins||mfRbPins();return fi in pins?!!pins[fi]:!MF_RB_HIDE.has(fi);}
 function mfRbPinApply(root){const pins=mfRbPins();
   (root||document).querySelectorAll('#mfRibbon .mfRb,.mfRb').forEach(b=>{if(b.dataset.fi)b.classList.toggle('mfOff',!mfRbShown(b.dataset.fi,pins));});}
 function mfRbPinSet(fi,on){const pins=mfRbPins();
   if(on===!MF_RB_HIDE.has(fi))delete pins[fi];else pins[fi]=on?1:0;
-  mfLS('minifusion_rbpins',JSON.stringify(pins));mfRbPinApply();}
+  mfLS(mfIcCle('minifusion_rbpins'),JSON.stringify(pins));mfRbPinApply();}
 function mfGrpMenu(g,anchor){
   mfCloseMenus();
   const p=document.createElement('div');p.className='mfPop mfTmp mfGrpPop';

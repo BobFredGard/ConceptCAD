@@ -184,10 +184,26 @@ function mfIcTag(){
   });
   document.querySelectorAll('#mfRibbon .mfRb,.mfQuick button,#skToolbar .tool,#skToolbar .con').forEach(b=>b.style.setProperty('--mfN',n++));
 }
+/* V1.2.6 (Fred, 28/11 : « que les icônes et leur visibilité soient enregistrées par thème, les 5 premiers thèmes
+   sont identiques […] il faut une sauvegarde par thème futuriste ») : style, taille et icônes affichées dans le
+   bandeau (minifusion_icons, minifusion_iconSize, minifusion_rbpins) gardés une fois pour les 5 thèmes classiques
+   (clés d'avant, inchangées) et à part pour chaque interface du futur (clé + '_' + thème). Un thème du futur sans
+   réglage à lui part de ceux des thèmes classiques. */
+const MF_IC_CLASSIQUES=['nuit','graphite','atelier','clair','contraste'];
+function mfIcTheme(){let t=null;try{t=document.body.getAttribute('data-theme');}catch(e){}return t||mfLS('minifusion_theme')||'nuit';}
+function mfIcCle(k,t){t=t||mfIcTheme();return MF_IC_CLASSIQUES.indexOf(t)>=0?k:k+'_'+t;}
+function mfIcLire(k,t){const c=mfIcCle(k,t);let v=mfLS(c);if((v===null||v===undefined)&&c!==k)v=mfLS(k);return v;}
+function mfIcThemeSync(){
+  // changement de thème : les réglages d'icônes de ce thème
+  try{mfIcons(mfIcLire('minifusion_icons')||'trait');}catch(e){}
+  try{mfIconSize(mfIcLire('minifusion_iconSize')||'1');}catch(e){}
+  try{if(typeof mfRbPinApply==='function')mfRbPinApply();}catch(e){}
+  try{if(typeof mfRibFitSoon==='function')mfRibFitSoon();}catch(e){}
+}
 function mfIcons(s){
   s=MF_ICSTYLES.some(x=>x[0]===s)?s:'trait';
   try{mfIcDefs();document.body.setAttribute('data-icons',s);}catch(e){}
-  mfLS('minifusion_icons',s);
+  mfLS(mfIcCle('minifusion_icons'),s);
   try{mfIcTag();}catch(e){}
   try{document.querySelectorAll('.mfIconOpt').forEach(b=>b.classList.toggle('on',b.dataset.i===s));}catch(e){}
 }
@@ -197,7 +213,7 @@ function mfIconSize(k){
   k=MF_ICSIZES.some(x=>x[0]===String(k))?String(k):'1';
   try{if(k==='1')document.body.removeAttribute('data-icsize');else document.body.setAttribute('data-icsize',k);
     document.body.style.setProperty('--mfIcK',k);}catch(e){}
-  mfLS('minifusion_iconSize',k);
+  mfLS(mfIcCle('minifusion_iconSize'),k);
   try{const s=document.getElementById('optIcSize');if(s)s.value=k;}catch(e){}
 }
 /* délire : les yeux suivent la souris (une passe par image), confettis au clic */
@@ -282,9 +298,9 @@ function mfIcCss(){
 (function(){
   try{
     mfIcCss();mfIcDefs();
-    mfIcons(mfLS('minifusion_icons')||'trait');
-    mfIconSize(mfLS('minifusion_iconSize')||'1');
-    const icSz=()=>{try{const s=document.getElementById('optIcSize');if(s&&!s.onchange){s.value=mfLS('minifusion_iconSize')||'1';s.onchange=()=>mfIconSize(s.value);}}catch(e){}};
+    mfIcons(mfIcLire('minifusion_icons')||'trait');
+    mfIconSize(mfIcLire('minifusion_iconSize')||'1');
+    const icSz=()=>{try{const s=document.getElementById('optIcSize');if(s&&!s.onchange){s.value=mfIcLire('minifusion_iconSize')||'1';s.onchange=()=>mfIconSize(s.value);}}catch(e){}};
     icSz();window.addEventListener('DOMContentLoaded',icSz);
     document.addEventListener('pointermove',e=>{if(document.body.getAttribute('data-icons')==='delire')mfEyesMove(e);},{passive:true});
     document.addEventListener('click',e=>{if(document.body.getAttribute('data-icons')==='delire')mfConfetti(e);},true);
