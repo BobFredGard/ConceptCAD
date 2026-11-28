@@ -162,6 +162,19 @@ const vm=require('vm');
     const rc=await Promise.race([mffSave(),lent(3000).then(()=>'bloqué')]);idbSet=idbSet0;
     att(rc===true&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===34&&FS['projets/pieces/Bride.miniFusion.bak'],
       '33 : copie de secours dans le navigateur sans réponse : la pièce est enregistrée quand même (e = 34), copie sur le disque faite ('+rc+')');
+    // ── 16. V1.2.4 (Fred, 28/11 : « Pourquoi c'est si long pour un fichier de 268 Ko ? ») ──
+    // le fichier d'abord ; la copie dans le navigateur ensuite, sans l'attendre
+    MFF_DELAI.copie=60;const ordre=[];idbSet=async(k,v)=>{ordre.push(k);await jamais();};
+    const cwB=h.createWritable;
+    mffHandle=h;doc.params[0].expr='36';doc.params[0].value=36;
+    const t36=Date.now();const r36=await Promise.race([mffSave(),lent(3000).then(()=>'bloqué')]);
+    att(r36===true&&Date.now()-t36<1500&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===36&&ordre.filter(k=>/^mff:bak:/.test(k)).length===1,
+      '34 : copie dans le navigateur qui ne finit pas : la pièce est enregistrée tout de suite (e = 36, '+(Date.now()-t36)+' ms) '+JSON.stringify([r36,JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value,ordre,feTxt]));
+    // avant Nouveau / Ouvrir : aucune copie dans le navigateur
+    ordre.length=0;doc.params[0].expr='38';doc.params[0].value=38;mffAsk=async()=>'save';
+    const r38=await Promise.race([mffConfirmDiscard(),lent(3000).then(()=>'bloqué')]);idbSet=idbSet0;
+    att(r38===true&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===38&&!ordre.some(k=>/^mff:bak:/.test(k)),
+      '35 : « Enregistrer » avant Nouveau / Ouvrir : fichier écrit (e = 38), rien remis dans la mémoire du navigateur ('+ordre.join(',')+')');
     delete fe.textContent;
     return {ATT,OK};
   `;

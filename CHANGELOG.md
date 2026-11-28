@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**823 versions**, de `2026-09-28b` à `V1.2.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**824 versions**, de `2026-09-28b` à `V1.2.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9409,5 +9409,23 @@ Fred, 28/11, V1.2.2 dans NumPLans (Chrome), Perçages : capture du bandeau « En
 **Test** : `test_enregistrement_sur` 33 contrôles (+1 : copie de secours dans le navigateur sans réponse → pièce enregistrée quand même).
 
 **Vérifié dans Chromium** : Perçages, écriture IndexedDB gardée ouverte par ailleurs, cote changée 100 → 115 puis Ctrl+S : « ✔ Enregistré (en 15 s ; le plus long : préparation du fichier, 10 s). Non joints (mémoire du navigateur occupée…) : parcours FAO », cote 115 relue dans le fichier (V1.2.2 : jamais enregistré).
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.4 - Enregistrement : le fichier d'abord, rien en mémoire avant Nouveau / Ouvrir
+
+Fred, 28/11 : « Pourquoi c'est si long pour un fichier de 268 Ko ? » ; à la proposition d'écrire le fichier d'abord : « oui. Et quand je veux faire un nouveau fichier, pas la peine de le remettre en mémoire ni quand j'ouvre un autre fichier non ? ».
+
+**Cause** : l'écriture elle-même prend ~0,1 s ; le temps perdu était l'attente de la mémoire du navigateur (IndexedDB, mémoire de Chrome pour plans.justet.com : 88 Mo seulement), où la copie de secours passait AVANT l'écriture du fichier, et où chaque lecture (parcours FAO, imports) pouvait attendre jusqu'à 10 s (V1.2.3).
+
+**Correctif** : `mffWriteSafe` écrit et relit le fichier, puis seulement copie la version précédente (`mffBackup` : `.bak` du disque attendu, copie du navigateur lancée sans être attendue) ; `mffSave({quitte:true})` depuis `mffConfirmDiscard` (Nouveau, Ouvrir, récents, fermeture) : aucune copie dans le navigateur, ni brouillon (`autosave`), ni image de la pièce (`pcEcrireSoon` annulé) ; `bundleLecture` : 3 s par lecture de la mémoire du navigateur dans `bundleMoves` / `bundleImports` (le délai repart à chaque lecture qui aboutit), filet global 60 s.
+
+**Fichiers** : `97-fichiers-projets`, `90-50-document-sauvegarde`.
+
+**Manuel** : *Fichiers* (le fichier d'abord).
+
+**Test** : `test_enregistrement_sur` 35 contrôles (+2 : copie du navigateur qui ne finit pas → pièce enregistrée tout de suite ; « Enregistrer » avant Nouveau / Ouvrir → aucune copie dans le navigateur).
+
+**Vérifié dans Chromium** : Perçages, mémoire du navigateur bloquée par une écriture gardée ouverte : Ctrl+S en 3 s (V1.2.3 : 15 s ; V1.2.2 : jamais), Nouveau → Enregistrer en 3 s, cote relue dans le fichier ; mémoire libre : comme avant.
 
 CACHE_VER et FORMES_VER inchangés.

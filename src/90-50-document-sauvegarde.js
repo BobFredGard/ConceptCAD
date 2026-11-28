@@ -324,12 +324,12 @@ async function bundleMoves(){
   }catch(e){}
   if(!miens.size)return out;
   try{
-    const ks=(await idbKeys('faoMoves:')).filter(function(k){return miens.has(k);});
+    const ks=(await bundleLecture(idbKeys('faoMoves:'))).filter(function(k){return miens.has(k);});
     for(let i=0;i<ks.length;i++){
-      try{ const v=await idbGet(ks[i]); if(v&&v.v===1&&Array.isArray(v.mv))out[ks[i]]=bundleMvEntry(v); }
-      catch(e){}
+      try{ const v=await bundleLecture(idbGet(ks[i])); if(v&&v.v===1&&Array.isArray(v.mv))out[ks[i]]=bundleMvEntry(v); }
+      catch(e){ if(e&&e.message==='délai'){bundleManque.push('parcours FAO');break;} }
     }
-  }catch(e){}
+  }catch(e){ if(e&&e.message==='délai')bundleManque.push('parcours FAO'); }
   return out;
 }
 /* Parcours rangés en colonnes EXACTES dans le fichier (mvz). Avant, chaque point était écrit
@@ -415,7 +415,8 @@ async function bundleImports(){
   const out={};
   for(const f of [].concat(...asmAllDocs().map(d=>d.features||[]))){ // toutes les pièces (V0.6.0)
     if(!f||f.type!=='import'||!f.src||!f.src.key||out[f.src.key])continue;
-    try{const u8=await importSrcGet(f.src.key);if(u8)out[f.src.key]=importU8ToB64(u8);}catch(e){}
+    try{const u8=await bundleLecture(importSrcGet(f.src.key));if(u8)out[f.src.key]=importU8ToB64(u8);}
+    catch(e){if(e&&e.message==='délai'){bundleManque.push('fichiers importés');break;}}
   }
   return out;
 }
@@ -424,7 +425,12 @@ async function bundleImports(){
    écritures d'une autre fenêtre ou d'un autre onglet ConceptCAD. Chaque lecture a une durée limite : au-delà,
    le fichier part sans ce complément (il se recalcule), mais la pièce est enregistrée. bundleManque : ce qui
    manque, dit dans le bandeau. */
-let BUNDLE_DELAI=10000,bundleManque=[];
+let BUNDLE_DELAI=3000,bundleManque=[];
+function bundleLecture(p){
+  // V1.2.4 : une lecture de la mémoire du navigateur, 3 s au plus (erreur 'délai')
+  let t=null;
+  return Promise.race([Promise.resolve(p).finally(()=>{if(t)clearTimeout(t);}),new Promise((_,rej)=>{t=setTimeout(()=>rej(new Error('délai')),BUNDLE_DELAI);})]);
+}
 async function bundleAvecDelai(p,quoi,defaut,ms){
   let t=null;
   try{return await Promise.race([Promise.resolve(p).finally(()=>{if(t)clearTimeout(t);}),
@@ -433,8 +439,9 @@ async function bundleAvecDelai(p,quoi,defaut,ms){
 }
 async function bundleSerialise(){
   bundleManque=[];
-  const moves=await bundleAvecDelai(bundleMoves(),'parcours FAO',{});
-  const imports=await bundleAvecDelai(bundleImports(),'fichiers importés',{});
+  // (V1.2.4 : chaque lecture a ses 3 s ; ici, un filet global)
+  const moves=await bundleAvecDelai(bundleMoves(),'parcours FAO',{},60000);
+  const imports=await bundleAvecDelai(bundleImports(),'fichiers importés',{},60000);
   // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
   // V0.99.16 : option cochée d'office (asm.img === false seulement si décochée)
   let asnap=null;try{if(asm&&asm.img!==false&&asm.comps&&asm.comps.length>1)asnap=await bundleAvecDelai(asmCacheExport(),'images des composants',null);}catch(e){asnap=null;}
