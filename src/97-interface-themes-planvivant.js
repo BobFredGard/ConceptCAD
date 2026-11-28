@@ -21,6 +21,7 @@
    une fonction de la pièce). Esquisse et téléphone : disposition habituelle. 🎨 › « Disposition de
    la maquette » remet la disposition habituelle. */
 const PV_MAIN='"Segoe Print","Bradley Hand","Comic Sans MS","Chalkboard SE",cursive';
+const PV_CART_D=338; // V1.2.1 : bord droit du cartouche = 18 px + la place du panneau des réglages (288 px, onglet, marges)
 const PV_MONO='"Cascadia Mono",Consolas,"Lucida Console",ui-monospace,monospace';
 function pvCss(){
   if(document.getElementById('pvCss'))return;
@@ -35,7 +36,7 @@ function pvCss(){
   const W='#e9f3ff',J='#ffd37a',JT='#fff3d6';
   // la cote de chaîne d'une barre d'étapes (CAO : #mfTl des fonctions, assemblage : #asmTl des étapes)
   const chaine=(Z,T,titre)=>{const Y=(sel,decl)=>X(Z,sel.replace(/#mfTl/g,T),decl);return [
-    Y('#mfTl','left:34px;right:auto;bottom:22px;width:min(880px,calc(100% - 600px));min-width:300px;box-sizing:border-box;padding:24px 4px 2px!important;'+
+    Y('#mfTl','left:34px;right:auto;bottom:22px;width:min(880px,calc(100% - 920px));min-width:300px;box-sizing:border-box;padding:24px 4px 2px!important;'+
       'background:none!important;border:none!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;align-items:flex-end'),
     Y('#mfTl::before','content:"'+titre+'";position:absolute;left:6px;top:2px;font-family:'+PV_MONO+';font-size:11px;letter-spacing:.16em;color:#bcd3ee;pointer-events:none;white-space:nowrap'),
     Y('#mfTl .tlbC','opacity:.75;align-self:center'),
@@ -86,7 +87,7 @@ function pvCss(){
     X(A,'#asmTl .tlbK','display:none'),
     // le message de la vue : en haut, après les onglets (en bas il passait sous le cartouche)
     ...T3.map(Z=>X(Z,'#mfVpInfo','top:12px!important;bottom:auto!important;left:212px!important;right:auto!important;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis')),
-    X(F,'#pvFriseF','display:flex;position:absolute;left:34px;bottom:22px;z-index:22;width:min(880px,calc(100% - 600px));min-width:300px;box-sizing:border-box;padding:24px 4px 2px;align-items:flex-end;gap:8px'),
+    X(F,'#pvFriseF','display:flex;position:absolute;left:34px;bottom:22px;z-index:22;width:min(880px,calc(100% - 920px));min-width:300px;box-sizing:border-box;padding:24px 4px 2px;align-items:flex-end;gap:8px'),
     '#pvFriseF::before{content:"FRISE DES OPÉRATIONS";position:absolute;left:6px;top:2px;font-family:'+PV_MONO+';font-size:11px;letter-spacing:.16em;color:#bcd3ee;pointer-events:none;white-space:nowrap}',
     '#pvFriseF .pvRow{display:flex;flex:1 1 auto;min-width:0;height:58px;overflow-x:auto;scrollbar-width:thin;padding:0 6px 0 0}',
     '#pvFriseF .pvSeg{flex:1 1 0;min-width:78px;max-width:200px;height:58px;position:relative;padding:0;border:none;border-left:1px solid '+W+';border-radius:0;color:'+JT+';cursor:pointer;'+
@@ -112,8 +113,11 @@ function pvCss(){
     X(Q,'#mepTabs button.on','color:'+J+'!important;background:linear-gradient('+J+','+J+') 0 27px/100% 2.5px no-repeat,linear-gradient(rgba(255,211,122,.16),rgba(255,211,122,.16)) 2px 4px/calc(100% - 4px) 20px no-repeat!important'),
     X(Q,'#mepTabs .mepAdd','align-self:center;margin-left:8px;border:1.5px solid rgba(233,243,255,.55)!important;border-radius:4px!important;background:none!important;color:'+W+'!important'),
     X(Q,'#mepTabs>span','align-self:center;color:#bcd3ee!important;font-family:'+PV_MONO),
-    /* ═══ le cartouche ═══ */
-    ...T3.map(Z=>X(Z,'#pvCart','display:grid;position:absolute;right:18px;bottom:18px;z-index:24;width:min(500px,34%);min-width:380px;box-sizing:border-box;'+
+    /* ═══ le cartouche ═══
+       V1.2.1 (Fred, 28/11 : « le bandeau avec le CAO/FAO/Mise en plan est caché par la fenêtre des modifications des fonctions ») :
+       il reste immobile (rien ne glisse quand le panneau s'ouvre, règle du 27/11) mais toujours à gauche de la PLACE du
+       panneau des réglages (288 px + son onglet), ouvert ou non ; la frise s'arrête avant lui */
+    ...T3.map(Z=>X(Z,'#pvCart','display:grid;position:absolute;right:'+PV_CART_D+'px;bottom:18px;z-index:24;width:min(500px,34%);min-width:380px;box-sizing:border-box;'+
       'grid-template-columns:1fr 1fr;border:2px solid '+W+';background:rgba(18,63,115,.9);color:'+W+';font-family:'+PV_MONO+';font-size:12.5px')),
     // PLAN : en bas à gauche (le cartouche du dessin est en bas à droite de la feuille)
     X(Q,'#pvCart','display:grid;position:absolute;left:34px;right:auto;bottom:34px;z-index:55;width:min(460px,34%);min-width:360px;box-sizing:border-box;'+

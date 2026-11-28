@@ -169,7 +169,7 @@ const P0='html body.ui-modern.mq-lay[data-theme="planvivant"]:not(.mf-mobile)',P
 A(p.css.includes(P0+' #mfRibbon{position:relative;width:min(1480px')&&/transform:rotate\(-\.8deg\)/.test(p.css)&&p.css.includes(P0+' #mfRibbon::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:12px;pointer-events:none'),'Plan vivant : le ruban en règle trace-formes de biais, graduée, partout');
 A(p.css.includes(PC+' .topbar .mfWs{display:none!important}')&&/#pvCart \.pvTp button\.on\{[^}]*rotate\(-5deg\)/.test(p.css),'Plan vivant : en CAO, les espaces deviennent des tampons du cartouche (le bandeau les garde ailleurs)');
 A(p.css.includes(PC+' #mfTl .tlbS{flex:1 1 0')&&p.css.includes(PC+' #mfTl::before{content:"FRISE DES FONCTIONS — COTE DE CHAÎNE"'),'Plan vivant : la frise en cote de chaîne');
-A(p.css.includes(PC+' #pvCart{display:grid;position:absolute;right:18px;')&&p.css.includes(PC+' #treeOverlay{max-height:calc(100% - 150px)!important}'),'Plan vivant : cartouche en bas à droite (immobile quand le panneau s’ouvre, V1.1.13), l’arbre s’arrête au-dessus de la frise');
+A(p.css.includes(PC+' #pvCart{display:grid;position:absolute;right:338px;')&&p.css.includes(PC+' #treeOverlay{max-height:calc(100% - 150px)!important}'),'Plan vivant : cartouche en bas à droite, à gauche de la place du panneau des réglages (jamais caché par lui, V1.2.1 ; immobile quand il s’ouvre, V1.1.13), l’arbre s’arrête au-dessus de la frise');
 A(/#pvRefs\{[^}]*pointer-events:none/.test(p.css)&&/#pvNote\{[^}]*pointer-events:none/.test(p.css)&&!/infinite/.test(p.css),'Plan vivant : repères et ligne de rappel ne prennent aucun clic ; aucune animation sans fin');
 A(p.fn==='function,function,function,function,function,function','Plan vivant : cotes, cartouche, annotation vivante (fonctions présentes)');
 A(/pvFriseHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant'[,\]]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'Plan vivant : la frise est habillée à chaque rendu de la timeline ; case 🎨 de la disposition');
@@ -203,8 +203,8 @@ A(/#tbDial\{[^}]*right:calc\(24px \+ var\(--mfPropsW,0px\)\)/.test(t.css)&&t.css
 A(!/infinite/.test(t.css),'Table : la disposition n’ajoute aucune animation sans fin (l’anneau ne tourne pas)');
 A(t.fn==='function,function,function,function,function,function,function','Table : table, arc, pile, cadran, bascule (fonctions présentes)');
 const tbsrc=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-holo.js'),'utf8');
-A(/tbHistHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant','holo'\]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8'))&&/c3FeatSet\(f,V\.k,v,/.test(tbsrc)&&/if\(tbFenetreOuverte\(f\)\)\{err\.textContent/.test(tbsrc),
-  'Table : pile habillée à chaque rendu de la timeline ; cadran par c3FeatSet (Ctrl+Z), jamais pendant la fenêtre de la fonction');
+A(/tbHistHabille\(R,S\)/.test(gsrc)&&/MF_MAQUETTE=\['habitacle','planvivant','holo'\]/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8'))&&/c3FeatSet\(f,V\.k,v,/.test(tbsrc)&&/tbFenetreOuverte\(f\)\?tbDialFenetre\(f,V\.k,v,lab\):c3FeatSet\(f,V\.k,v,lab\)/.test(tbsrc)&&!/rend le cadran réglable/.test(tbsrc)&&/extDynSet\(lab,fn\)/.test(tbsrc)&&/fdynSet\(lab,fn\)/.test(tbsrc),
+  'Table : pile habillée à chaque rendu de la timeline ; cadran par c3FeatSet (Ctrl+Z) ; fonction ouverte : poignée gardée, réglage par sa fenêtre (OK / Annuler, V1.2.1)');
 // V1.1.13 : les 4 interfaces du futur dans chaque espace — FAO, assemblage, PLAN traités comme la CAO ; un seul posage montré ;
 // rien ne glisse quand le panneau des réglages s'ouvre ; arc de la Table rangé, moitié arrière effacée
 const u=JSON.parse(vm.runInContext(`(function(){const o={};

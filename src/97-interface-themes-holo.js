@@ -348,8 +348,9 @@ function tbAsmHabille(R,H,c){
 }
 /* ----- le cadran : la valeur principale de la fonction choisie ----- */
 let tbDialFid=null;
-// La fonction est ouverte dans sa fenêtre (clic sur la tranche) : c'est la fenêtre qui règle, avec OK / Annuler ;
-// le cadran ne fait que montrer (sinon Annuler effacerait un réglage fait au cadran sans qu'on le voie)
+// La fonction est ouverte dans sa fenêtre (clic sur la tranche) : le cadran règle alors PAR la fenêtre
+// (V1.2.1, Fred 28/11 : « pas de poignée sur le demi-cercle orange ») — même chemin que son champ :
+// la valeur se voit dans la fenêtre, OK la garde, Annuler la retire avec le reste
 function tbFenetreOuverte(f){
   try{
     if(typeof sel!=='undefined'&&sel&&sel.kind==='feature'&&sel.id===f.id)return true;
@@ -357,6 +358,16 @@ function tbFenetreOuverte(f){
   }catch(e){return false;}
 }
 // Valeur ↔ angle du cadran (arc de -70° à +70°, 0 en haut). Bornes : 0 → max. Pur.
+function tbDialFenetre(f,k,v,lab){
+  // → true | message ; réglage fait comme par le champ de la fenêtre ouverte (extrusion, perçage, révolution…)
+  const txt=String(+(+v).toFixed(6));let r=true;
+  const fn=g=>{r=parSetFeat(g,k,g,txt);if(r===true)try{parApplyAll();}catch(e){}};
+  if(typeof extDynFeature==='function'&&extDynFeature()===f){extDynEnsure();extDynSet(lab,fn);return r;}
+  if(typeof fdynFeature==='function'&&fdynFeature()===f){fdynEnsure(f);fdynSet(lab,fn);return r;}
+  docPushUndo(lab);fn(f);
+  if(r===true){markDirty();rebuild();renderTree();renderProps();}
+  return r;
+}
 function tbDialMax(v){return Math.max(10,Math.ceil((v*2)/5)*5);}
 function tbDialAngle(v,max){return -70+140*Math.max(0,Math.min(1,v/max));}
 function tbDialValeur(deg,max){const t=Math.max(0,Math.min(1,(deg+70)/140));return t*max;}
@@ -394,14 +405,12 @@ function tbDialMaj(R,S){
   const inp=el.querySelector('input'),err=el.querySelector('.tbErr'),kn=el.querySelector('.tbK'),av=el.querySelector('.tbArcV');
   inp.value=gtNb(V.v);
   if(V.fx){inp.disabled=true;inp.title='Valeur donnée par une formule : double-clic sur la tranche pour la changer';kn.style.display='none';return;}
-  if(tbFenetreOuverte(f)){inp.disabled=true;inp.title='La fonction est ouverte : réglez-la dans sa fenêtre, puis OK. Un clic sur une face de la pièce rend le cadran réglable.';kn.style.display='none';return;}
-  inp.title='Nouvelle valeur puis Entrée';
+  inp.title='Nouvelle valeur puis Entrée — ou glisser la poignée le long de l’arc';
   const appliquer=v=>{
-    if(tbFenetreOuverte(f)){err.textContent='La fonction est ouverte : réglez-la dans sa fenêtre';err.hidden=false;return false;}
     if(!(v>0)){err.textContent='Une valeur positive, en '+V.u;err.hidden=false;return false;}
     if(Math.abs(v-V.v)<1e-9)return true;
-    let res='réglage indisponible';
-    try{res=c3FeatSet(f,V.k,v,'Table : '+V.l.toLowerCase()+' de « '+(f.name||f.id)+' »');}catch(ex){res=ex&&ex.message||res;}
+    let res='réglage indisponible';const lab='Table : '+V.l.toLowerCase()+' de « '+(f.name||f.id)+' »';
+    try{res=tbFenetreOuverte(f)?tbDialFenetre(f,V.k,v,lab):c3FeatSet(f,V.k,v,lab);}catch(ex){res=ex&&ex.message||res;}
     if(res!==true){err.textContent=String(res);err.hidden=false;return false;}
     return true;
   };

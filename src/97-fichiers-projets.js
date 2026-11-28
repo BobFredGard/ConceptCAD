@@ -17,7 +17,9 @@ function mffSig(){
     // au milliardième près (-20.795 → -20.79499999975) : ce n'est pas une modification
     // V0.99.59 : « stale » (parcours FAO à régénérer) est un état de calcul, que la génération de fond
     // remet à jour toute seule une minute après l'ouverture : ce n'est pas une modification (● sans rien toucher)
-    const s=JSON.stringify(o,(k,v)=>k==='stale'&&typeof v==='boolean'?undefined:typeof v==='number'&&isFinite(v)&&v!==Math.round(v)?Math.round(v*1e6)/1e6:v);
+    // V1.2.1 : « nom » (nom unique d'une face ou d'une arête, 20-05) est complété par le rejeu à l'ouverture d'un
+    // ancien fichier, parfois bien après l'ouverture : ce n'est pas une modification (● sans rien toucher, Perçages)
+    const s=JSON.stringify(o,(k,v)=>(k==='stale'&&typeof v==='boolean')||(k==='nom'&&typeof v==='string')?undefined:typeof v==='number'&&isFinite(v)&&v!==Math.round(v)?Math.round(v*1e6)/1e6:v);
     let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36)+'_'+s.length;}catch(e){return '';}
 }
 function mffModified(){
@@ -55,11 +57,44 @@ async function mffConfirmDiscard(){
   const nm=mffName||doc.name||'Sans titre';
   const r=await mffAsk('Enregistrer les modifications de « '+nm+' » ?',[['save','Enregistrer',true],['drop','Ne pas enregistrer'],['cancel','Annuler']]);
   if(r==='cancel')return false;
-  if(r==='save')return await mffSave();
+  if(r==='save'){
+    const ok=await mffSave();
+    // V1.2.1 : pas enregistrée → on le dit, et la pièce reste là (avant : rien ne se passait, sans un mot)
+    if(!ok){let t='';try{t=(document.getElementById('mffToast').textContent||'').replace(/^\S+\s/,'');}catch(e){}
+      mffToast((t?t+' ':'La pièce n’a pas été enregistrée. ')+'Elle reste ouverte : rien n’est perdu.','err');}
+    return ok;
+  }
   return true;
 }
+/* ---- V1.2.1 : enregistrement visible et jamais bloqué (Fred, 28/11 : « je sauvegarde, rien de visible » ; puis
+   Nouveau → Enregistrer : « rien, la pièce reste visible ») ----
+   Le seul retour était la petite ligne d'état en bas de la vue ; et une étape qui ne répond jamais (autorisation
+   d'écrire demandée par le navigateur sans fenêtre visible, fichier verrouillé…) laissait l'enregistrement en
+   attente pour toujours, les suivants (Ctrl+S, Nouveau → Enregistrer) attendant derrière lui sans rien dire.
+   Chaque étape a désormais une durée limite, et un bandeau en haut de la vue dit où l'on en est. */
+let MFF_DELAI={perm:20000,disque:30000,donnees:60000};
+function mffDelai(p,ms,quoi){
+  // promesse p, ou erreur « quoi » si rien n'est venu après ms
+  let t=null;
+  return Promise.race([Promise.resolve(p).finally(()=>{if(t)clearTimeout(t);}),
+    new Promise((_,rej)=>{t=setTimeout(()=>rej(new Error(quoi+' : aucune réponse après '+Math.round(ms/1000)+' s')),ms);})]);
+}
+let mffToastT=null;
+function mffToast(txt,genre){
+  // genre : 'cours' (reste affiché), 'ok' (disparaît après 3,5 s), 'err' (10 s, clic pour fermer)
+  try{faceEl.textContent=txt;}catch(e){}
+  try{
+    let el=document.getElementById('mffToast');
+    if(!el){el=document.createElement('div');el.id='mffToast';el.setAttribute('role','status');el.setAttribute('aria-live','polite');
+      el.onclick=()=>{el.classList.remove('on');};document.body.appendChild(el);}
+    el.textContent=(genre==='ok'?'✔ ':genre==='err'?'⚠ ':'⏳ ')+txt;
+    el.className='on '+(genre||'cours');
+    if(mffToastT){clearTimeout(mffToastT);mffToastT=null;}
+    if(genre==='ok'||genre==='err')mffToastT=setTimeout(()=>{el.classList.remove('on');},genre==='ok'?3500:10000);
+  }catch(e){}
+}
 /* ---- écriture / lecture ---- */
-async function mffData(){try{return await bundleSerialise();}catch(e){return serialise();}}
+async function mffData(){try{return await mffDelai(bundleSerialise(),MFF_DELAI.donnees,'préparation du fichier');}catch(e){return serialise();}}
 /* ---- fichier compressé (V0.46.0) : un .conceptcad est écrit en gzip, sans changer d'extension
    (3 à 5 fois plus petit) ; à la lecture, la signature gzip (1F 8B) est reconnue et un fichier
    en clair (anciennes versions, .miniFusion, .json) s'ouvre comme avant ---- */
@@ -86,7 +121,11 @@ async function mffFileText(f){
 }
 function mffBlob(data){return new Blob([data],{type:typeof data==='string'?'application/json':'application/gzip'});}
 async function mffPerm(h,mode){
-  try{const o={mode:mode||'readwrite'};if((await h.queryPermission(o))==='granted')return true;return (await h.requestPermission(o))==='granted';}catch(e){return false;}
+  const o={mode:mode||'readwrite'};
+  try{if((await mffDelai(h.queryPermission(o),MFF_DELAI.perm,'autorisation'))==='granted')return true;}catch(e){}
+  // V1.2.1 : la demande d'autorisation peut rester sans réponse (question du navigateur invisible) : limitée dans le temps
+  if(mode!=='read')mffToast('Autorisation d’écrire dans « '+(h.name||'le fichier')+' » : répondez à la question du navigateur…','cours');
+  try{return (await mffDelai(h.requestPermission(o),MFF_DELAI.perm,'autorisation'))==='granted';}catch(e){return false;}
 }
 async function mffWrite(h){
   // composants liés modifiés ici : leurs sources d'abord (47-composants-lies)
@@ -141,7 +180,8 @@ let MFF_ESSAIS=[150,400,900];
 async function mffEcrire(h,bin){
   for(let i=0;;i++){
     let w=null;
-    try{w=await h.createWritable();await w.write(bin);await w.close();return;}
+    try{w=await mffDelai(h.createWritable(),MFF_DELAI.disque,'ouverture du fichier en écriture');
+      await mffDelai(w.write(bin),MFF_DELAI.disque,'écriture du fichier');await mffDelai(w.close(),MFF_DELAI.disque,'fin de l’écriture');return;}
     catch(e){
       if(w)try{await w.abort();}catch(e2){}
       const nom=e&&e.name;
@@ -153,7 +193,7 @@ async function mffEcrire(h,bin){
 async function mffWriteSafe(h,data,opt){
   // → {bak:{disk,idb}} ; lève une erreur si rien n'a été écrit (l'original est alors intact)
   const bad=mffCheckData(data);if(bad)throw new Error('enregistrement annulé : '+bad+' — le fichier sur le disque n’a pas été touché');
-  let old=null;try{old=await mffFileText(await h.getFile());}catch(e){old=null;}
+  let old=null;try{old=await mffDelai(h.getFile().then(mffFileText),MFF_DELAI.disque,'lecture du fichier');}catch(e){old=null;}
   let bak={disk:'',idb:false};
   if(old&&old!==data&&!(opt&&opt.noBak))bak=await mffBackup(h,old);
   const bin=await mffPack(data);
@@ -161,7 +201,7 @@ async function mffWriteSafe(h,data,opt){
   // relecture : le fichier écrit doit avoir la bonne taille ET redonner exactement le projet
   // (jamais vide ni abîmé) ; sinon la version précédente est remise
   try{
-    const f=await h.getFile(),n=typeof Blob!=='undefined'?new Blob([bin]).size:bin.length;
+    const f=await mffDelai(h.getFile(),MFF_DELAI.disque,'relecture'),n=typeof Blob!=='undefined'?new Blob([bin]).size:bin.length;
     let why='';
     if(typeof f.size==='number'&&f.size!==n)why=f.size+' octets au lieu de '+n;
     else{let back=null;try{back=await mffFileText(f);}catch(e){back=null;}
@@ -210,6 +250,7 @@ function mffBase(n){return String(n||'').replace(/(\.conceptcad(\.gz)?|\.minifus
 let mffFile=Promise.resolve(),mffEnCours=0;
 function mffSerie(fn){
   const attendu=mffEnCours>0;mffEnCours++;
+  if(attendu)mffToast('Un enregistrement est encore en cours : celui-ci suit dès qu’il se termine…','cours');
   const p=mffFile.then(()=>fn(attendu));
   mffFile=p.then(()=>{mffEnCours--;},()=>{mffEnCours--;});
   return p;
@@ -220,14 +261,15 @@ async function mffSaveNow(attendu){
   if(attendu&&mffHandle&&!mffModified())return true; // le précédent vient de l'enregistrer
   if(mffHandle&&(MFF_FS||typeof mffHandle.createWritable==='function')){ // un lien qui sait écrire suffit
     try{
-      try{faceEl.textContent='Enregistrement de '+mffHandle.name+'…';}catch(e){}
-      if(!(await mffPerm(mffHandle,'readwrite')))throw new Error('permission refusée');
+      mffToast('Enregistrement de '+mffHandle.name+'…','cours');
+      if(!(await mffPerm(mffHandle,'readwrite')))throw new Error('le navigateur n’a pas donné l’autorisation d’écrire dans ce fichier');
+      mffToast('Enregistrement de '+mffHandle.name+'…','cours');
       const r=await mffWrite(mffHandle);fileHandle=mffHandle;mffMark();mffRecentAdd(mffHandle);
       try{autosave();}catch(e){}
       const bk=r&&r.bak&&r.bak.disk?' — version précédente : '+r.bak.disk:(r&&r.bak&&r.bak.idb?' — version précédente gardée dans le navigateur':'');
-      try{faceEl.textContent='Enregistré dans '+mffHandle.name+' (document + trajectoires)'+bk+'.';}catch(e){}
+      mffToast('Enregistré dans '+mffHandle.name+bk+'.','ok');
       return true;
-    }catch(e){try{faceEl.textContent='Enregistrement impossible ('+(e&&e.message||e)+') — « Enregistrer sous… ».';}catch(e2){}}
+    }catch(e){mffToast('Enregistrement dans '+mffHandle.name+' impossible ('+(e&&e.message||e)+') — choisissez où enregistrer.','err');}
   }
   return await mffSaveAsNow();
 }
@@ -236,16 +278,20 @@ async function mffSaveAsNow(){
   if(MFF_FS&&window.showSaveFilePicker){
     try{
       const o={suggestedName:fname,types:MFF_TYPES};if(mffFolder)o.startIn=mffFolder;else if(mffHandle)o.startIn=mffHandle;
+      mffToast('Choisissez où enregistrer « '+fname+' »…','cours');
       const h=await window.showSaveFilePicker(o);
+      mffToast('Enregistrement de '+h.name+'…','cours');
       await mffWrite(h);
       mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);
       try{autosave();renderTree();renderProps();}catch(e){}
-      try{faceEl.textContent='Enregistré sous '+h.name+'.';}catch(e){}
+      mffToast('Enregistré sous '+h.name+'.','ok');
       return true;
-    }catch(e){if(e&&e.name==='AbortError')return false;try{faceEl.textContent='Enregistrer sous : '+(e&&e.message||e);}catch(e2){}return false;}
+    }catch(e){if(e&&e.name==='AbortError'){mffToast('Enregistrement annulé : la pièce n’a pas été enregistrée.','err');return false;}
+      mffToast('Enregistrer sous : '+(e&&e.message||e),'err');return false;}
   }
   // repli : téléchargement
-  try{const txt=await mffData();if(mffCheckData(txt))return false;const data=await mffPack(txt);const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(data));a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);mffMark();return true;}catch(e){return false;}
+  try{const txt=await mffData();if(mffCheckData(txt)){mffToast('Enregistrement impossible : '+mffCheckData(txt),'err');return false;}const data=await mffPack(txt);const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(data));a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);mffMark();
+    mffToast('« '+fname+' » enregistré dans les téléchargements.','ok');return true;}catch(e){mffToast('Enregistrement impossible : '+(e&&e.message||e),'err');return false;}
 }
 async function mffLoadText(txt,name,handle){
   // vide l'espace PUIS charge (document + trajectoires), sans demander : l'appelant a déjà confirmé
@@ -373,6 +419,10 @@ function mffCss(){
     '.mffDlg{min-width:380px;max-width:520px;padding:18px 20px;border-radius:14px;background:var(--surface);background-color:var(--bg);border:1px solid var(--border);box-shadow:0 20px 50px rgba(0,0,0,.5);color:var(--text)}',
     '.mffMsg{font-size:.95rem;margin-bottom:16px;line-height:1.4;white-space:pre-line}',
     '.mffBtns{display:flex;gap:8px;justify-content:flex-end}',
+    // V1.2.1 : où en est l'enregistrement, en haut au milieu (au-dessus des dispositions des thèmes)
+    '#mffToast{position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:9100;display:none;max-width:min(640px,80vw);padding:9px 16px;border-radius:10px;'+
+      'background-color:var(--bg);border:1px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.45);color:var(--text);font-size:.85rem;line-height:1.35;cursor:pointer}',
+    '#mffToast.on{display:block}#mffToast.ok{border-color:#30d158}#mffToast.err{border-color:#ff6b5c}#mffToast.cours{border-color:var(--primary)}',
     '#mffName{font-size:.78rem;padding:3px 10px;border-radius:8px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}',
     '#mffName.mod{color:var(--text)}',
     '.mffPanel{position:fixed;right:16px;top:72px;z-index:8000;width:380px;max-height:70vh;display:flex;flex-direction:column;border-radius:14px;background-color:var(--bg);border:1px solid var(--border);box-shadow:0 20px 50px rgba(0,0,0,.45);color:var(--text)}',

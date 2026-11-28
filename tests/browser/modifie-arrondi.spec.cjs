@@ -28,5 +28,7 @@ test('pièce rouverte après une modification refusée : non marquée modifiée'
     op.stale=true;mffMark();
     op.stale=false;const a=mffModified();op.stale=true;const b=mffModified();
     op.__essai=1;const c=mffModified();delete op.__essai;
-    return [a,b,c];})).toEqual([false,false,true]);
+    // V1.2.1 : nom unique d'une face / arête complété par le rejeu (ancien fichier) = pas une modification
+    const f0=(doc.features||[])[0];let d=false;if(f0){const o0=f0.nom;f0.nom='essai/e1';d=mffModified();if(o0===undefined)delete f0.nom;else f0.nom=o0;}
+    return [a,b,c,d];})).toEqual([false,false,true,false]);
 });

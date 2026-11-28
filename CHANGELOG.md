@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**820 versions**, de `2026-09-28b` à `V1.2.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**821 versions**, de `2026-09-28b` à `V1.2.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9350,3 +9350,25 @@ Fred, 27/11 : « Livre V1.2.0 ». V1.2.0 rassemble ce qui a été rangé depuis 
 **README** : annonce de V1.2.0.
 
 Aucun changement de code par rapport à V1.1.13 ; CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.1 - Enregistrement visible et jamais bloqué ; cartouche et cadran des interfaces du futur
+
+Fred, 28/11 : « Sur cette dernière version V1.2.0, j'ai des problèmes de sauvegarde évidents » ; « j'ouvre Perçages.conceptCAD, je modifie la cote de largeur, puis je sauvegarde, rien de visible. Alors je fais Nouvelle pièce, là un menu me demande de sauvegarder, ou pas, je sauvegarde, la fenêtre devrait disparaître après sauvegarde mais rien, la pièce reste visible » ; « plan vivant, le bandeau avec le CAO/FAO/Mise en plan est caché par la fenêtre des modifications des fonctions » ; « monde holographique, pas de poignée sur le demi-cercle orange pour changer la valeur en tirant avec la souris ».
+
+**Enregistrement — cause** : le seul retour était la petite ligne d'état en bas de la vue (la ligne #faceInfo est masquée dans l'interface moderne) ; et chaque étape attendait sans limite (autorisation d'écrire demandée par le navigateur, ouverture, écriture et relecture du fichier, préparation du paquet). Une étape qui ne répond jamais (question d'autorisation que le navigateur n'affiche pas, fichier verrouillé) laissait l'enregistrement en attente pour toujours, sans un mot ; les enregistrements suivants (Ctrl+S, « Enregistrer » de Nouveau) attendaient derrière lui dans la file d'un seul enregistrement à la fois (V1.0.2) : Nouveau ne faisait plus rien. Non reproduit tel quel dans Chromium (tout passe en 0,1 s) : l'attente sans fin a été simulée.
+
+**Enregistrement — correctif** : `mffDelai` borne chaque étape (autorisation 20 s, disque 30 s, préparation 60 s) ; au-delà, erreur claire, fichier intact, « Enregistrer sous » proposé ; bandeau `#mffToast` en haut de la vue (⏳ en cours, ✔ enregistré, ⚠ raison), aussi pour « Enregistrer sous », le téléchargement de repli, la file d'attente et l'annulation ; Nouveau / Ouvrir : pièce non enregistrée → le bandeau le dit, la pièce reste ouverte. Signature « modifiée » (`mffSig`) : le champ `nom` (nom unique d'une face ou d'une arête, complété par le rejeu d'un ancien fichier jusqu'à plusieurs secondes après l'ouverture) n'en fait plus partie : plus de ● sans rien toucher (exemple Perçages).
+
+**Plan vivant** : le cartouche (tampons CAO / FAO / PLAN / RENDU) passait sous le panneau des réglages ; il reste immobile (rien ne glisse quand le panneau s'ouvre, règle du 27/11) mais toujours à gauche de la place du panneau (`PV_CART_D` = 338 px du bord), les frises s'arrêtent avant lui (100 % − 920 px).
+
+**Table holographique** : le cadran cachait sa poignée et se figeait dès que la fonction était ouverte dans sa fenêtre (clic sur sa tranche, le cas habituel) ; la poignée reste, et le réglage passe par la fenêtre ouverte (`tbDialFenetre` : `extDynSet` pour l'extrusion, `fdynSet` pour perçage / révolution, sinon une étape d'annulation) : la valeur se voit dans la fenêtre, OK la garde, Annuler la retire.
+
+**Fichiers** : `97-fichiers-projets`, `97-interface-themes-planvivant`, `97-interface-themes-holo`.
+
+**Manuel** : *Fichiers* (enregistrement sûr), *Interface › Apparence*.
+
+**Test** : `test_enregistrement_sur` 29 contrôles (+4 : autorisation sans réponse → arrêt dit, fichier intact ; l'enregistrement suivant passe ; fichier jamais ouvert en écriture → erreur claire ; bandeau) ; `test_interface_moderne` (cartouche à gauche de la place du panneau, cadran par la fenêtre ouverte) ; `tests/browser/modifie-arrondi` (+1 : `nom` complété ≠ modification).
+
+**Vérifié dans Chromium** (Perçages, Plan vivant et Table, 1400 × 800 et 1130 × 800) : cartouche immobile à gauche du panneau ouvert ou fermé, sans toucher la frise ; Découpe ouverte, poignée glissée 6 → 9 mm (fenêtre à 9), Annuler → 6 ; ouverture de Perçages sans ● ; cote de largeur changée puis Ctrl+S → « ✔ Enregistré dans Perçages.conceptcad » ; autorisation qui ne répond jamais + Nouveau → Enregistrer → « ⏳ Autorisation… » puis « ⚠ … la pièce reste ouverte », Ctrl+S suivant enregistré.
+
+CACHE_VER et FORMES_VER inchangés.

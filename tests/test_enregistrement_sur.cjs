@@ -121,6 +121,23 @@ const vm=require('vm');
     hp.createWritable=async()=>{nPerm++;throw Object.assign(new Error('refus'),{name:'NotAllowedError'});};
     err='';try{await mffWriteSafe(hp,v2);}catch(e){err=e.message;}
     att(/refus/.test(err)&&nPerm===1&&FS['ailleurs/Perm.conceptcad']===v1,'25 : permission refusée : pas de nouvel essai, original intact ('+nPerm+' essai)');
+    // ── 13. V1.2.1 (Fred, 28/11 : « je sauvegarde, rien de visible », puis Nouveau → Enregistrer : « rien ») ──
+    // une étape qui ne répond jamais (question d'autorisation invisible, fichier verrouillé) ne bloque plus tout
+    MFF_DELAI={perm:60,disque:60,donnees:2000};
+    const jamais=()=>new Promise(()=>{});
+    FS['ailleurs/Muet.conceptcad']=v1;const hm=mkFile('ailleurs/Muet.conceptcad');
+    hm.queryPermission=async()=>'prompt';hm.requestPermission=jamais;
+    mffHandle=hm;mffName='Muet';doc.params[0].expr='30';doc.params[0].value=30;MSG.length=0;
+    const t0=Date.now();const rm=await Promise.race([mffSave().then(v=>({v})),lent(3000).then(()=>'bloqué')]);
+    att(rm!=='bloqué'&&Date.now()-t0<2500&&MSG.some(m=>/autorisation/.test(m))&&FS['ailleurs/Muet.conceptcad']===v1,
+      '26 : autorisation d’écrire sans réponse : l’enregistrement s’arrête et le dit, le fichier est intact ('+(rm==='bloqué'?rm:MSG.filter(m=>/autorisation/.test(m)).pop())+')');
+    mffHandle=h;const rs=await Promise.race([mffSave(),lent(3000).then(()=>'bloqué')]);
+    att(rs===true&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===30,'27 : l’enregistrement suivant n’attend pas derrière lui : écrit (e = 30)');
+    FS['ailleurs/Fige.conceptcad']=v1;const hf=mkFile('ailleurs/Fige.conceptcad');hf.createWritable=jamais;
+    err='';try{await Promise.race([mffWriteSafe(hf,v2),lent(3000).then(()=>{throw new Error('bloqué');})]);}catch(e){err=e.message;}
+    att(/aucune réponse/.test(err)&&FS['ailleurs/Fige.conceptcad']===v1,'28 : fichier qui ne s’ouvre jamais en écriture : erreur claire, original intact ('+err.slice(0,70)+')');
+    let tst=null;try{tst=document.getElementById('mffToast');}catch(e){}
+    att(!!tst&&/^⚠|^✔/.test(tst.textContent||''),'29 : bandeau d’enregistrement visible au-dessus de la vue ('+(tst&&tst.textContent||'absent').slice(0,60)+')');
     delete fe.textContent;
     return {ATT,OK};
   `;
