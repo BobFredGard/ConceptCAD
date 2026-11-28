@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**822 versions**, de `2026-09-28b` à `V1.2.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**823 versions**, de `2026-09-28b` à `V1.2.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9391,5 +9391,23 @@ Fred, 28/11, après V1.2.1 : « les enregistrements en local sont longs voire n'
 **Test** : `test_enregistrement_sur` 32 contrôles (+3 : écriture trop longue non relancée ; envoi NumPLans plus long que le délai du disque enregistré ; bandeau étape / durée / étape la plus longue).
 
 **Vérifié dans Chromium** : autorisation qui ne répond jamais → bandeau « Autorisation… — autorisation du navigateur », puis fenêtre « Choisir où enregistrer… (même dossier, même nom) » ; Annuler → pièce gardée, Ctrl+S suivant enregistré.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.3 - Enregistrement jamais bloqué par la mémoire du navigateur
+
+Fred, 28/11, V1.2.2 dans NumPLans (Chrome), Perçages : capture du bandeau « Enregistrement de Perçages.conceptcad… — copie de la version précédente (70 s) », « c'est encore en cours » ; « la modif n'a pas été sauvegardée quand même ».
+
+**Cause** : la copie de secours dans le navigateur (`idbSet('mff:bak:…')`, IndexedDB) n'avait pas de durée limite, et elle passe avant l'écriture du fichier. Une écriture IndexedDB attend derrière celles des autres fenêtres et onglets ConceptCAD du même site (même mémoire) : tant qu'elles durent, l'enregistrement attend, sans jamais écrire le fichier. Les enregistrements suivants attendent derrière lui (un seul à la fois, V1.0.2). Reproduit dans Chromium avec une écriture gardée ouverte : même la préparation du fichier attendait (parcours FAO lus dans IndexedDB), 60 s puis repli sans parcours ni image.
+
+**Correctif** : copie de secours dans le navigateur, puis recherche du dossier de projets : 5 s au plus (`MFF_DELAI.copie`), au-delà l'enregistrement continue sans elle (copie `.bak` sur le disque gardée) ; `bundleSerialise` : parcours FAO, fichiers importés, images des composants : 10 s chacun (`bundleAvecDelai`), image de la pièce : 10 s + attente du calcul ; ce qui manque est dit dans le bandeau final (`mffManque`) et se recalcule à l'ouverture.
+
+**Fichiers** : `97-fichiers-projets`, `90-50-document-sauvegarde`.
+
+**Manuel** : *Fichiers* (mémoire du navigateur occupée).
+
+**Test** : `test_enregistrement_sur` 33 contrôles (+1 : copie de secours dans le navigateur sans réponse → pièce enregistrée quand même).
+
+**Vérifié dans Chromium** : Perçages, écriture IndexedDB gardée ouverte par ailleurs, cote changée 100 → 115 puis Ctrl+S : « ✔ Enregistré (en 15 s ; le plus long : préparation du fichier, 10 s). Non joints (mémoire du navigateur occupée…) : parcours FAO », cote 115 relue dans le fichier (V1.2.2 : jamais enregistré).
 
 CACHE_VER et FORMES_VER inchangés.

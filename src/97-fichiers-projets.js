@@ -72,7 +72,7 @@ async function mffConfirmDiscard(){
    d'écrire demandée par le navigateur sans fenêtre visible, fichier verrouillé…) laissait l'enregistrement en
    attente pour toujours, les suivants (Ctrl+S, Nouveau → Enregistrer) attendant derrière lui sans rien dire.
    Chaque étape a désormais une durée limite, et un bandeau en haut de la vue dit où l'on en est. */
-let MFF_DELAI={perm:20000,disque:30000,donnees:60000};
+let MFF_DELAI={perm:20000,disque:30000,donnees:60000,copie:5000};
 function mffDelai(p,ms,quoi){
   // promesse p, ou erreur « quoi » si rien n'est venu après ms
   let t=null;
@@ -99,6 +99,10 @@ function mffEtBilan(){
   const m=mffEt.liste.slice().sort((a,b)=>b[1]-a[1])[0];
   try{log('Enregistrement : '+Math.round(tot)+' ms — '+mffEt.liste.map(e=>e[0]+' '+Math.round(e[1])+' ms').join(', '));}catch(e){}
   return ' (en '+Math.round(tot/1000)+' s'+(m&&m[1]>1000?' ; le plus long : '+m[0]+', '+Math.round(m[1]/1000)+' s':'')+')';
+}
+function mffManque(){
+  // V1.2.3 : compléments non joints, mémoire du navigateur occupée (90-50, bundleSerialise)
+  try{return typeof bundleManque!=='undefined'&&bundleManque.length?' Non joints (mémoire du navigateur occupée, ils se recalculent) : '+bundleManque.join(', ')+'.':'';}catch(e){return '';}
 }
 let mffToastT=null,mffToastTxt='',mffToastI=null,mffToastG='';
 function mffToastMaj(){
@@ -195,10 +199,17 @@ async function mffDirOf(h){
 }
 async function mffBackup(h,old){
   // Copie de la version précédente → {disk: nom du .bak ou '', idb: bool}
+  // V1.2.3 (Fred, 28/11 : bandeau « copie de la version précédente (70 s) », enregistrement jamais fini) : la
+  // copie dans le navigateur (IndexedDB) n'avait pas de durée limite ; une écriture IndexedDB attend derrière
+  // celles d'une autre fenêtre ou d'un autre onglet ConceptCAD (même mémoire du navigateur). La copie est un
+  // filet : au-delà de quelques secondes, l'enregistrement continue sans elle.
   const out={disk:'',idb:false};
-  try{await idbSet('mff:bak:'+h.name,{name:h.name,at:Date.now(),txt:old});out.idb=true;}catch(e){}
+  mffEtape('copie de secours dans le navigateur');
+  try{await mffDelai(idbSet('mff:bak:'+h.name,{name:h.name,at:Date.now(),txt:old}),MFF_DELAI.copie,'copie de secours dans le navigateur');out.idb=true;}
+  catch(e){try{log('Enregistrement : copie de secours dans le navigateur abandonnée ('+(e&&e.message||e)+')');}catch(e2){}}
+  mffEtape('copie de secours sur le disque');
   try{
-    const d=await mffDirOf(h);
+    const d=await mffDelai(mffDirOf(h),MFF_DELAI.copie,'dossier de projets');
     if(d){const b=await mffDelai(d.getFileHandle(h.name+'.bak',{create:true}),MFF_DELAI.disque,'copie de secours');
       const w=await mffDelai(b.createWritable(),mffLimite(h,MFF_DELAI.disque),'copie de secours');
       try{await mffDelai(w.write(await mffPack(old)),mffLimite(h,MFF_DELAI.disque),'copie de secours');
@@ -308,7 +319,7 @@ async function mffSaveNow(attendu){
       const r=await mffWrite(mffHandle);fileHandle=mffHandle;mffMark();mffRecentAdd(mffHandle);
       try{autosave();}catch(e){}
       const bk=r&&r.bak&&r.bak.disk?' — version précédente : '+r.bak.disk:(r&&r.bak&&r.bak.idb?' — version précédente gardée dans le navigateur':'');
-      mffToast('Enregistré dans '+mffHandle.name+bk+mffEtBilan()+'.','ok');mffEt=null;
+      mffToast('Enregistré dans '+mffHandle.name+bk+mffEtBilan()+'.'+mffManque(),'ok');mffEt=null;
       return true;
     }catch(e){
       const etape=mffEt&&mffEt.nom;mffEtBilan();mffEt=null;
@@ -342,7 +353,7 @@ async function mffSaveAsNow(opt){
       try{await mffWrite(h);}finally{if(mffEt)mffEtape(null);}
       mffHandle=h;fileHandle=h;mffName=mffBase(h.name);docNomFichier(mffName);mffMark();mffRecentAdd(h);
       try{autosave();renderTree();renderProps();}catch(e){}
-      mffToast('Enregistré sous '+h.name+mffEtBilan()+'.','ok');mffEt=null;
+      mffToast('Enregistré sous '+h.name+mffEtBilan()+'.'+mffManque(),'ok');mffEt=null;
       return true;
     }catch(e){mffEt=null;if(e&&e.name==='AbortError'){mffToast('Enregistrement annulé : la pièce n’a pas été enregistrée.','err');return false;}
       mffToast('Enregistrer sous : '+(e&&e.message||e),'err');return false;}

@@ -155,6 +155,13 @@ const vm=require('vm');
     mffEt.nom='préparation du fichier';mffEt.t=tN-1000;mffEtape('écriture sur le disque');mffEt.t=tN-4000;mffToastMaj();
     const enCours=tst.textContent;const bil=mffEtBilan();mffEt=null;mffToast('fin','ok');
     att(/écriture sur le disque \\(4 s\\)/.test(enCours)&&/en 5 s ; le plus long : écriture sur le disque, 4 s/.test(bil),'32 : bandeau : étape en cours avec ses secondes, puis la durée et l’étape la plus longue ('+enCours.slice(-40)+' |'+bil+')');
+    // ── 15. V1.2.3 (Fred, 28/11 : bandeau « copie de la version précédente (70 s) », modification pas enregistrée) ──
+    // copie de secours dans le navigateur qui ne répond jamais (IndexedDB occupée par une autre fenêtre) : le fichier est écrit quand même
+    MFF_DELAI.copie=60;const idbSet0=idbSet;idbSet=jamais;
+    mffHandle=h;doc.params[0].expr='34';doc.params[0].value=34;
+    const rc=await Promise.race([mffSave(),lent(3000).then(()=>'bloqué')]);idbSet=idbSet0;
+    att(rc===true&&JSON.parse(FS['projets/pieces/Bride.miniFusion']).doc.params[0].value===34&&FS['projets/pieces/Bride.miniFusion.bak'],
+      '33 : copie de secours dans le navigateur sans réponse : la pièce est enregistrée quand même (e = 34), copie sur le disque faite ('+rc+')');
     delete fe.textContent;
     return {ATT,OK};
   `;
