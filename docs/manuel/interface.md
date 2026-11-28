@@ -9,6 +9,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Ruban à icônes** propre à chaque espace ; en esquisse, il laisse la place au bandeau d'esquisse.
   - Comme dans Fusion 360, le **nom de chaque groupe** (Créer ▾, Modifier ▾…) ouvre la liste de toutes ses fonctions, avec leur **raccourci clavier**.
   - L'**épingle 📌** choisit celles qui restent aussi dans le ruban ; les moins courantes n'y sont plus par défaut, pour gagner de la place.
+  - **Par thème** (V1.2.6) : les icônes affichées, leur style et leur taille sont gardés une fois pour les 5 thèmes classiques (Nuit, Graphite, Atelier, Clair, Contraste élevé), et à part pour chaque interface du futur (Habitacle, Table holographique, Plan vivant, Goutte). La première fois, une interface du futur reprend les réglages des thèmes classiques.
   - Un ruban qui passerait à la ligne resserre ses boutons pour tenir sur une seule.
   - En PLAN, le bouton de l'outil en cours reste allumé tant que l'outil est actif.
 - **Écran de démarrage** animé de 6 s, logo bleu et orange ; un clic ou `Échap` le passe.

@@ -250,4 +250,16 @@ A(['gt','hb','pv','tb'].every(k=>!/infinite/.test(CS[k])),'aucune animation sans
 const tbs=fs.readFileSync(path.join(ROOT,'src','97-interface-themes-holo.js'),'utf8'),msrc=fs.readFileSync(path.join(ROOT,'src','97-interface-moderne.js'),'utf8');
 A(/<g mask="url\(#tbAvant\)">/.test(tbs)&&/stop-opacity="\.1"/.test(tbs)&&CS.tb.includes('#tbTable ellipse{fill:rgba(56,242,208,.05)!important}'),'Table : la moitié arrière du cercle s’efface (la pièce reste visible) ; table claire sur le papier du PLAN');
 A(msrc.includes("'body.ui-modern #faoTree .mfPosCache{display:none!important}'")&&/mfPosageFiltre\(tree\)/.test(fs.readFileSync(path.join(ROOT,'src','97-interface-themes-futur.js'),'utf8')),'arbre de l’usinage : les lignes des autres posages masquées dans l’interface moderne');
+// V1.2.6 (Fred, 28/11) : icônes (style, taille, affichées dans le bandeau) gardées une fois pour les 5 thèmes classiques, à part pour chaque thème du futur
+const ic=JSON.parse(vm.runInContext(`(function(){const o=[];
+  const e=()=>[mfLS('minifusion_theme'),mfIcLire('minifusion_icons'),mfIcLire('minifusion_iconSize'),mfRbShown('Créer/Balayage')].join(' ');
+  mfTheme('nuit');mfIcons('trait');mfIconSize('1');mfRbPinSet('Créer/Balayage',false);o.push(e());
+  mfTheme('holo');o.push(e());mfIcons('couleur');mfIconSize('1.5');mfRbPinSet('Créer/Balayage',true);o.push(e());
+  mfTheme('graphite');o.push(e());mfIconSize('1.25');mfTheme('contraste');o.push(e());
+  mfTheme('goutte');o.push(e());mfTheme('holo');o.push(e());
+  o.push(mfLS('minifusion_iconSize'));
+  return JSON.stringify(o);})()`,ctx));
+A(ic[0]==='nuit trait 1 false'&&ic[1]==='holo trait 1 false'&&ic[2]==='holo couleur 1.5 true','thème du futur : part des réglages classiques, puis garde les siens ('+ic[2]+')');
+A(ic[3]==='graphite trait 1 false'&&ic[4]==='contraste trait 1.25 false','5 thèmes classiques : une seule sauvegarde des icônes ('+ic[4]+')');
+A(ic[5]==='goutte trait 1.25 false'&&ic[6]==='holo couleur 1.5 true'&&ic[7]==='1.25','chaque thème du futur a la sienne, retrouvée au retour ('+ic[6]+')');
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');process.exit(ko?1:0);

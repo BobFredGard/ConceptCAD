@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**825 versions**, de `2026-09-28b` à `V1.2.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**826 versions**, de `2026-09-28b` à `V1.2.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9443,5 +9443,23 @@ Fred, 28/11 : « pourquoi avoir une copie en mémoire dans le navigateur ? Peut-
 **Test** : `test_enregistrement_sur` 36 contrôles (6, 11, 14, 34 revus : rien dans la mémoire du navigateur ; +1 : anciennes copies retirées, le reste de la mémoire gardé).
 
 **Vérifié dans Chromium** : Perçages, cote changée puis Ctrl+S : 0,15 s, image jointe, aucune `mff:bak:` dans la mémoire, anciennes copies effacées au démarrage ; pièce marquée modifiée sans recalcul : 1,6 s (avant : 20 s).
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.6 - Icônes gardées par thème
+
+Fred, 28/11 : « J'aimerais que les icônes et leur visibilité soient enregistrées par thème, les 5 premiers thèmes sont identiques, donc même sauvegarde des icônes, par contre, il faut une sauvegarde par thème futuriste ».
+
+**Avant** : style des icônes (`minifusion_icons`), taille (`minifusion_iconSize`) et icônes épinglées dans le ruban (`minifusion_rbpins`) : une seule valeur pour les 9 thèmes.
+
+**Correctif** : `mfIcCle` / `mfIcLire` (97-interface-icones) : les 5 thèmes classiques gardent les clés d'avant (rien ne change pour eux) ; chaque interface du futur a sa clé (`…_habitacle`, `…_holo`, `…_planvivant`, `…_goutte`), qui part des réglages classiques tant qu'elle n'existe pas ; `mfIcThemeSync` réapplique style, taille et épingles à chaque changement de thème (`mfTheme`).
+
+**Fichiers** : `97-interface-icones`, `97-interface-moderne`.
+
+**Manuel** : *Interface* (ruban : par thème).
+
+**Test** : `test_interface_moderne` (+3 : thème du futur qui part des réglages classiques puis garde les siens ; 5 thèmes classiques une seule sauvegarde ; chaque thème du futur retrouve la sienne).
+
+**Vérifié dans Chromium** : Nuit → Table holographique (reprend Nuit), taille 1,5 et Balayage épinglé ; Graphite (comme Nuit), taille 1,25 → Clair à 1,25 ; retour Table : 1,5 et Balayage.
 
 CACHE_VER et FORMES_VER inchangés.
