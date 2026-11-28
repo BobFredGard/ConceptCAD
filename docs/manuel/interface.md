@@ -1,6 +1,6 @@
 [ConceptCAD](../../README.md) › [Manuel](README.md) › Interface
 
-# Interface
+# Interface basique (voir les interfaces futuristes à la fin de cette page)
 
 ![Le ruban de l’espace CAO, avec la liste « Créer » ouverte : chaque fonction, son raccourci et son épingle](../captures/cao-menus.png)
 
