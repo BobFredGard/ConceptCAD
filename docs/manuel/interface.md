@@ -110,6 +110,18 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 
 ---
 # Les diiférentes interface futuristes :
+
+## L'habitacle
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/5cd2e16b-b7c1-40e9-821a-106e24bd9651" />
+
+## La table holographique
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/de270537-3218-4455-bd37-d0328940d62a" />
+
+## Le plan vivant
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/e1c36675-b580-42bb-8a74-253b3cf284c1" />
+
+## La goutte
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/84b11cec-e118-4790-bdc2-103ca3c0a3b7" />
+
 
 [← Démarrage](demarrage.md) · [Sommaire du manuel](README.md) · [Téléphone et tablette →](telephone.md)
