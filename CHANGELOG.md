@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**821 versions**, de `2026-09-28b` à `V1.2.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**822 versions**, de `2026-09-28b` à `V1.2.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9370,5 +9370,26 @@ Fred, 28/11 : « Sur cette dernière version V1.2.0, j'ai des problèmes de sauv
 **Test** : `test_enregistrement_sur` 29 contrôles (+4 : autorisation sans réponse → arrêt dit, fichier intact ; l'enregistrement suivant passe ; fichier jamais ouvert en écriture → erreur claire ; bandeau) ; `test_interface_moderne` (cartouche à gauche de la place du panneau, cadran par la fenêtre ouverte) ; `tests/browser/modifie-arrondi` (+1 : `nom` complété ≠ modification).
 
 **Vérifié dans Chromium** (Perçages, Plan vivant et Table, 1400 × 800 et 1130 × 800) : cartouche immobile à gauche du panneau ouvert ou fermé, sans toucher la frise ; Découpe ouverte, poignée glissée 6 → 9 mm (fenêtre à 9), Annuler → 6 ; ouverture de Perçages sans ● ; cote de largeur changée puis Ctrl+S → « ✔ Enregistré dans Perçages.conceptcad » ; autorisation qui ne répond jamais + Nouveau → Enregistrer → « ⏳ Autorisation… » puis « ⚠ … la pièce reste ouverte », Ctrl+S suivant enregistré.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.2 - Enregistrement local : étape et durée visibles, « Enregistrer sous » toujours possible
+
+Fred, 28/11, après V1.2.1 : « les enregistrements en local sont longs voire n'aboutissent pas » ; « peut-être aussi que ça ne fonctionne pas à distance, je n'ai pas essayé ».
+
+**Constat** : ConceptCAD ouvert par NumPLans (plans.justet.com, journal du serveur : `/conceptcad/?nouveau=1&fenetre=1`), Perçages ouvert depuis le disque du poste : enregistrement par le navigateur (Chrome), aucun envoi à NumPLans. Non reproduit : Chromium 0,09 s, application Windows 0,17 s (Perçages, cote changée puis enregistrée). Trois faiblesses trouvées sur ce chemin :
+1. autorisation d'écrire refusée ou restée sans réponse (question de Chrome passée inaperçue) : le repli « Enregistrer sous » était appelé sans geste récent de l'utilisateur, Chrome refusait d'ouvrir sa fenêtre (SecurityError) et l'enregistrement n'aboutissait jamais ;
+2. V1.2.1 : une écriture plus longue que le délai (30 s) était relancée par-dessus elle-même, alors qu'elle pouvait encore se finir ; un envoi lent à NumPLans (plan ouvert depuis NumPLans, Internet limité) était coupé à 30 s ;
+3. jusqu'à 1 minute d'attente silencieuse de la fin du calcul pour joindre l'image de la pièce (`PC_ATTENTE_ENR`).
+
+**Correctif** : « Enregistrer sous » refusé faute de geste → fenêtre ConceptCAD avec le bouton **Choisir où enregistrer…** (le clic rouvre la fenêtre de Chrome), au même dossier et sous le même nom ; délai dépassé → erreur `TimeoutError`, jamais de nouvel essai ; liens qui ne sont pas des fichiers du disque (NumPLans, pont de l'application) : 10 min (`mffLimite`) ; copie `.bak` limitée aussi ; bandeau : étape en cours et secondes (`mffEtape`), durée et étape la plus longue à la fin si plus de 2 s (`mffEtBilan`, aussi dans le journal) ; attente du calcul pour l'image : 20 s au plus.
+
+**Fichiers** : `97-fichiers-projets`, `20-75-piece-gardee`.
+
+**Manuel** : *Fichiers* (enregistrement sûr : étape et durée).
+
+**Test** : `test_enregistrement_sur` 32 contrôles (+3 : écriture trop longue non relancée ; envoi NumPLans plus long que le délai du disque enregistré ; bandeau étape / durée / étape la plus longue).
+
+**Vérifié dans Chromium** : autorisation qui ne répond jamais → bandeau « Autorisation… — autorisation du navigateur », puis fenêtre « Choisir où enregistrer… (même dossier, même nom) » ; Annuler → pièce gardée, Ctrl+S suivant enregistré.
 
 CACHE_VER et FORMES_VER inchangés.

@@ -138,6 +138,23 @@ const vm=require('vm');
     att(/aucune réponse/.test(err)&&FS['ailleurs/Fige.conceptcad']===v1,'28 : fichier qui ne s’ouvre jamais en écriture : erreur claire, original intact ('+err.slice(0,70)+')');
     let tst=null;try{tst=document.getElementById('mffToast');}catch(e){}
     att(!!tst&&/^⚠|^✔/.test(tst.textContent||''),'29 : bandeau d’enregistrement visible au-dessus de la vue ('+(tst&&tst.textContent||'absent').slice(0,60)+')');
+    // ── 14. V1.2.2 (Fred, 28/11 : « les enregistrements en local sont longs voire n'aboutissent pas ») ──
+    // écriture qui dépasse le délai : jamais relancée par-dessus elle-même (elle peut encore se finir)
+    FS['ailleurs/Long.conceptcad']=v1;const hL=mkFile('ailleurs/Long.conceptcad');let nL=0;
+    hL.createWritable=async()=>{nL++;return {write:async()=>{},close:jamais,abort:async()=>{}};};
+    err='';try{await Promise.race([mffWriteSafe(hL,v2),lent(3000).then(()=>{throw new Error('bloqué');})]);}catch(e){err=e.message;}
+    att(/aucune réponse/.test(err)&&nL===1&&FS['ailleurs/Long.conceptcad']===v1,'30 : écriture plus longue que le délai : arrêt dit, pas de nouvel essai par-dessus ('+nL+' ouverture)');
+    // envoi NumPLans (lien qui n'est pas un fichier du disque) : il a le temps qu'il lui faut
+    FS['np/1234.conceptcad']=v1;const hN=Object.assign(mkLent('np/1234.conceptcad'),{numplans:true});
+    const cwN=hN.createWritable;hN.createWritable=async function(){const w=await cwN.call(this);const c=w.close;w.close=async()=>{await lent(200);return c();};return w;};
+    err='';try{await mffWriteSafe(hN,v2);}catch(e){err=e.message;}
+    att(!err&&FS['np/1234.conceptcad']===v2,'31 : envoi à NumPLans plus long que le délai du disque : enregistré ('+(err||'ok')+')');
+    // bandeau : étape en cours, puis durée et étape la plus longue
+    const tN=performance.now();
+    mffEt={t0:tN-5000,nom:null,t:tN-5000,liste:[]};mffToast('Enregistrement de X…','cours');
+    mffEt.nom='préparation du fichier';mffEt.t=tN-1000;mffEtape('écriture sur le disque');mffEt.t=tN-4000;mffToastMaj();
+    const enCours=tst.textContent;const bil=mffEtBilan();mffEt=null;mffToast('fin','ok');
+    att(/écriture sur le disque \\(4 s\\)/.test(enCours)&&/en 5 s ; le plus long : écriture sur le disque, 4 s/.test(bil),'32 : bandeau : étape en cours avec ses secondes, puis la durée et l’étape la plus longue ('+enCours.slice(-40)+' |'+bil+')');
     delete fe.textContent;
     return {ATT,OK};
   `;
