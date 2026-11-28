@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**820 versions**, de `2026-09-28b` à `V1.2.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**825 versions**, de `2026-09-28b` à `V1.2.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9350,3 +9350,98 @@ Fred, 27/11 : « Livre V1.2.0 ». V1.2.0 rassemble ce qui a été rangé depuis 
 **README** : annonce de V1.2.0.
 
 Aucun changement de code par rapport à V1.1.13 ; CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.1 - Enregistrement visible et jamais bloqué ; cartouche et cadran des interfaces du futur
+
+Fred, 28/11 : « Sur cette dernière version V1.2.0, j'ai des problèmes de sauvegarde évidents » ; « j'ouvre Perçages.conceptCAD, je modifie la cote de largeur, puis je sauvegarde, rien de visible. Alors je fais Nouvelle pièce, là un menu me demande de sauvegarder, ou pas, je sauvegarde, la fenêtre devrait disparaître après sauvegarde mais rien, la pièce reste visible » ; « plan vivant, le bandeau avec le CAO/FAO/Mise en plan est caché par la fenêtre des modifications des fonctions » ; « monde holographique, pas de poignée sur le demi-cercle orange pour changer la valeur en tirant avec la souris ».
+
+**Enregistrement — cause** : le seul retour était la petite ligne d'état en bas de la vue (la ligne #faceInfo est masquée dans l'interface moderne) ; et chaque étape attendait sans limite (autorisation d'écrire demandée par le navigateur, ouverture, écriture et relecture du fichier, préparation du paquet). Une étape qui ne répond jamais (question d'autorisation que le navigateur n'affiche pas, fichier verrouillé) laissait l'enregistrement en attente pour toujours, sans un mot ; les enregistrements suivants (Ctrl+S, « Enregistrer » de Nouveau) attendaient derrière lui dans la file d'un seul enregistrement à la fois (V1.0.2) : Nouveau ne faisait plus rien. Non reproduit tel quel dans Chromium (tout passe en 0,1 s) : l'attente sans fin a été simulée.
+
+**Enregistrement — correctif** : `mffDelai` borne chaque étape (autorisation 20 s, disque 30 s, préparation 60 s) ; au-delà, erreur claire, fichier intact, « Enregistrer sous » proposé ; bandeau `#mffToast` en haut de la vue (⏳ en cours, ✔ enregistré, ⚠ raison), aussi pour « Enregistrer sous », le téléchargement de repli, la file d'attente et l'annulation ; Nouveau / Ouvrir : pièce non enregistrée → le bandeau le dit, la pièce reste ouverte. Signature « modifiée » (`mffSig`) : le champ `nom` (nom unique d'une face ou d'une arête, complété par le rejeu d'un ancien fichier jusqu'à plusieurs secondes après l'ouverture) n'en fait plus partie : plus de ● sans rien toucher (exemple Perçages).
+
+**Plan vivant** : le cartouche (tampons CAO / FAO / PLAN / RENDU) passait sous le panneau des réglages ; il reste immobile (rien ne glisse quand le panneau s'ouvre, règle du 27/11) mais toujours à gauche de la place du panneau (`PV_CART_D` = 338 px du bord), les frises s'arrêtent avant lui (100 % − 920 px).
+
+**Table holographique** : le cadran cachait sa poignée et se figeait dès que la fonction était ouverte dans sa fenêtre (clic sur sa tranche, le cas habituel) ; la poignée reste, et le réglage passe par la fenêtre ouverte (`tbDialFenetre` : `extDynSet` pour l'extrusion, `fdynSet` pour perçage / révolution, sinon une étape d'annulation) : la valeur se voit dans la fenêtre, OK la garde, Annuler la retire.
+
+**Fichiers** : `97-fichiers-projets`, `97-interface-themes-planvivant`, `97-interface-themes-holo`.
+
+**Manuel** : *Fichiers* (enregistrement sûr), *Interface › Apparence*.
+
+**Test** : `test_enregistrement_sur` 29 contrôles (+4 : autorisation sans réponse → arrêt dit, fichier intact ; l'enregistrement suivant passe ; fichier jamais ouvert en écriture → erreur claire ; bandeau) ; `test_interface_moderne` (cartouche à gauche de la place du panneau, cadran par la fenêtre ouverte) ; `tests/browser/modifie-arrondi` (+1 : `nom` complété ≠ modification).
+
+**Vérifié dans Chromium** (Perçages, Plan vivant et Table, 1400 × 800 et 1130 × 800) : cartouche immobile à gauche du panneau ouvert ou fermé, sans toucher la frise ; Découpe ouverte, poignée glissée 6 → 9 mm (fenêtre à 9), Annuler → 6 ; ouverture de Perçages sans ● ; cote de largeur changée puis Ctrl+S → « ✔ Enregistré dans Perçages.conceptcad » ; autorisation qui ne répond jamais + Nouveau → Enregistrer → « ⏳ Autorisation… » puis « ⚠ … la pièce reste ouverte », Ctrl+S suivant enregistré.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.2 - Enregistrement local : étape et durée visibles, « Enregistrer sous » toujours possible
+
+Fred, 28/11, après V1.2.1 : « les enregistrements en local sont longs voire n'aboutissent pas » ; « peut-être aussi que ça ne fonctionne pas à distance, je n'ai pas essayé ».
+
+**Constat** : ConceptCAD ouvert par NumPLans (plans.justet.com, journal du serveur : `/conceptcad/?nouveau=1&fenetre=1`), Perçages ouvert depuis le disque du poste : enregistrement par le navigateur (Chrome), aucun envoi à NumPLans. Non reproduit : Chromium 0,09 s, application Windows 0,17 s (Perçages, cote changée puis enregistrée). Trois faiblesses trouvées sur ce chemin :
+1. autorisation d'écrire refusée ou restée sans réponse (question de Chrome passée inaperçue) : le repli « Enregistrer sous » était appelé sans geste récent de l'utilisateur, Chrome refusait d'ouvrir sa fenêtre (SecurityError) et l'enregistrement n'aboutissait jamais ;
+2. V1.2.1 : une écriture plus longue que le délai (30 s) était relancée par-dessus elle-même, alors qu'elle pouvait encore se finir ; un envoi lent à NumPLans (plan ouvert depuis NumPLans, Internet limité) était coupé à 30 s ;
+3. jusqu'à 1 minute d'attente silencieuse de la fin du calcul pour joindre l'image de la pièce (`PC_ATTENTE_ENR`).
+
+**Correctif** : « Enregistrer sous » refusé faute de geste → fenêtre ConceptCAD avec le bouton **Choisir où enregistrer…** (le clic rouvre la fenêtre de Chrome), au même dossier et sous le même nom ; délai dépassé → erreur `TimeoutError`, jamais de nouvel essai ; liens qui ne sont pas des fichiers du disque (NumPLans, pont de l'application) : 10 min (`mffLimite`) ; copie `.bak` limitée aussi ; bandeau : étape en cours et secondes (`mffEtape`), durée et étape la plus longue à la fin si plus de 2 s (`mffEtBilan`, aussi dans le journal) ; attente du calcul pour l'image : 20 s au plus.
+
+**Fichiers** : `97-fichiers-projets`, `20-75-piece-gardee`.
+
+**Manuel** : *Fichiers* (enregistrement sûr : étape et durée).
+
+**Test** : `test_enregistrement_sur` 32 contrôles (+3 : écriture trop longue non relancée ; envoi NumPLans plus long que le délai du disque enregistré ; bandeau étape / durée / étape la plus longue).
+
+**Vérifié dans Chromium** : autorisation qui ne répond jamais → bandeau « Autorisation… — autorisation du navigateur », puis fenêtre « Choisir où enregistrer… (même dossier, même nom) » ; Annuler → pièce gardée, Ctrl+S suivant enregistré.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.3 - Enregistrement jamais bloqué par la mémoire du navigateur
+
+Fred, 28/11, V1.2.2 dans NumPLans (Chrome), Perçages : capture du bandeau « Enregistrement de Perçages.conceptcad… — copie de la version précédente (70 s) », « c'est encore en cours » ; « la modif n'a pas été sauvegardée quand même ».
+
+**Cause** : la copie de secours dans le navigateur (`idbSet('mff:bak:…')`, IndexedDB) n'avait pas de durée limite, et elle passe avant l'écriture du fichier. Une écriture IndexedDB attend derrière celles des autres fenêtres et onglets ConceptCAD du même site (même mémoire) : tant qu'elles durent, l'enregistrement attend, sans jamais écrire le fichier. Les enregistrements suivants attendent derrière lui (un seul à la fois, V1.0.2). Reproduit dans Chromium avec une écriture gardée ouverte : même la préparation du fichier attendait (parcours FAO lus dans IndexedDB), 60 s puis repli sans parcours ni image.
+
+**Correctif** : copie de secours dans le navigateur, puis recherche du dossier de projets : 5 s au plus (`MFF_DELAI.copie`), au-delà l'enregistrement continue sans elle (copie `.bak` sur le disque gardée) ; `bundleSerialise` : parcours FAO, fichiers importés, images des composants : 10 s chacun (`bundleAvecDelai`), image de la pièce : 10 s + attente du calcul ; ce qui manque est dit dans le bandeau final (`mffManque`) et se recalcule à l'ouverture.
+
+**Fichiers** : `97-fichiers-projets`, `90-50-document-sauvegarde`.
+
+**Manuel** : *Fichiers* (mémoire du navigateur occupée).
+
+**Test** : `test_enregistrement_sur` 33 contrôles (+1 : copie de secours dans le navigateur sans réponse → pièce enregistrée quand même).
+
+**Vérifié dans Chromium** : Perçages, écriture IndexedDB gardée ouverte par ailleurs, cote changée 100 → 115 puis Ctrl+S : « ✔ Enregistré (en 15 s ; le plus long : préparation du fichier, 10 s). Non joints (mémoire du navigateur occupée…) : parcours FAO », cote 115 relue dans le fichier (V1.2.2 : jamais enregistré).
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.4 - Enregistrement : le fichier d'abord, rien en mémoire avant Nouveau / Ouvrir
+
+Fred, 28/11 : « Pourquoi c'est si long pour un fichier de 268 Ko ? » ; à la proposition d'écrire le fichier d'abord : « oui. Et quand je veux faire un nouveau fichier, pas la peine de le remettre en mémoire ni quand j'ouvre un autre fichier non ? ».
+
+**Cause** : l'écriture elle-même prend ~0,1 s ; le temps perdu était l'attente de la mémoire du navigateur (IndexedDB, mémoire de Chrome pour plans.justet.com : 88 Mo seulement), où la copie de secours passait AVANT l'écriture du fichier, et où chaque lecture (parcours FAO, imports) pouvait attendre jusqu'à 10 s (V1.2.3).
+
+**Correctif** : `mffWriteSafe` écrit et relit le fichier, puis seulement copie la version précédente (`mffBackup` : `.bak` du disque attendu, copie du navigateur lancée sans être attendue) ; `mffSave({quitte:true})` depuis `mffConfirmDiscard` (Nouveau, Ouvrir, récents, fermeture) : aucune copie dans le navigateur, ni brouillon (`autosave`), ni image de la pièce (`pcEcrireSoon` annulé) ; `bundleLecture` : 3 s par lecture de la mémoire du navigateur dans `bundleMoves` / `bundleImports` (le délai repart à chaque lecture qui aboutit), filet global 60 s.
+
+**Fichiers** : `97-fichiers-projets`, `90-50-document-sauvegarde`.
+
+**Manuel** : *Fichiers* (le fichier d'abord).
+
+**Test** : `test_enregistrement_sur` 35 contrôles (+2 : copie du navigateur qui ne finit pas → pièce enregistrée tout de suite ; « Enregistrer » avant Nouveau / Ouvrir → aucune copie dans le navigateur).
+
+**Vérifié dans Chromium** : Perçages, mémoire du navigateur bloquée par une écriture gardée ouverte : Ctrl+S en 3 s (V1.2.3 : 15 s ; V1.2.2 : jamais), Nouveau → Enregistrer en 3 s, cote relue dans le fichier ; mémoire libre : comme avant.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.5 - Plus de copie de secours dans le navigateur
+
+Fred, 28/11 : « pourquoi avoir une copie en mémoire dans le navigateur ? Peut-être que cela ne sert plus à rien aujourd'hui puisque j'ouvre les pièces à chaque fois… Et autre réflexion, la copie interne c'est déjà la pièce active non ? » — expliqué : le brouillon est la pièce active, la copie de secours était la version d'AVANT l'enregistrement ; utile seulement hors du dossier de projets ; c'est elle qui bloquait l'enregistrement (V1.2.3) — « Yes » pour la retirer.
+
+**Correctif** : `mffBackup` n'écrit plus `mff:bak:<nom>` dans IndexedDB (le fichier écrit reste relu et comparé, version précédente remise sinon ; `.bak` à côté du fichier dans le dossier de projets gardé ; brouillon inchangé) ; menu des copies de secours : celle du disque seulement ; `mffBakPurge` retire une fois, 8 s après le démarrage, les copies laissées par les versions d'avant. Aussi : `pcVersFichier` n'attend plus la fin d'un calcul qui ne tourne pas (pièce marquée modifiée sans rejeu : 1,5 s pour qu'un calcul démarre, sinon rien ; avant : les 20 s entières, vu en vérifiant).
+
+**Fichiers** : `97-fichiers-projets`, `20-75-piece-gardee`.
+
+**Manuel** : *Fichiers* (enregistrement sûr).
+
+**Test** : `test_enregistrement_sur` 36 contrôles (6, 11, 14, 34 revus : rien dans la mémoire du navigateur ; +1 : anciennes copies retirées, le reste de la mémoire gardé).
+
+**Vérifié dans Chromium** : Perçages, cote changée puis Ctrl+S : 0,15 s, image jointe, aucune `mff:bak:` dans la mémoire, anciennes copies effacées au démarrage ; pièce marquée modifiée sans recalcul : 1,6 s (avant : 20 s).
+
+CACHE_VER et FORMES_VER inchangés.

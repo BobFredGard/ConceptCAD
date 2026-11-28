@@ -324,12 +324,12 @@ async function bundleMoves(){
   }catch(e){}
   if(!miens.size)return out;
   try{
-    const ks=(await idbKeys('faoMoves:')).filter(function(k){return miens.has(k);});
+    const ks=(await bundleLecture(idbKeys('faoMoves:'))).filter(function(k){return miens.has(k);});
     for(let i=0;i<ks.length;i++){
-      try{ const v=await idbGet(ks[i]); if(v&&v.v===1&&Array.isArray(v.mv))out[ks[i]]=bundleMvEntry(v); }
-      catch(e){}
+      try{ const v=await bundleLecture(idbGet(ks[i])); if(v&&v.v===1&&Array.isArray(v.mv))out[ks[i]]=bundleMvEntry(v); }
+      catch(e){ if(e&&e.message==='délai'){bundleManque.push('parcours FAO');break;} }
     }
-  }catch(e){}
+  }catch(e){ if(e&&e.message==='délai')bundleManque.push('parcours FAO'); }
   return out;
 }
 /* Parcours rangés en colonnes EXACTES dans le fichier (mvz). Avant, chaque point était écrit
@@ -415,19 +415,40 @@ async function bundleImports(){
   const out={};
   for(const f of [].concat(...asmAllDocs().map(d=>d.features||[]))){ // toutes les pièces (V0.6.0)
     if(!f||f.type!=='import'||!f.src||!f.src.key||out[f.src.key])continue;
-    try{const u8=await importSrcGet(f.src.key);if(u8)out[f.src.key]=importU8ToB64(u8);}catch(e){}
+    try{const u8=await bundleLecture(importSrcGet(f.src.key));if(u8)out[f.src.key]=importU8ToB64(u8);}
+    catch(e){if(e&&e.message==='délai'){bundleManque.push('fichiers importés');break;}}
   }
   return out;
 }
+/* V1.2.3 (Fred, 28/11 : enregistrement bloqué sur la copie de secours, modification perdue) : tout ce qui vient
+   de la mémoire du navigateur (IndexedDB : parcours FAO, sources des imports, images) attend derrière les
+   écritures d'une autre fenêtre ou d'un autre onglet ConceptCAD. Chaque lecture a une durée limite : au-delà,
+   le fichier part sans ce complément (il se recalcule), mais la pièce est enregistrée. bundleManque : ce qui
+   manque, dit dans le bandeau. */
+let BUNDLE_DELAI=3000,bundleManque=[];
+function bundleLecture(p){
+  // V1.2.4 : une lecture de la mémoire du navigateur, 3 s au plus (erreur 'délai')
+  let t=null;
+  return Promise.race([Promise.resolve(p).finally(()=>{if(t)clearTimeout(t);}),new Promise((_,rej)=>{t=setTimeout(()=>rej(new Error('délai')),BUNDLE_DELAI);})]);
+}
+async function bundleAvecDelai(p,quoi,defaut,ms){
+  let t=null;
+  try{return await Promise.race([Promise.resolve(p).finally(()=>{if(t)clearTimeout(t);}),
+    new Promise((_,rej)=>{t=setTimeout(()=>rej(new Error('délai')),ms||BUNDLE_DELAI);})]);}
+  catch(e){bundleManque.push(quoi);try{log('Enregistrement : '+quoi+' non joint ('+(e&&e.message||e)+')');}catch(e2){}return defaut;}
+}
 async function bundleSerialise(){
-  const moves=await bundleMoves();
-  const imports=await bundleImports();
+  bundleManque=[];
+  // (V1.2.4 : chaque lecture a ses 3 s ; ici, un filet global)
+  const moves=await bundleAvecDelai(bundleMoves(),'parcours FAO',{},60000);
+  const imports=await bundleAvecDelai(bundleImports(),'fichiers importés',{},60000);
   // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
   // V0.99.16 : option cochée d'office (asm.img === false seulement si décochée)
-  let asnap=null;try{if(asm&&asm.img!==false&&asm.comps&&asm.comps.length>1)asnap=await asmCacheExport();}catch(e){asnap=null;}
+  let asnap=null;try{if(asm&&asm.img!==false&&asm.comps&&asm.comps.length>1)asnap=await bundleAvecDelai(asmCacheExport(),'images des composants',null);}catch(e){asnap=null;}
   // V0.99.16 : image complète d'une pièce (20-75, pcVersFichier) — ouverture sans recalcul sur tout poste
   const docObj=JSON.parse(serialise());
-  let pfin=null;try{if(typeof pcVersFichier==='function')pfin=await pcVersFichier(JSON.stringify(docObj));}catch(e){pfin=null;}
+  // (l'attente de la fin du calcul, PC_ATTENTE_ENR, s'ajoute au délai de lecture)
+  let pfin=null;try{if(typeof pcVersFichier==='function')pfin=await bundleAvecDelai(pcVersFichier(JSON.stringify(docObj)),'image de la pièce',null,BUNDLE_DELAI+(typeof PC_ATTENTE_ENR==='number'?PC_ATTENTE_ENR:0));}catch(e){pfin=null;}
   let cam=null;try{cam=viewCamGet();}catch(e){cam=null;} // V1.0.7 : vue 3D, remise à l'ouverture (10-scene-3d)
   return JSON.stringify({app:'ConceptCAD',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
     at:Date.now(),name:doc.name||'',doc:docObj,cam:cam||undefined,

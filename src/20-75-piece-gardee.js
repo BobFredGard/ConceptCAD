@@ -263,7 +263,7 @@ function pcFR(){
    document sortent du même enregistrement. Même contrôle par le rejeu de fond qu'une pièce gardée.
    Mesuré : cavité +0,36 Mo (ouverture 1,4 s → immédiate), plaque d'une centaine de fonctions +2,4 à 4,9 Mo
    (11 à 22 s → immédiate). Contenu venu d'ailleurs : vérifié, une image douteuse est ignorée (recalcul). */
-const PC_ATTENTE_ENR=60000; // enregistrement : attente maximale de la fin du calcul pour joindre l'image (V0.99.26)
+const PC_ATTENTE_ENR=20000; // enregistrement : attente maximale de la fin du calcul pour joindre l'image (V0.99.26 ; 60 → 20 s en V1.2.2 : l'image ne fait que gagner du temps à l'ouverture)
 const PC_FICHIER_MAX=6; // images en mémoire (jusqu’à ~20 Mo chacune pour une grosse pièce)
 const pcFichier=new Map();  // clé → entrée (images des fichiers ouverts pendant cette session)
 const pcCompMem=new Map();  // clé → entrée : images des composants préchargées avant leurs rejeux (assemblage)
@@ -363,8 +363,13 @@ async function pcVersFichier(docTxt){
         ||(typeof delWkPending==='function'&&delWkPending())||!buildKeyUpToDate();
       if(occupe()){
         try{log('Enregistrement : fin du calcul attendue pour joindre l’image de la pièce…');}catch(x){}
+        try{if(typeof mffEtape==='function')mffEtape('attente de la fin du calcul de la pièce');}catch(x){}
         const t0=Date.now();
-        while(occupe()&&Date.now()-t0<PC_ATTENTE_ENR)await new Promise(r=>setTimeout(r,250));
+        // V1.2.5 : affichage périmé sans aucun calcul en cours (pièce marquée modifiée sans rejeu : annotation…) :
+        // 1,5 s pour qu'un calcul démarre, sinon pas d'attente (avant : les 20 s entières, pour rien)
+        const tourne=()=>rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)||pcChauffe||occThrPending
+          ||(typeof delWkPending==='function'&&delWkPending());
+        while(occupe()&&Date.now()-t0<PC_ATTENTE_ENR&&(tourne()||Date.now()-t0<1500))await new Promise(r=>setTimeout(r,250));
         // document changé pendant l'attente : son image n'irait pas avec le texte enregistré
         try{if(pcSigDoc(JSON.stringify(JSON.parse(serialise())))!==pcSigDoc(docTxt))return null;}catch(x){return null;}
         cle=pcCle();if(!cle)return null;
