@@ -172,6 +172,8 @@ function mfCss(){
   'body.ui-modern #faoTreeWrap .fao-dup{display:none!important}',
   // vue d'assemblage : seuls les groupes d'assemblage, pas de bandeau de timeline (fil de PIÈCE)
   'body.ui-modern[data-asm="1"] #mfRibbon .mfCao:not(.mfAsmG),body[data-asm="1"] #mfTl{display:none!important}'+
+  // V1.2.7 : FAO en deux modes — Fraisage ou Tournage : le ruban ne montre que les icônes du mode (tous les thèmes lisent ce ruban)
+  'body[data-fao-proc="tournage"] #mfRibbon .mfFrais,body:not([data-fao-proc="tournage"]) #mfRibbon .mfTour{display:none!important}',
   'body.ui-modern[data-ws="cao"] #mfRibbon .mfFao,body.ui-modern[data-ws="cao"] #mfRibbon .mfPlan,body.ui-modern[data-ws="fao"] #mfRibbon .mfCao,body.ui-modern[data-ws="fao"] #mfRibbon .mfPlan,body.ui-modern[data-ws="plan"] #mfRibbon .mfCao,body.ui-modern[data-ws="plan"] #mfRibbon .mfFao{display:none}',
   // groupe Composants : en modélisation, seul « Assembler » ; en assemblage, tout, et le bouton devient « Modéliser »
   // V0.21.11 : FAO = espace de PIÈCE — grisé sans pièce active en Modéliser (mfFaoGate)
@@ -381,6 +383,19 @@ const MF_IC={
   /* V0.99.86 : Découpe 3 tailles — disque sur son col, rainure tirée tout droit */
   slotcut:'<path d="M17 2v10"/><ellipse cx="17" cy="13" rx="5" ry="1.6"/><path d="M2 13h7" stroke-dasharray="2 1.6"/><path d="M2 18h20"/>',
   drill:'<path d="M10 3h4v9l-2 5-2-5z"/><path d="M10 6.5l4 1.5M10 9.5l4 1.5"/><path d="M5 21h14"/>',
+  // V1.2.7 : tournage (barre vue de côté, axe en pointillés)
+  mill:'<path d="M9 2h6v4H9z"/><path d="M10 6h4v10l-2 3-2-3z"/><path d="M10 9l4 2M10 12.5l4 2"/><path d="M3 21h18"/>',
+  lathe:'<path d="M2 5v14M2 8h3v8H2"/><path d="M5 9h15v6H5"/><path d="M1 12h22" stroke-dasharray="2 1.5"/><ellipse cx="20" cy="12" rx="1.2" ry="3"/>',
+  tface:'<path d="M3 7h11v10H3"/><path d="M14 7v10"/><path d="M18 3l-4 4 3 1z"/><path d="M17 8v8" stroke-dasharray="1.6 1.4"/>',
+  trough:'<path d="M3 6h18v12H3"/><path d="M8 9h13M11 12h10M14 15h7" stroke-dasharray="2 1.4"/><path d="M8 6v3h3v3h3v3h3v3"/>',
+  tfinish:'<path d="M3 6h7c3 0 4 3 4 6h7v6H3z"/><path d="M15 3l3 3-3 1z"/>',
+  tdrill:'<path d="M3 6h14v12H3z"/><path d="M22 10.5h-9l-2 1.5 2 1.5h9"/>',
+  tpart:'<path d="M3 6h8v12H3zM14 6h7v12h-7"/><path d="M11.5 2v10"/><path d="M11 2h2v9h-2"/>',
+  tbore:'<path d="M3 5h18v14H3z"/><path d="M3 9h12v6H3" stroke-dasharray="2 1.4"/><path d="M22 11h-8l-2 2h3"/>',
+  tgroove:'<path d="M3 7h7v3h4V7h7v10H3z"/><path d="M10.5 1v8h3V1"/>',
+  tthread:'<path d="M3 7h18v10H3z"/><path d="M5 7l2 2 2-2 2 2 2-2 2 2 2-2"/><path d="M10 1l2 5 2-5"/>',
+  tcax:'<path d="M3 8h14v8H3z"/><path d="M10 1v5M8.5 4h3"/><path d="M9 8v3h2V8"/><path d="M20 7a5 5 0 0 1 0 10"/><path d="M20 17l-2-1.3M20 17l.8-2.3"/>',
+  trep:'<path d="M2 6v12M2 9h3v6H2"/><path d="M5 9h9v6H5"/><path d="M17 7a5 5 0 0 1 0 10"/><path d="M17 17l-2-1.5M17 17l1-2.2"/>',
   rough3d:'<path d="M3 19l5-8 4 5 3-4 6 7z"/><path d="M3 14h4M14 9h7" stroke-dasharray="2 2"/>',
   finish:'<path d="M3 15c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/><path d="M3 9h18" stroke-dasharray="2 2"/>',
   /* 2026-10-21-003 : Géodésique — surface (triangle arrondi) et passes concentriques
@@ -471,9 +486,41 @@ const MF_CAO=[
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd'],['export','Dossier','btnExportPack']]]
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',slotcut:'slotcut',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
+// V1.2.7 : mode de la FAO (Fraisage / Tournage) — suit le posage choisi, ou le bouton du ruban
+let mfFaoProcV='fraisage', mfFaoProcSid=null;
+function mfFaoProcApply(){
+  try{document.body.setAttribute('data-fao-proc',mfFaoProcV);}catch(e){}
+  try{document.querySelectorAll('#mfRibbon .mfRb[data-proc]').forEach(b=>b.classList.toggle('mfOn',b.dataset.proc===mfFaoProcV));}catch(e){}
+}
+function mfFaoProc(p){
+  // bouton Fraisage / Tournage : change les icônes, et prend un posage de ce genre s'il y en a un
+  mfFaoProcV=p==='tournage'?'tournage':'fraisage';
+  try{
+    const r=faoRoot(), cur=faoSetup(), tour=mfFaoProcV==='tournage';
+    if(!cur||tourIs(cur)!==tour){ const s=(r.setups||[]).find(x=>tourIs(x)===tour); if(s){ mfFaoProcSid=s.id; faoSelectSetup(s.id); } }
+  }catch(e){}
+  mfFaoProcApply();
+}
+function mfFaoProcSync(){
+  // un autre posage devient actif : le mode suit son genre
+  try{
+    const r=faoRoot(), id=r&&r.activeSetupId, s=faoSetup();
+    if(id!==mfFaoProcSid){ mfFaoProcSid=id; if(s)mfFaoProcV=tourIs(s)?'tournage':'fraisage'; }
+  }catch(e){}
+  mfFaoProcApply();
+}
+function mfFaoMillSetup(){
+  // posage de fraisage pour une opération de fraisage : l'actif, sinon le premier, sinon un nouveau
+  const r=faoRoot(), cur=faoSetup();
+  if(cur&&!tourIs(cur))return cur;
+  let s=(r.setups||[]).find(x=>!tourIs(x));
+  if(!s){ const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>x.textContent.trim()==='+ Posage'); if(b)b.click(); s=faoSetup(); if(s&&tourIs(s))s=null; }
+  if(s&&s.id!==r.activeSetupId)r.activeSetupId=s.id;
+  return s;
+}
 function mfFaoAdd(type,nm){
   if(type==='pattern'){ try{faoPatternNew();}catch(e){} return; } // V0.95.3 : reprend les opérations sélectionnées
-  try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
+  try{const op=faoOpDefaults(type);if(!op)return;const s=mfFaoMillSetup();if(!s)return;faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
     // V0.33.2 : Perçage sur des trous sélectionnés → gamme posée d'office (src/89-fao-percage.js)
     const g=op.type==='drill'&&typeof faoDrillFromSel==='function'?faoDrillFromSel(s,op):null;
     faoChanged();faoSelectOp(s.id,(g&&g.length?g[0]:op).id);}catch(e){}
@@ -508,12 +555,28 @@ function mfRibbon(){
     ['asmMag','Aimants',()=>magDlg(),'Bibliothèque d’aimants permanents (disques, cylindres, cubes, pavés, anneaux, cônes ; aimantation axiale ou diamétrale), articles réels avec leurs caractéristiques. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ',asmO],
     ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
-  grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');
+  // V1.2.7 : deux onglets, Fraisage et Tournage — chacun ne montre que ses icônes
+  grp('Mode',[['mill','Fraisage',()=>mfFaoProc('fraisage'),'Fraisage : posages de fraiseuse, opérations 2D / 3D, limites','mfFaoTab'],
+    ['lathe','Tournage',()=>mfFaoProc('tournage'),'Tournage : posages de tour, dressage, chariotage, finition, perçage, gorges, filetage, axe C','mfFaoTab']],'mfFao mfFaoMode');
+  rb.lastChild.querySelectorAll('.mfRb').forEach((b,i)=>{b.dataset.proc=i?'tournage':'fraisage';});
+  grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>x.textContent.trim()==='+ Posage');if(b)b.click();},'Ajouter un posage de fraisage','mfFrais'],
+    ['lathe','Posage tour',()=>{try{tourNewSetup();}catch(e){}},'Ajouter un posage de tournage (tour 2 axes) : la pièce tourne autour de son axe','mfTour'],['tools','Outils','faoToolsBtn',null,'mfIcR mfFrais']],'mfFao');
+  // V1.2.7 : tournage (89-fao-tour-*) — dans le posage tour actif, ou un nouveau
+  grp('Tournage',[['tface','Dressage',()=>{try{tourAddOp('tour_face');}catch(e){}},'Dressage de la face avant : la barre est mise à longueur'],
+    ['trough','Chariotage',()=>{try{tourAddOp('tour_rough');}catch(e){}},'Ébauche du profil, passe après passe le long de l’axe, en laissant la surépaisseur de finition'],
+    ['tfinish','Finition',()=>{try{tourAddOp('tour_finish');}catch(e){}},'Une passe le long du profil exact de la pièce (droites et arcs)'],
+    ['tdrill','Perçage',()=>{try{tourAddOp('tour_drill');}catch(e){}},'Perçage dans l’axe, en bout de pièce'],
+    ['tpart','Tronçonnage',()=>{try{tourAddOp('tour_part');}catch(e){}},'Sépare la pièce finie de la barre'],
+    ['tbore','Alésage',()=>{try{tourAddBoring();}catch(e){}},'Intérieur à la barre d’alésage : ébauche puis finition de la paroi du trou (perçage ajouté avant s’il manque)'],
+    ['tgroove','Gorge',()=>{try{tourAddAuto('tour_groove');}catch(e){}},'Gorges extérieures ou intérieures, trouvées seules là où la finition ne passe pas'],
+    ['tthread','Filetage',()=>{try{tourAddAuto('tour_thread');}catch(e){}},'Filet pris sur le modèle (fonction Filetage, trou taraudé) : pas, Ø et longueur'],
+    ['tcax','Perçage axe C',()=>{try{tourAddCDrill();}catch(e){}},'Trous hors de l’axe (radiaux ou axiaux) au foret motorisé, broche positionnée en angle (axe C)'],
+    ['trep','Reprise',()=>{try{tourAddReprise(tourActiveOrNew());}catch(e){}},'Reprise de la 2e face : la pièce tronçonnée, retournée dans le mandrin, pour usiner l’autre bout']],'mfFao mfTour');
   // V0.23.20 : esquisses et corps FAO (murs infranchissables) — src/89-fao-murs.js
   grp('Limites',[['sketch','Esquisse',()=>faoSkNew(),'Nouvelle esquisse FAO sur le plan XY du posage (visible seulement en FAO)'],
-    ['extrude','Extrusion',()=>faoWallNew(),'Corps FAO : extrusion de la dernière esquisse FAO — mur infranchissable pour toutes les opérations du posage']],'mfFao');
+    ['extrude','Extrusion',()=>faoWallNew(),'Corps FAO : extrusion de la dernière esquisse FAO — mur infranchissable pour toutes les opérations du posage']],'mfFao mfFrais');
   let ops=[];try{ops=faoAddOpsSpec();}catch(e){}
-  grp('Opérations',ops.map(a=>{const nm=String(a[1]).replace(/^\+ /,'');return [MF_FAO_ICON[a[0]]||'pocket',nm,()=>mfFaoAdd(a[0],nm),'Ajouter « '+nm+' » au posage courant'];}),'mfFao');
+  grp('Opérations',ops.map(a=>{const nm=String(a[1]).replace(/^\+ /,'');return [MF_FAO_ICON[a[0]]||'pocket',nm,()=>mfFaoAdd(a[0],nm),'Ajouter « '+nm+' » au posage courant'];}),'mfFao mfFrais');
   grp('Simulation',[['play','Usinage','faoVwBtn',null,'mfIcG'],['rapid','Rapides','faoRapBtn']],'mfFao');
   grp('Calcul',[['regen','Régénérer','faoGenBtn','Tout régénérer','mfIcR']],'mfFao');
   grp('Export',[['gcode','G-code','faoExportBtn',null,'mfIcB']],'mfFao');
@@ -562,6 +625,7 @@ function mfRibbon(){
     ['pPdf','PDF',()=>{try{mepPrint(true);}catch(e){}},'PDF vectoriel au format exact de la planche (« Enregistrer au format PDF »)'],
     ['print','Imprimer',()=>{try{mepPrint();}catch(e){}},'Imprimer la planche']],'mfPlan');
   mfRbPinApply(rb);
+  setTimeout(()=>{try{mfFaoProcSync();}catch(e){}},0);
   return rb;
 }
 /* V0.76.0 : groupes du ruban comme Fusion 360 — le nom du groupe est un bouton (▾) qui liste

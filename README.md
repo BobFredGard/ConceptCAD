@@ -12,7 +12,7 @@ Ou installez-le depuis le site, dans Chrome ou Edge : icône d’installation de
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Version actuelle : **V1.2.6** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+Version actuelle : **V1.2.7** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
 
 > **V1.2.0 : quatre interfaces du futur.** Habitacle, Table holographique, Plan vivant et Goutte : quatre allures et dispositions nouvelles pour toute l’application (CAO, FAO, assemblage, PLAN), au choix dans le menu 🎨 › Interfaces du futur ([Apparence](docs/manuel/interface.md)).
 >
@@ -48,7 +48,7 @@ Une cote change : le solide, les parcours d'outil et les plans suivent.
 |---|---|
 | **CAO** | Esquisse · Créer · Construire · Modifier · Ensembles · Fichier · Composants |
 | **Assemblage** (bouton Assembler) | Modéliser · Composant · Occurrence · Relations · Répétition · Inspecter · Depuis corps · Normalisés · Aimants · Insérer |
-| **FAO** | Posage · Limites · Opérations · Simulation · Calcul · Export |
+| **FAO** | Mode (Fraisage / Tournage) · Posage · Limites · Opérations ou Tournage · Simulation · Calcul · Export |
 | **PLAN** | Planches · Vues · Dessin · Cotes · Filigrane · Tolérances · Axes · Sortie |
 | **RENDU** | Atelier en plein écran : moteur, ambiance, fond et sol, appareil photo, image finale |
 
@@ -140,6 +140,7 @@ Manuel : [Assemblage](docs/manuel/assemblage.md)
   - plus de rapides dans le vide.
 - **Simulation** de la matière enlevée, avec l'outil réel et le vrai brut, contrôle des collisions et temps estimé.
 - **G-code Siemens 840D et Fagor 8065**, avec usinage grande vitesse HSC sur la Fagor. Les essais sur machine ont été faits sur une **Fagor 8065**.
+- **Tournage** (onglet Tournage du ruban FAO) : profil lu sur le modèle, dressage, chariotage, finition, perçage, alésage, gorges, filetage, tronçonnage, reprise de la 2e face, perçages hors axe à l'axe C ; simulation de la barre, programmes Fagor 8065 T et Siemens 840D T.
 - Les calculs se répartissent sur **tous les cœurs** du PC : l'écran ne se fige pas.
 
 Manuel : [FAO](docs/manuel/fao.md)

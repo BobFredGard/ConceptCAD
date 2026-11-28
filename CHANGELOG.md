@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**826 versions**, de `2026-09-28b` à `V1.2.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**827 versions**, de `2026-09-28b` à `V1.2.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -9461,5 +9461,29 @@ Fred, 28/11 : « J'aimerais que les icônes et leur visibilité soient enregistr
 **Test** : `test_interface_moderne` (+3 : thème du futur qui part des réglages classiques puis garde les siens ; 5 thèmes classiques une seule sauvegarde ; chaque thème du futur retrouve la sienne).
 
 **Vérifié dans Chromium** : Nuit → Table holographique (reprend Nuit), taille 1,5 et Balayage épinglé ; Graphite (comme Nuit), taille 1,25 → Clair à 1,25 ; retour Table : 1,5 et Balayage.
+
+CACHE_VER et FORMES_VER inchangés.
+
+## V1.2.7 - Tournage : tour 2 axes, intérieur, gorges, filetage, reprise, axe C ; ruban FAO Fraisage / Tournage
+
+Fred, 28/11 : « FAO : Tournage -> que sais-tu faire sur la partie tournage? » puis « Oui, étape 1 », « Etape 2 », et pour l'axe C : « Non, mais on peut le prévoir quand même » (son tour, un Fagor récent, n'a pas d'axe C). Enfin : « Va falloir mettre des onglets dans le menu, comme en fraisage, utililser soit le mode Fraisage qui fait apparaitre ses icône soit le mode Tournage avec ses icônes et ce dans tous les thèmes ».
+
+**Avant** : la FAO ne savait que fraiser.
+
+**Nouveau** (posage « Tour », `src/89-fao-tour-10/20/30/40`, fiches machine `PostPro/fagor-8065-tour.js` et `PostPro/siemens-840d-tour.js`) :
+- Étape 1 : profil lu exactement sur le modèle (coupe par l'axe, droites et arcs), brut, dressage, chariotage, finition, perçage en bout, tronçonnage, simulation de la barre, programmes Fagor 8065 T (`G151`, `G96` borné par `G192 S`) et Siemens 840D T (`DIAMON`, `LIMS=`).
+- Étape 2 : paroi intérieure (chariotage intérieur et alésage à la barre), gorges extérieures et intérieures trouvées seules, filetage pris sur le modèle (cycle `G86` Fagor, passes `G33` Siemens), reprise de la 2e face (brut = résultat de la simulation du premier posage), gamme complète dans l'ordre d'atelier.
+- Étape 3 : outils tournants et axe C (option du posage, n° de broche réglable, 2 par défaut) : trous hors axe du modèle, radiaux et axiaux, percés au foret motorisé à l'angle C (`#CAX` / `#MASTER S2` Fagor, `SPOS` / `M2=3 S2=` Siemens, lignes réglables dans la fiche machine, `G94`). Axe du tour trouvé par un cercle ajusté (les trous ne le décalent plus), plan de coupe du profil tourné loin des trous.
+- Ruban FAO : groupe **Mode** avec deux onglets, **Fraisage** et **Tournage** : seules les icônes du mode choisi sont montrées, dans les 9 thèmes ; le mode suit le posage actif.
+
+**Fichiers** : `89-fao-tour-*` (nouveaux), `88-fao-10-etat`, `88-fao-50-caches-dispatch`, `88-fao-60-postprocesseurs`, `88-fao-70-simulation`, `88-fao-80-interface`, `89-fao-posage-repere`, `97-interface-moderne`, `97-interface-fiches-dessins`, `PostPro/*-tour.js`.
+
+**Manuel** : *FAO* (Tournage).
+
+**Test** : `test_fao_tournage`, `test_fao_tournage_2`, `test_fao_tournage_3` (nouveaux).
+
+**Vérifié dans Chromium** : gammes, simulations sans rapide dans la matière, programmes ; onglets Fraisage / Tournage dans Nuit, Clair, Habitacle, Table holographique, Plan vivant, Goutte.
+
+**À valider sur la machine** : `G86`, axe C et outils tournants, jamais essayés.
 
 CACHE_VER et FORMES_VER inchangés.

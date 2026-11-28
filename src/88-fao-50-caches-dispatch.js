@@ -524,6 +524,7 @@ function faoMovesPending(){
   try{ return !!(faoMovesReady()&&!faoMovesPreloaded); }catch(e){ return false; }
 }
 function faoActiveOps(job){
+  if(job&&job.proc==='tour')return []; // V1.2.7 : le tour a ses parcours à lui (tourOpGen), jamais ceux du fraisage
   // Operations qui comptent : desactivees (on=false) exclues, partout
   // (apercu, stats, validation) — un lanceur desactive n'a pas de parcours a servir.
   return ((job&&job.ops)||[]).filter(function(o){return o&&o.on!==false&&!faoIsPattern(o);}); // répétition : aucun parcours propre
@@ -661,6 +662,7 @@ function faoMovesStat(op,job){
 // faoOpMoves() = drain SYNCHRONE strictement équivalent (appels classiques,
 // tests, G-code, estimation, aperçu canonique) ; faoOpMovesStream() = flux.
 function* faoOpMovesIt0(op,job){
+  if((job&&job.proc==='tour')||(op&&/^tour_/.test(String(op.type||''))))return [];
   // (2026-10-16-020 : appelé par faoOpMovesIt, qui gère le repère PROPRE d'une opération)
   // Prime le maillage AVANT la clé : faoSetupFp lit les maillages des corps, il
   // faut qu'ils existent avant de calculer la clé (sinon 'nb' = clé fausse).
@@ -1296,6 +1298,7 @@ function faoSafeAhead(prev,m,safe){
   return ins;
 }
 function faoSeqSafe(job,seule){
+  if(job&&job.proc==='tour')return [];
   // Séquence complète du posage [{op,moves}] avec rapides normalisés au plan de
   // sécurité DE CHAQUE OPÉRATION (2026-10-08-002 : plans par opération, hérités
   // du posage). Source unique partagée par l'aperçu, le visionneuse et le G-code.

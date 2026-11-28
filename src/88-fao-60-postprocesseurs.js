@@ -123,6 +123,7 @@ function faoDrillCycle(op,job,oz,inFrame){
 // Plongée : le F de plongée ne s'applique qu'à la première plongée Z après un rapide —
 // un pur déplacement XY garde l'avance de coupe (correctif du bug Fagor).
 function faoPost(job,postId){
+  if(job&&job.proc==='tour'&&typeof tourPost==='function')return tourPost(job);
   const id=postId||(job&&(job.machine||job.post))||'siemens630';
   const post=FAO_POSTS[id]||FAO_POSTS.siemens630||FAO_POSTS[Object.keys(FAO_POSTS)[0]];
   const fag=post.kind==='fagor';
@@ -768,8 +769,18 @@ function faoRefreshPreview(mode){
   // entrée en base, il laisserait simplement un trou (faoPrevMissing).
   const seule=(mode!=='calcule');
   faoClearPreview();
-  if(!faoPrevOn)return 0;
   const job=faoDoc(); let total=0; faoPrevMissing=0;
+  if(job&&job.proc==='tour'){ // V1.2.7 : parcours de tour, calculés tout de suite (quelques ms), même aperçu coupé
+    try{
+      if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
+      faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview'; faoPrevOps=new Map();
+      total=tourPreviewDraw(faoPrevGroup,job);
+      faoAdd3D(faoPrevGroup);
+      if((typeof tourSim!=='undefined'&&tourSim)||(typeof faoVw!=='undefined'&&faoVw))faoPrevGroup.visible=false;
+    }catch(e){}
+    return total;
+  }
+  if(!faoPrevOn)return 0;
   try{
     if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
     faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
@@ -804,6 +815,7 @@ function faoRegenSetups(){
   });
 }
 function faoRegenOpsOf(s){
+  if(s&&s.proc==='tour')return [];
   return ((s&&s.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
 }
 /* V0.99.46 (demande de Fred) : pendant « Tout régénérer », chaque opération à

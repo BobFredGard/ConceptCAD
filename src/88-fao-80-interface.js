@@ -251,6 +251,7 @@ function faoStaleScan(){
     (r.setups||[]).forEach(function(s){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
+        if(s.proc==='tour'){ o.stale=false; return; } // V1.2.7 : parcours de tour toujours à jour (calculés à la demande)
         if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
         // V0.99.46 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
         // Réactivée, faoChanged refait ce relevé et pose le triangle si son parcours manque.
@@ -730,6 +731,7 @@ function faoInitUI(){
           b.onclick=function(){
             if(a[0]==='pattern'){ faoPatternNew(); return; } // reprend les opérations sélectionnées
             try{
+              if(faoSetup().proc==='tour'){ faoViewerMsg('Posage tour : les opérations de fraisage vont dans un posage de fraisage — choisissez-en un dans l’arbre FAO.'); return; }
               const op=faoOpDefaults(a[0]);
               if(!op)return;
               const s=faoSetup();
@@ -786,6 +788,11 @@ function faoInitUI(){
         }catch(e){}
       };
       r1.appendChild(add);
+      // V1.2.7 : posage de tournage (tour 2 axes)
+      const addT=document.createElement('button'); addT.id='faoTourBtn'; addT.textContent='+ Posage tour';
+      addT.title='Nouveau posage de tournage : la pièce tourne autour de son axe, outils de tour, programme Fagor 8065 T ou Siemens 840D T.';
+      addT.onclick=function(){ tourNewSetup(); };
+      r1.appendChild(addT);
       const tw=document.createElement('button'); tw.id='faoToolsBtn'; tw.textContent='Outils';
       tw.title='Bibliothèque d\'outils du posage : fenêtre flottante (Échap ou ✕ pour fermer).';
       tw.onclick=function(){ faoToolsWindowToggle(); };
@@ -872,6 +879,7 @@ function faoInitUI(){
 function faoRenderTree(){
   let tree=null;
   try{ tree=document.getElementById('faoTree'); }catch(e){ return; }
+  try{ if(typeof mfFaoProcSync==="function")mfFaoProcSync(); }catch(e){} // V1.2.7 : ruban FAO en mode Fraisage ou Tournage, selon le posage actif
   if(!tree)return;
   // V0.99.86 : lignes refaites -> le survol en cours s'arrête (il reprend au prochain mouvement de souris)
   try{ if(typeof faoSurvolFin==='function')faoSurvolFin(); }catch(e){}
@@ -899,7 +907,7 @@ function faoRenderTree(){
       };
       h.appendChild(tri);
       const sl=document.createElement('span');
-      sl.textContent='▤ '+s.name+' · '+(FAO_POSTS[s.machine||s.post]?FAO_POSTS[s.machine||s.post].label:s.machine)
+      sl.textContent=(s.proc==='tour'?'⊙ ':'▤ ')+s.name+' · '+(s.proc==='tour'&&typeof tourPostOf==='function'?tourPostOf(s).label:(FAO_POSTS[s.machine||s.post]?FAO_POSTS[s.machine||s.post].label:s.machine))
         +(faoOrientOn(s)?(' · 3+2 B'+faoOrient(s).b+' C'+faoOrient(s).c):'')
         +({tool:' · par outil',num:' · par n° d’outil'}[faoToolOrder(s)]||''); // V0.99.76
       h.appendChild(sl);
@@ -989,6 +997,7 @@ function faoRenderTree(){
 }
 function faoOpShortLabel(op){
   if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }
+  if(typeof tourOpIs==='function'&&tourOpIs(op))return tourOpLabel(op);
   const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',slotcut:'Découpe 3 tailles',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'}[op.type]||op.type;
   if(op.type==='drill'){
@@ -1068,6 +1077,7 @@ function faoToolsWindowClose(){
   faoToolsWin=null; faoToolsWinX=null; faoToolsWinBody=null; faoToolsWinT=null;
 }
 function faoToolsWindowToggle(){
+  try{ const s=faoSetup(); if(s&&s.proc==='tour'){ faoSelectSetup(s.id); return false; } }catch(e){} // tour : outils dans la fiche du posage
   if(faoToolsWin){ faoToolsWindowClose(); return false; }
   return faoToolsWindowOpen();
 }
@@ -2444,6 +2454,10 @@ function faoRenderProps(p,s){
       if(setup)(setup.ops||[]).forEach(function(o,i){ if(o.id===s.id){op=o;idx=i;} });
     }
     if(!setup){ const d=document.createElement('div'); d.textContent='Posage introuvable.'; p.appendChild(d); return; }
+    if(setup.proc==='tour'){ // V1.2.7 : fiches du tour
+      if(op)tourOpFiche(p,setup,op,idx); else tourSetupFiche(p,setup);
+      faoTidyRows(p); return;
+    }
     if(typeof faoChainMode!=='undefined'&&faoChainMode&&op&&
        faoChainMode.setupId===setup.id&&faoChainMode.opId===op.id){
       faoChainPanel(p,setup,op);
@@ -2475,6 +2489,7 @@ function faoStatsGroups(job){
   try{ return faoToolChanges(faoOpsSeq(job),job); }catch(e){ return 0; }
 }
 function faoStats(job){
+  if(job&&job.proc==='tour'&&typeof tourStats==='function')return tourStats(job);
   // Estimation complète du posage : temps de coupe + rapides (accélération
   // machine) + changements d'outil (nb de groupes outil - 1) × durée unitaire.
   // V0.99.77 (constat du 24/11 : l'ébauche répétée 6 fois de STEP.conceptcad comptait une fois,

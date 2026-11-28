@@ -1272,6 +1272,7 @@ function faoViewerStart(){
   return faoViewerPlay();
 }
 function faoViewerToggle(){
+  try{ if(typeof tourSim!=='undefined'&&tourSim){ tourSimClose(); return false; } }catch(e){}
   // Bascule du bouton « ▶ Usinage » : OUVRIR le mode lecture / en SORTIR nettoyé.
   try{
     if(faoVw){
@@ -1293,6 +1294,7 @@ function faoViewerToggle(){
 // « Tout régénérer », la lecture attend la fin. Secours : ouverture habituelle.
 let faoViewerAttente=false;
 async function faoViewerToggleSansGel(){
+  try{ const st=faoSetup(); if((st&&st.proc==='tour')||(typeof tourSim!=='undefined'&&tourSim))return tourSimToggle(); }catch(e){} // V1.2.7 : simulation de tournage
   if(faoVw||faoViewerAttente)return faoVw?faoViewerToggle():false;
   faoViewerAttente=true;
   try{

@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V1.2.6';
+const APP_VER='V1.2.7';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -52897,6 +52897,9 @@ function faoMigrateSetup(flat){
   return s;
 }
 function faoSanitiseOps(s){
+  // V1.2.7 : posage de tournage = son propre modèle (89-fao-tour-10) ; ailleurs, aucune opération de tour
+  if(s&&typeof tourIs==='function'&&tourIs(s)){ tourSanitise(s); return; }
+  if(s&&Array.isArray(s.ops))for(let i=s.ops.length-1;i>=0;i--)if(s.ops[i]&&/^tour_/.test(String(s.ops[i].type||'')))s.ops.splice(i,1);
   // 2026-10-06-004 : « Débourrage » (pocket3d) SUPPRIMÉ de l'application —
   // les anciennes opérations sont retirées du document à la lecture (migration,
   // comme `strategie`/`laisse`) : plus de fiche, plus de bouton, plus de
@@ -55897,6 +55900,7 @@ function faoMovesPending(){
   try{ return !!(faoMovesReady()&&!faoMovesPreloaded); }catch(e){ return false; }
 }
 function faoActiveOps(job){
+  if(job&&job.proc==='tour')return []; // V1.2.7 : le tour a ses parcours à lui (tourOpGen), jamais ceux du fraisage
   // Operations qui comptent : desactivees (on=false) exclues, partout
   // (apercu, stats, validation) — un lanceur desactive n'a pas de parcours a servir.
   return ((job&&job.ops)||[]).filter(function(o){return o&&o.on!==false&&!faoIsPattern(o);}); // répétition : aucun parcours propre
@@ -56034,6 +56038,7 @@ function faoMovesStat(op,job){
 // faoOpMoves() = drain SYNCHRONE strictement équivalent (appels classiques,
 // tests, G-code, estimation, aperçu canonique) ; faoOpMovesStream() = flux.
 function* faoOpMovesIt0(op,job){
+  if((job&&job.proc==='tour')||(op&&/^tour_/.test(String(op.type||''))))return [];
   // (2026-10-16-020 : appelé par faoOpMovesIt, qui gère le repère PROPRE d'une opération)
   // Prime le maillage AVANT la clé : faoSetupFp lit les maillages des corps, il
   // faut qu'ils existent avant de calculer la clé (sinon 'nb' = clé fausse).
@@ -56669,6 +56674,7 @@ function faoSafeAhead(prev,m,safe){
   return ins;
 }
 function faoSeqSafe(job,seule){
+  if(job&&job.proc==='tour')return [];
   // Séquence complète du posage [{op,moves}] avec rapides normalisés au plan de
   // sécurité DE CHAQUE OPÉRATION (2026-10-08-002 : plans par opération, hérités
   // du posage). Source unique partagée par l'aperçu, le visionneuse et le G-code.
@@ -58343,6 +58349,7 @@ function faoDrillCycle(op,job,oz,inFrame){
 // Plongée : le F de plongée ne s'applique qu'à la première plongée Z après un rapide —
 // un pur déplacement XY garde l'avance de coupe (correctif du bug Fagor).
 function faoPost(job,postId){
+  if(job&&job.proc==='tour'&&typeof tourPost==='function')return tourPost(job);
   const id=postId||(job&&(job.machine||job.post))||'siemens630';
   const post=FAO_POSTS[id]||FAO_POSTS.siemens630||FAO_POSTS[Object.keys(FAO_POSTS)[0]];
   const fag=post.kind==='fagor';
@@ -58988,8 +58995,18 @@ function faoRefreshPreview(mode){
   // entrée en base, il laisserait simplement un trou (faoPrevMissing).
   const seule=(mode!=='calcule');
   faoClearPreview();
-  if(!faoPrevOn)return 0;
   const job=faoDoc(); let total=0; faoPrevMissing=0;
+  if(job&&job.proc==='tour'){ // V1.2.7 : parcours de tour, calculés tout de suite (quelques ms), même aperçu coupé
+    try{
+      if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
+      faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview'; faoPrevOps=new Map();
+      total=tourPreviewDraw(faoPrevGroup,job);
+      faoAdd3D(faoPrevGroup);
+      if((typeof tourSim!=='undefined'&&tourSim)||(typeof faoVw!=='undefined'&&faoVw))faoPrevGroup.visible=false;
+    }catch(e){}
+    return total;
+  }
+  if(!faoPrevOn)return 0;
   try{
     if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
     faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
@@ -59024,6 +59041,7 @@ function faoRegenSetups(){
   });
 }
 function faoRegenOpsOf(s){
+  if(s&&s.proc==='tour')return [];
   return ((s&&s.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
 }
 /* V0.99.46 (demande de Fred) : pendant « Tout régénérer », chaque opération à
@@ -59212,6 +59230,33 @@ async function faoPreviewGenerateAsync(){
   return n;
 }
 
+/* ═══════════════ PostPro/fagor-8065-tour.js — fiche machine ═══════════════ */
+/* ───────────────────────────────────────────────────────────────────────────
+   Machine : Fagor 8065 T (tour 2 axes X / Z)
+   Fiche de TOURNAGE (posages « Tour ») : elle n'apparaît que dans les posages
+   de tournage. X est écrit en diamètre (G151), plan G18, G96 / G192 S, G95.
+   Repère dans les lignes : {T} numéro d'outil (le correcteur D porte le même).
+   ─────────────────────────────────────────────────────────────────────────── */
+tourMachine({
+  id: 'fagor8065t',              // identifiant enregistré dans les projets : ne pas le changer
+  label: 'Fagor 8065 T (tour)',  // nom affiché dans la liste des machines
+  kind: 'fagor',                 // dialecte : 'fagor' ou 'siemens'
+  ext: 'nc',                     // extension du programme exporté
+  numbers: { start: 10, step: 5 },  // lignes N10, N15, N20…
+  coolant: { flood: 'M08', off: 'M09' },
+  toolChange: ['T{T} D{T}'],     // tourelle : T et son correcteur (ajouter 'M06' si la machine le demande)
+  end: ['M30'],
+  // Outils tournants et axe C (option « Outils tournants (axe C) » du posage) — À VALIDER sur la machine.
+  // {N} n° de la broche de l'outil tournant (réglé dans le posage), {S} tr/min, {M} 3 ou 4, {C} angle en degrés.
+  live: {
+    caxOn: ['#CAX'],                       // broche principale passée en axe C
+    caxOff: ['#CAX OFF'],
+    on: ['#MASTER S{N}', 'S{S} M{M}'],     // outil tournant en marche
+    off: ['M05', '#MASTER S1'],
+    c: 'G0 C{C}'                           // positionnement de l'axe C
+  }
+});
+
 /* ═══════════════ PostPro/fagor-8065.js — fiche machine ═══════════════ */
 /* ───────────────────────────────────────────────────────────────────────────
    Machine : Fagor 8065 (3 axes)
@@ -59289,6 +59334,31 @@ faoMachine({
   toolChange: ['T{T} D1', 'M6'],  // changement d'outil (une ligne par élément)
   spindle: 'S{S} M3',            // mise en rotation
   end: ['G0 SUPA Z600 D0', 'G0 SUPA X-200', 'M30']   // fin : après l'arrêt d'arrosage
+});
+
+/* ═══════════════ PostPro/siemens-840d-tour.js — fiche machine ═══════════════ */
+/* ───────────────────────────────────────────────────────────────────────────
+   Machine : Siemens 840D en tournage (2 axes X / Z)
+   Fiche de TOURNAGE (posages « Tour ») : X en diamètre (DIAMON), plan G18,
+   G96 / LIMS=, G95, arcs CR=.
+   ─────────────────────────────────────────────────────────────────────────── */
+tourMachine({
+  id: 'siemens840dt',
+  label: 'Siemens 840D T (tour)',
+  kind: 'siemens',
+  ext: 'mpf',
+  numbers: { start: 10, step: 5 },
+  coolant: { flood: 'M08', off: 'M09' },
+  toolChange: ['T{T} D1'],
+  end: ['M30'],
+  // Outils tournants et axe C — À VALIDER sur la machine. {N} broche de l'outil tournant, {S} tr/min, {M} 3 ou 4, {C} angle.
+  live: {
+    caxOn: ['SPOS=0'],                     // broche principale en position (axe C)
+    caxOff: [],                            // le M3 / M4 suivant la remet en vitesse
+    on: ['M{N}={M} S{N}={S}'],
+    off: ['M{N}=5'],
+    c: 'SPOS={C}'
+  }
 });
 
 /* ═══════════════ 88-fao-61-survol.js — fao 61 survol ═══════════════ */
@@ -60827,6 +60897,7 @@ function faoViewerStart(){
   return faoViewerPlay();
 }
 function faoViewerToggle(){
+  try{ if(typeof tourSim!=='undefined'&&tourSim){ tourSimClose(); return false; } }catch(e){}
   // Bascule du bouton « ▶ Usinage » : OUVRIR le mode lecture / en SORTIR nettoyé.
   try{
     if(faoVw){
@@ -60848,6 +60919,7 @@ function faoViewerToggle(){
 // « Tout régénérer », la lecture attend la fin. Secours : ouverture habituelle.
 let faoViewerAttente=false;
 async function faoViewerToggleSansGel(){
+  try{ const st=faoSetup(); if((st&&st.proc==='tour')||(typeof tourSim!=='undefined'&&tourSim))return tourSimToggle(); }catch(e){} // V1.2.7 : simulation de tournage
   if(faoVw||faoViewerAttente)return faoVw?faoViewerToggle():false;
   faoViewerAttente=true;
   try{
@@ -63301,6 +63373,7 @@ function faoStaleScan(){
     (r.setups||[]).forEach(function(s){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
+        if(s.proc==='tour'){ o.stale=false; return; } // V1.2.7 : parcours de tour toujours à jour (calculés à la demande)
         if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
         // V0.99.46 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
         // Réactivée, faoChanged refait ce relevé et pose le triangle si son parcours manque.
@@ -63780,6 +63853,7 @@ function faoInitUI(){
           b.onclick=function(){
             if(a[0]==='pattern'){ faoPatternNew(); return; } // reprend les opérations sélectionnées
             try{
+              if(faoSetup().proc==='tour'){ faoViewerMsg('Posage tour : les opérations de fraisage vont dans un posage de fraisage — choisissez-en un dans l’arbre FAO.'); return; }
               const op=faoOpDefaults(a[0]);
               if(!op)return;
               const s=faoSetup();
@@ -63836,6 +63910,11 @@ function faoInitUI(){
         }catch(e){}
       };
       r1.appendChild(add);
+      // V1.2.7 : posage de tournage (tour 2 axes)
+      const addT=document.createElement('button'); addT.id='faoTourBtn'; addT.textContent='+ Posage tour';
+      addT.title='Nouveau posage de tournage : la pièce tourne autour de son axe, outils de tour, programme Fagor 8065 T ou Siemens 840D T.';
+      addT.onclick=function(){ tourNewSetup(); };
+      r1.appendChild(addT);
       const tw=document.createElement('button'); tw.id='faoToolsBtn'; tw.textContent='Outils';
       tw.title='Bibliothèque d\'outils du posage : fenêtre flottante (Échap ou ✕ pour fermer).';
       tw.onclick=function(){ faoToolsWindowToggle(); };
@@ -63922,6 +64001,7 @@ function faoInitUI(){
 function faoRenderTree(){
   let tree=null;
   try{ tree=document.getElementById('faoTree'); }catch(e){ return; }
+  try{ if(typeof mfFaoProcSync==="function")mfFaoProcSync(); }catch(e){} // V1.2.7 : ruban FAO en mode Fraisage ou Tournage, selon le posage actif
   if(!tree)return;
   // V0.99.86 : lignes refaites -> le survol en cours s'arrête (il reprend au prochain mouvement de souris)
   try{ if(typeof faoSurvolFin==='function')faoSurvolFin(); }catch(e){}
@@ -63949,7 +64029,7 @@ function faoRenderTree(){
       };
       h.appendChild(tri);
       const sl=document.createElement('span');
-      sl.textContent='▤ '+s.name+' · '+(FAO_POSTS[s.machine||s.post]?FAO_POSTS[s.machine||s.post].label:s.machine)
+      sl.textContent=(s.proc==='tour'?'⊙ ':'▤ ')+s.name+' · '+(s.proc==='tour'&&typeof tourPostOf==='function'?tourPostOf(s).label:(FAO_POSTS[s.machine||s.post]?FAO_POSTS[s.machine||s.post].label:s.machine))
         +(faoOrientOn(s)?(' · 3+2 B'+faoOrient(s).b+' C'+faoOrient(s).c):'')
         +({tool:' · par outil',num:' · par n° d’outil'}[faoToolOrder(s)]||''); // V0.99.76
       h.appendChild(sl);
@@ -64039,6 +64119,7 @@ function faoRenderTree(){
 }
 function faoOpShortLabel(op){
   if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }
+  if(typeof tourOpIs==='function'&&tourOpIs(op))return tourOpLabel(op);
   const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',slotcut:'Découpe 3 tailles',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'}[op.type]||op.type;
   if(op.type==='drill'){
@@ -64118,6 +64199,7 @@ function faoToolsWindowClose(){
   faoToolsWin=null; faoToolsWinX=null; faoToolsWinBody=null; faoToolsWinT=null;
 }
 function faoToolsWindowToggle(){
+  try{ const s=faoSetup(); if(s&&s.proc==='tour'){ faoSelectSetup(s.id); return false; } }catch(e){} // tour : outils dans la fiche du posage
   if(faoToolsWin){ faoToolsWindowClose(); return false; }
   return faoToolsWindowOpen();
 }
@@ -65494,6 +65576,10 @@ function faoRenderProps(p,s){
       if(setup)(setup.ops||[]).forEach(function(o,i){ if(o.id===s.id){op=o;idx=i;} });
     }
     if(!setup){ const d=document.createElement('div'); d.textContent='Posage introuvable.'; p.appendChild(d); return; }
+    if(setup.proc==='tour'){ // V1.2.7 : fiches du tour
+      if(op)tourOpFiche(p,setup,op,idx); else tourSetupFiche(p,setup);
+      faoTidyRows(p); return;
+    }
     if(typeof faoChainMode!=='undefined'&&faoChainMode&&op&&
        faoChainMode.setupId===setup.id&&faoChainMode.opId===op.id){
       faoChainPanel(p,setup,op);
@@ -65525,6 +65611,7 @@ function faoStatsGroups(job){
   try{ return faoToolChanges(faoOpsSeq(job),job); }catch(e){ return 0; }
 }
 function faoStats(job){
+  if(job&&job.proc==='tour'&&typeof tourStats==='function')return tourStats(job);
   // Estimation complète du posage : temps de coupe + rapides (accélération
   // machine) + changements d'outil (nb de groupes outil - 1) × durée unitaire.
   // V0.99.77 (constat du 24/11 : l'ébauche répétée 6 fois de STEP.conceptcad comptait une fois,
@@ -81954,7 +82041,8 @@ function faoPoseSync(){
   // le sol miroir suit le brut affiché : recalé à chaque apparition / disparition / changement
   if(!setup){if(faoPoseGrp){faoPoseClear();faoPoseSig='';if(faoPoseTriad)faoPoseTriad.visible=false;try{refreshMirror();}catch(e){}}return;}
   const st=setup.stock;
-  if(!faoStockValid(st)){if(faoPoseGrp){faoPoseClear();try{refreshMirror();}catch(e){}}faoPoseSig='';return;}
+  if(setup.proc==='tour'||!faoStockValid(st)){ // V1.2.7 : le tour dessine sa barre et son mandrin dans l'aperçu (tourPreviewDraw)
+    if(faoPoseTriad)faoPoseTriad.visible=false;if(faoPoseGrp){faoPoseClear();try{refreshMirror();}catch(e){}}faoPoseSig='';return;}
   const spec=faoOriginSpec(setup),O=faoOrient(setup);
   // opération sélectionnée avec son repère propre (3+2) : son repère est dessiné aussi
   let selOp=null;try{if(sel.kind==='faoOp')selOp=(setup.ops||[]).filter(o=>o.id===sel.id)[0]||null;}catch(e){}
@@ -83709,6 +83797,2622 @@ function faoTorusDropper(mesh,D,rc,laisse){
     return h;
   };
   return {tip:tip,R0:R0,rc:rc,L:L};
+}
+
+/* ═══════════════ 89-fao-tour-10-modele.js — fao tour 10 modele ═══════════════ */
+/* ═══ Tournage (V1.2.7, demande de Fred le 28/11 : « Oui, étape 1 ») ═══
+   Posage « Tour » : la pièce tourne sur un axe, l'outil travaille dans le plan
+   (Z le long de l'axe, X = rayon ; le programme écrit X en diamètre).
+   Ce fichier : posage, outils, machines et PROFIL de la pièce (demi-coupe).
+
+   Repère du tour (coordonnées « z, r ») : origine sur l'axe, à la face AVANT
+   de la pièce finie (côté opposé au mandrin) ; z négatif vers le mandrin.
+
+   Le profil vient de la coupe EXACTE du solide par un plan passant par l'axe
+   (lignes et arcs vrais : G2/G3 en finition), vérifiée sur le maillage : là où
+   la pièce dépasse de cette coupe (forme non de révolution), le maillage
+   l'emporte, l'outil ne la coupe jamais. */
+
+function tourIs(s){ return !!(s&&s.proc==='tour'); }
+function tourOpIs(op){ return !!(op&&typeof op.type==='string'&&op.type.indexOf('tour_')===0); }
+const TOUR_OP_TYPES=['tour_face','tour_rough','tour_finish','tour_drill','tour_part','tour_groove','tour_thread','tour_cdrill'];
+const TOUR_OP_NAMES={tour_face:'Dressage',tour_rough:'Chariotage',tour_finish:'Finition',tour_drill:'Perçage en bout',tour_part:'Tronçonnage',
+  tour_groove:'Gorge',tour_thread:'Filetage',tour_cdrill:'Perçage axe C'};
+const TOUR_OP_NAMES_INT={tour_rough:'Chariotage intérieur',tour_finish:'Alésage (finition)',tour_groove:'Gorge intérieure',tour_thread:'Filetage intérieur'};
+function tourOpLabel(op){ return (op&&op.cote==='int'&&TOUR_OP_NAMES_INT[op.type])||TOUR_OP_NAMES[op&&op.type]||'Tournage'; }
+const TOUR_TOOL_KINDS=['turn','bore','tdrill','part','groove','thread','ldrill'];
+
+/* ----- machines (fiches PostPro/*-tour.js) ----- */
+function tourPosts(){ return tourPosts._m||(tourPosts._m={}); }
+function tourMachine(def){
+  // Appelée par les fiches PostPro/*-tour.js (insérées avant ce fichier : rien de
+  // déclaré en « const » ici ne doit être lu par elle).
+  if(!def||!def.id)return;
+  const m=Object.assign({kind:'fagor',ext:'nc',numbers:{start:10,step:5},
+    coolant:{flood:'M08',off:'M09'},toolChange:['T{T} D{T}'],end:['M30']},def);
+  m.kind=m.kind==='siemens'?'siemens':'fagor';
+  tourPosts()[m.id]=m;
+}
+function tourPostOf(s){
+  const P=tourPosts(), id=s&&s.machine;
+  return P[id]||P.fagor8065t||P[Object.keys(P)[0]]||{id:'fagor8065t',label:'Fagor 8065 T',kind:'fagor',ext:'nc',
+    numbers:{start:10,step:5},coolant:{flood:'M08',off:'M09'},toolChange:['T{T} D{T}'],end:['M30']};
+}
+
+/* ----- outils de tour ----- */
+// kind : 'turn' plaquette d'extérieur (rε, angle de plaquette ε, angle d'attaque κ,
+// longueur d'arête l), 'tdrill' foret au centre, 'part' lame de tronçonnage
+// (largeur w, profondeur utile h). vc en m/min ; f en mm/tour.
+function tourDefaultTools(){
+  return [
+    {id:'T1',num:1,name:'Ébauche CNMG 120408',kind:'turn',re:0.8,eps:80,kap:95,l:12,vc:200,f:0.25},
+    {id:'T2',num:2,name:'Finition DNMG 110404',kind:'turn',re:0.4,eps:55,kap:93,l:11,vc:250,f:0.1},
+    {id:'T3',num:3,name:'Foret Ø10',kind:'tdrill',d:10,ang:118,vc:80,f:0.12},
+    {id:'T4',num:4,name:'Tronçonnage 3 mm',kind:'part',w:3,h:20,vc:100,f:0.05}
+  ];
+}
+const TOUR_KIND_LABEL={turn:'Plaquette',bore:'Barre d’alésage',tdrill:'Foret',part:'Tronçonnage',groove:'Gorge',thread:'Filetage',ldrill:'Foret motorisé'};
+// Étape 2 : barre d'alésage (plaquette tournée vers l'extérieur, Ø mini de passage dmin),
+// outil à gorge (largeur w, profondeur utile h, rayons de coin rc ; int : intérieur),
+// outil à fileter (angle du filet ang, int : intérieur).
+function tourToolNew(kind,setup){
+  const T=(setup&&setup.tools)||[];
+  let n=1; while(T.some(function(t){return +t.num===n;}))n++;
+  const id='T'+n+'_'+Date.now().toString(36);
+  if(kind==='tdrill')return {id:id,num:n,name:'Foret Ø8',kind:'tdrill',d:8,ang:118,vc:80,f:0.1};
+  if(kind==='part')return {id:id,num:n,name:'Tronçonnage 2 mm',kind:'part',w:2,h:15,vc:100,f:0.04};
+  if(kind==='bore')return {id:id,num:n,name:'Barre d’alésage DCMT 070204',kind:'bore',re:0.4,eps:55,kap:93,l:7,dmin:8,vc:180,f:0.08};
+  if(kind==='groove')return {id:id,num:n,name:'Gorge 2 mm',kind:'groove',w:2,h:4,rc:0.1,vc:120,f:0.05};
+  if(kind==='groovei')return {id:id,num:n,name:'Gorge intérieure 2 mm',kind:'groove',int:true,w:2,h:3,rc:0.1,dmin:10,vc:100,f:0.04};
+  // étape 3 : foret motorisé (outil tournant), radial (vers l'axe) ou axial (parallèle à l'axe)
+  if(kind==='ldrillr')return {id:id,num:n,name:'Foret motorisé radial Ø6',kind:'ldrill',ax:'rad',d:6,ang:118,vc:60,f:0.08};
+  if(kind==='ldrilla')return {id:id,num:n,name:'Foret motorisé axial Ø6',kind:'ldrill',ax:'ax',d:6,ang:118,vc:60,f:0.08};
+  if(kind==='thread')return {id:id,num:n,name:'Filetage extérieur 60°',kind:'thread',ang:60,vc:100};
+  if(kind==='threadi')return {id:id,num:n,name:'Filetage intérieur 60°',kind:'thread',int:true,ang:60,dmin:10,vc:80};
+  return {id:id,num:n,name:'Plaquette VNMG 160404',kind:'turn',re:0.4,eps:35,kap:93,l:16,vc:250,f:0.1};
+}
+function tourToolById(s,id){
+  const T=(s&&s.tools)||[];
+  for(let i=0;i<T.length;i++)if(T[i].id===id)return T[i];
+  return T[0]||null;
+}
+
+/* ----- posage ----- */
+function tourDefaultSetup(){
+  return {
+    id:faoNewId('setup'), name:'TOUR1', proc:'tour', machine:'fagor8065t', wcs:'G54',
+    bodies:'all',
+    tour:{axis:'auto',flip:false,d:0,face:1,sortie:0,smax:3000,dir:'M3',arcInv:false,
+      clrX:2,clrZ:2,tcX:200,tcZ:100},
+    coolant:'flood', rapide:10000, toolChg:5,
+    tools:tourDefaultTools(), ops:[]
+  };
+}
+function tourCfg(s){
+  const t=(s&&s.tour)||{};
+  const num=function(v,d){ return isFinite(+v)?+v:d; };
+  return {axis:['x','y','z'].indexOf(t.axis)>=0?t.axis:'auto', flip:!!t.flip,
+    d:Math.max(0,num(t.d,0)), face:Math.max(0,num(t.face,1)), sortie:Math.max(0,num(t.sortie,0)),
+    smax:Math.max(1,num(t.smax,3000)), dir:t.dir==='M4'?'M4':'M3', arcInv:!!t.arcInv,
+    clrX:Math.max(0.5,num(t.clrX,2)), clrZ:Math.max(0.5,num(t.clrZ,2)),
+    tcX:num(t.tcX,200), tcZ:num(t.tcZ,100),
+    cax:!!t.cax, cInv:!!t.cInv, liveN:Math.max(1,Math.round(num(t.liveN,2))), smaxL:Math.max(1,num(t.smaxL,4000)),
+    rep:(t.reprise&&t.reprise.from)?{from:String(t.reprise.from),sur:Math.max(0,num(t.reprise.sur,1)),pince:Math.max(1,num(t.reprise.pince,10))}:null};
+}
+function tourSanitise(s){
+  // Posage tour : seules les opérations de tournage y vivent (un collage venu d'un
+  // posage de fraisage est retiré), outils de tour seulement.
+  if(!s.tour||typeof s.tour!=='object')s.tour=tourDefaultSetup().tour;
+  if(!Array.isArray(s.tools))s.tools=tourDefaultTools();
+  for(let i=s.tools.length-1;i>=0;i--){ const t=s.tools[i]; if(!t||TOUR_TOOL_KINDS.indexOf(t.kind)<0)s.tools.splice(i,1); }
+  if(!s.tools.length)tourDefaultTools().forEach(function(t){ s.tools.push(t); });
+  if(!Array.isArray(s.ops))s.ops=[];
+  for(let i=s.ops.length-1;i>=0;i--){ const o=s.ops[i]; if(!o||TOUR_OP_TYPES.indexOf(o.type)<0)s.ops.splice(i,1); }
+  s.ops.forEach(function(op){
+    if(!op.id)op.id=faoNewId('op');
+    if(op.on===undefined)op.on=true;
+    op.stale=false;
+    if(op.cote!=='int')delete op.cote;
+    if(op.type==='tour_cdrill'&&op.dir!=='ax')op.dir='rad';
+    if(!op.toolId||!s.tools.some(function(t){return t.id===op.toolId;}))op.toolId=tourToolEnsure(s,op.type,tourOpCote(op)).id;
+  });
+  if(typeof faoStruckSanitise==='function')faoStruckSanitise(s);
+}
+function tourOpCote(op){ return op&&op.type==='tour_cdrill'?(op.dir==='ax'?'ax':'rad'):op&&op.cote; }
+function tourToolKind(type,cote){
+  const int=cote==='int';
+  if(type==='tour_cdrill')return cote==='ax'?'ldrilla':'ldrillr';
+  if(type==='tour_drill')return 'tdrill';
+  if(type==='tour_part')return 'part';
+  if(type==='tour_groove')return int?'groovei':'groove';
+  if(type==='tour_thread')return int?'threadi':'thread';
+  return int&&type!=='tour_face'?'bore':'turn';
+}
+function tourToolMatch(t,k){
+  if(k==='ldrilla')return t.kind==='ldrill'&&t.ax==='ax';
+  if(k==='ldrillr')return t.kind==='ldrill'&&t.ax!=='ax';
+  if(k==='groovei'||k==='threadi')return t.kind===k.slice(0,-1)&&!!t.int;
+  if(k==='groove'||k==='thread')return t.kind===k&&!t.int;
+  return t.kind===k;
+}
+function tourToolEnsure(s,type,cote){
+  // outil du bon genre : celui de la liste, sinon ajouté (barre, gorge, filetage : à la demande)
+  const k=tourToolKind(type,cote), T=s.tools||(s.tools=[]);
+  if(T.some(function(t){ return tourToolMatch(t,k); }))return tourToolFor(s,type,cote);
+  const t=tourToolNew(k,s); T.push(t); return t;
+}
+function tourToolFor(s,type,cote){
+  const T=s.tools||[];
+  const k=tourToolKind(type,cote);
+  const L=T.filter(function(t){return tourToolMatch(t,k);});
+  if((type==='tour_finish'||type==='tour_thread')&&L.length>1&&k!=='thread'&&k!=='threadi')return L.slice().sort(function(a,b){return (+a.re||0)-(+b.re||0);})[0];
+  if((type==='tour_rough'||type==='tour_face')&&L.length>1)return L.slice().sort(function(a,b){return (+b.re||0)-(+a.re||0);})[0];
+  return L[0]||T[0];
+}
+function tourDrillFor(s){
+  // foret au Ø de l'alésage du modèle : celui de la liste, sinon un foret inutilisé
+  // mis à ce Ø, sinon un foret ajouté
+  try{
+    const M=s?tourModel(s):null; if(!M||!M.ok||!M.bore)return null;
+    // alésage étagé : le foret au PLUS PETIT Ø de la paroi (le reste s'ouvre à la barre d'alésage)
+    const rb=(M.inner&&M.inner.rmin<1/0&&M.inner.through===M.bore.through)?Math.min(M.bore.r,M.inner.rmin):M.bore.r;
+    const d=Math.floor(2*rb*10+1e-6)/10; if(!(d>=0.5))return null;
+    const T=s.tools||(s.tools=[]);
+    const ok=T.filter(function(t){ return t.kind==='tdrill'&&Math.abs(+t.d-d)<0.05; })[0];
+    if(ok)return ok;
+    const used=function(t){ return (s.ops||[]).some(function(o){ return o&&o.toolId===t.id; }); };
+    let t=T.filter(function(t){ return t.kind==='tdrill'&&!used(t); })[0];
+    if(!t){ t=tourToolNew('tdrill',s); T.push(t); }
+    t.d=d; t.name='Foret Ø'+(+d.toFixed(1));
+    return t;
+  }catch(e){ return null; }
+}
+function tourOpDefaults(type,s,cote){
+  if(TOUR_OP_TYPES.indexOf(type)<0)return null;
+  const int=cote==='int'&&['tour_rough','tour_finish','tour_groove','tour_thread'].indexOf(type)>=0;
+  const op={id:faoNewId('op'),type:type,on:true,toolId:tourToolEnsure(s,type,type==='tour_cdrill'?(cote==='ax'?'ax':'rad'):(int?'int':'ext')).id};
+  if(int)op.cote='int';
+  if(type==='tour_face'){ op.ap=1; op.laisse=0; }
+  if(type==='tour_rough'){ op.ap=2; op.sx=0.3; op.sz=0.1; op.profil=true; }
+  if(type==='tour_finish'){ op.laisse=0; }
+  if(type==='tour_drill'){ op.q=0; op.plein=true; const t=tourDrillFor(s); if(t)op.toolId=t.id; }
+  if(type==='tour_part'){ op.q=0; op.dEnd=0; }
+  if(int&&type==='tour_rough'){ op.ap=1; op.sx=0.2; op.sz=0.1; }
+  if(type==='tour_groove'){ op.laisse=0; op.fin=0.1; op.q=0; }
+  if(type==='tour_thread'){ op.src='auto'; op.n=0; op.A=30; op.ressort=1; }
+  if(type==='tour_cdrill'){
+    op.dir=cote==='ax'?'ax':'rad'; op.q=0; op.dsel=0;
+    op.toolId=tourToolEnsure(s,type,op.dir).id;
+    // foret au Ø du premier trou de ce genre
+    try{ const H=tourCHolesOf(s).filter(function(h){ return h.ax===op.dir&&h.ok; }); if(H.length){ const t=tourLiveDrillFor(s,op.dir,H[0].d); if(t){ op.toolId=t.id; op.dsel=H[0].d; } } }catch(e){}
+  }
+  return op;
+}
+
+/* ----- géométrie 2D (z, r) ----- */
+const TOUR_EPS=1e-9;
+function tourArcEval(p,z){ // sous-arc monotone en z : r(z)
+  const dz=z-p.cz, q=p.R*p.R-dz*dz;
+  return p.cr+(p.up?1:-1)*Math.sqrt(q>0?q:0);
+}
+function tourPieceEval(p,z){
+  if(p.t==='L')return p.r1+(p.r2-p.r1)*(z-p.z1)/(p.z2-p.z1);
+  return tourArcEval(p,z);
+}
+function tourAngIn(a,a0,a1){ // a dans l'arc CCW a0 → a1
+  const T=2*Math.PI; let d=((a-a0)%T+T)%T, e=((a1-a0)%T+T)%T; if(e<1e-12)e=T;
+  return d<=e+1e-9;
+}
+// Primitives de la section → morceaux « fonctions de z » (r ≥ 0), côté négatif replié.
+function tourPrimsNorm(prims){
+  // Courbes de la coupe (B-splines, ellipses…) : un cercle qui passe à 0,001 mm de tous
+  // les points devient un ARC (un congé torique coupé par son axe en donne un), sinon
+  // des droites. Les arcs gardent leur sens trigonométrique de 1 vers 2.
+  const out=[];
+  (prims||[]).forEach(function(p){
+    if(!p)return;
+    if(p.type!=='curve'){ out.push(p); return; }
+    const D=Array.isArray(p.dense)?p.dense:[];
+    if(D.length<2)return;
+    const c=D.length>=3?tourCircle3(D[0],D[Math.floor(D.length/2)],D[D.length-1]):null;
+    let ok=!!c&&c.R<1e4;
+    if(ok)for(let i=0;i<D.length&&ok;i++)if(Math.abs(Math.hypot(D[i][0]-c.x,D[i][1]-c.y)-c.R)>1e-3)ok=false;
+    if(ok){
+      // sens : le point du milieu à gauche de la corde = sens horaire vu (z, r)
+      const a=D[0], m=D[Math.floor(D.length/2)], b=D[D.length-1];
+      const cr=(m[0]-a[0])*(b[1]-m[1])-(m[1]-a[1])*(b[0]-m[0]);
+      if(cr>0)out.push({type:'arc',cx:c.x,cy:c.y,r:c.R,x1:a[0],y1:a[1],x2:b[0],y2:b[1]});
+      else out.push({type:'arc',cx:c.x,cy:c.y,r:c.R,x1:b[0],y1:b[1],x2:a[0],y2:a[1]});
+      return;
+    }
+    for(let i=0;i+1<D.length;i++)out.push({type:'line',x1:D[i][0],y1:D[i][1],x2:D[i+1][0],y2:D[i+1][1]});
+  });
+  return out;
+}
+function tourCircle3(a,b,c){
+  const d=2*(a[0]*(b[1]-c[1])+b[0]*(c[1]-a[1])+c[0]*(a[1]-b[1]));
+  if(Math.abs(d)<1e-12)return null;
+  const A=a[0]*a[0]+a[1]*a[1], B=b[0]*b[0]+b[1]*b[1], C=c[0]*c[0]+c[1]*c[1];
+  const x=(A*(b[1]-c[1])+B*(c[1]-a[1])+C*(a[1]-b[1]))/d, y=(A*(c[0]-b[0])+B*(a[0]-c[0])+C*(b[0]-a[0]))/d;
+  return {x:x,y:y,R:Math.hypot(a[0]-x,a[1]-y)};
+}
+function tourPiecesFromPrims(prims){
+  const out=[];
+  const addLine=function(z1,r1,z2,r2,m){
+    if(Math.abs(z2-z1)<1e-7)return; // verticale : un saut de l'enveloppe, pas une fonction
+    if(z1>z2){ const a=z1,b=r1; z1=z2; r1=r2; z2=a; r2=b; }
+    out.push({t:'L',z1:z1,r1:r1,z2:z2,r2:r2,lo:z1,hi:z2,m:!!m});
+  };
+  const line=function(z1,r1,z2,r2){
+    // coupée en r = 0, chaque moitié rabattue du côté positif
+    if((r1<0&&r2>0)||(r1>0&&r2<0)){
+      const t=r1/(r1-r2), zm=z1+(z2-z1)*t;
+      line(z1,r1,zm,0); line(zm,0,z2,r2); return;
+    }
+    addLine(z1,Math.abs(r1),z2,Math.abs(r2),r1+r2<0); // m : moitié repliée (côté négatif de la coupe)
+  };
+  const arc=function(cz,cr,R,a0,a1){
+    // arc CCW a0 → a1 : coupé en 0, π (monotone en z) et là où r = 0
+    const T=2*Math.PI;
+    let e=((a1-a0)%T+T)%T; if(e<1e-12)e=T;
+    const cuts=[0,Math.PI];
+    const k=-cr/R;
+    if(k>-1&&k<1){ const s=Math.asin(k); cuts.push(s,Math.PI-s); }
+    const L=[0,e];
+    cuts.forEach(function(c){ const d=((c-a0)%T+T)%T; if(d>1e-9&&d<e-1e-9)L.push(d); });
+    L.sort(function(a,b){return a-b;});
+    for(let i=0;i+1<L.length;i++){
+      const b0=a0+L[i], b1=a0+L[i+1];
+      if(b1-b0<1e-10)continue;
+      const am=(b0+b1)/2, rm=cr+R*Math.sin(am);
+      let ccz=cz, ccr=cr, s0=b0, s1=b1;
+      if(rm<0){ ccr=-cr; s0=-b1; s1=-b0; } // miroir (z, r) → (z, −r) : l'arc reste CCW
+      const up=Math.sin((s0+s1)/2)>0;
+      const za=ccz+R*Math.cos(s0), zb=ccz+R*Math.cos(s1);
+      const lo=Math.min(za,zb), hi=Math.max(za,zb);
+      if(hi-lo<1e-7)continue;
+      out.push({t:'A',cz:ccz,cr:ccr,R:R,up:up,lo:lo,hi:hi,m:rm<0});
+    }
+  };
+  (prims||[]).forEach(function(p){
+    if(!p)return;
+    if(p.type==='line')line(p.x1,p.y1,p.x2,p.y2);
+    else if(p.type==='arc'){
+      arc(p.cx,p.cy,p.r,Math.atan2(p.y1-p.cy,p.x1-p.cx),Math.atan2(p.y2-p.cy,p.x2-p.cx));
+    }else if(p.type==='circle')arc(p.cx,p.cy,p.r,0,2*Math.PI);
+    else if(p.type==='curve'&&Array.isArray(p.dense)){
+      for(let i=0;i+1<p.dense.length;i++)line(p.dense[i][0],p.dense[i][1],p.dense[i+1][0],p.dense[i+1][1]);
+    }
+  });
+  return out;
+}
+function tourIsectZ(a,b){
+  // z des intersections de deux morceaux (dans leurs deux intervalles)
+  const lo=Math.max(a.lo,b.lo), hi=Math.min(a.hi,b.hi), Z=[];
+  if(hi-lo<1e-9)return Z;
+  const geo=function(p){ // droite : r = m z + q ; cercle : centre, R
+    if(p.t==='L'){ const m=(p.r2-p.r1)/(p.z2-p.z1); return {L:1,m:m,q:p.r1-m*p.z1}; }
+    return {L:0,cz:p.cz,cr:p.cr,R:p.R};
+  };
+  const A=geo(a), B=geo(b);
+  const lc=function(l,c){ // m z + q sur le cercle
+    const qq=l.q-c.cr, aa=1+l.m*l.m, bb=2*(l.m*qq-c.cz), cc=c.cz*c.cz+qq*qq-c.R*c.R, D=bb*bb-4*aa*cc;
+    if(D<0)return [];
+    const s=Math.sqrt(D); return [(-bb-s)/(2*aa),(-bb+s)/(2*aa)];
+  };
+  if(A.L&&B.L){ if(Math.abs(A.m-B.m)>1e-12)Z.push((B.q-A.q)/(A.m-B.m)); }
+  else if(A.L)lc(A,B).forEach(function(z){Z.push(z);});
+  else if(B.L)lc(B,A).forEach(function(z){Z.push(z);});
+  else{
+    const dx=B.cz-A.cz, dy=B.cr-A.cr, d=Math.hypot(dx,dy);
+    if(d>1e-12&&d<=A.R+B.R+1e-9&&d>=Math.abs(A.R-B.R)-1e-9){
+      const l=(A.R*A.R-B.R*B.R+d*d)/(2*d), h2=A.R*A.R-l*l, h=Math.sqrt(h2>0?h2:0);
+      const mx=A.cz+dx*l/d;
+      Z.push(mx+(-dy)*h/d, mx-(-dy)*h/d);
+    }
+  }
+  return Z.filter(function(z){ return z>lo+1e-9&&z<hi-1e-9&&Math.abs(tourPieceEval(a,z)-tourPieceEval(b,z))<1e-5; });
+}
+// Enveloppe SUPÉRIEURE des morceaux → chaîne d'éléments de l'avant (zMax) vers l'arrière.
+// Éléments : {t:'L',z1,r1,z2,r2} ou {t:'A',z1,r1,z2,r2,cz,cr,R,ccw}.
+function tourEnvelope(P){
+  if(!P.length)return [];
+  const BZ=[];
+  P.forEach(function(p){ BZ.push(p.lo,p.hi); });
+  for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)tourIsectZ(P[i],P[j]).forEach(function(z){BZ.push(z);});
+  BZ.sort(function(a,b){return b-a;});
+  const Z=[]; BZ.forEach(function(z){ if(!Z.length||Z[Z.length-1]-z>1e-7)Z.push(z); });
+  const iv=[];
+  for(let i=0;i+1<Z.length;i++){
+    const hi=Z[i], lo=Z[i+1], zm=(hi+lo)/2;
+    let best=null, bv=-1/0;
+    P.forEach(function(p){ if(p.lo<=zm&&p.hi>=zm){ const v=tourPieceEval(p,zm); if(v>bv+1e-9){bv=v;best=p;} } });
+    if(best&&iv.length&&iv[iv.length-1].p===best&&Math.abs(iv[iv.length-1].lo-hi)<1e-7)iv[iv.length-1].lo=lo;
+    else iv.push({p:best,hi:hi,lo:lo});
+  }
+  const E=[];
+  let cz=Z[0], cr=0;
+  const push=function(e){ if(Math.hypot(e.z2-e.z1,e.r2-e.r1)>1e-7)E.push(e); };
+  iv.forEach(function(I){
+    const r1=I.p?tourPieceEval(I.p,I.hi):0, r2=I.p?tourPieceEval(I.p,I.lo):0;
+    if(Math.abs(r1-cr)>1e-6||Math.abs(I.hi-cz)>1e-7)push({t:'L',z1:cz,r1:cr,z2:I.hi,r2:r1});
+    if(!I.p||I.p.t==='L')push({t:'L',z1:I.hi,r1:r1,z2:I.lo,r2:r2});
+    else push({t:'A',z1:I.hi,r1:r1,z2:I.lo,r2:r2,cz:I.p.cz,cr:I.p.cr,R:I.p.R,ccw:I.p.up});
+    cz=I.lo; cr=r2;
+  });
+  if(cr>1e-6)push({t:'L',z1:cz,r1:cr,z2:cz,r2:0});
+  // segments alignés bout à bout (même droite) : un seul
+  const M=[];
+  E.forEach(function(e){
+    const p=M[M.length-1];
+    if(p&&p.t==='L'&&e.t==='L'){
+      const ax=p.z2-p.z1, ay=p.r2-p.r1, bx=e.z2-e.z1, by=e.r2-e.r1;
+      const cross=ax*by-ay*bx, la=Math.hypot(ax,ay), lb=Math.hypot(bx,by);
+      if(Math.abs(cross)<1e-9*la*lb+1e-12&&ax*bx+ay*by>0){ p.z2=e.z2; p.r2=e.r2; return; }
+    }
+    M.push(e);
+  });
+  return M;
+}
+function tourElemsEvalTop(E,z){ // r de l'enveloppe à z (le plus haut des éléments qui couvrent z)
+  let best=-1/0;
+  E.forEach(function(e){
+    const lo=Math.min(e.z1,e.z2), hi=Math.max(e.z1,e.z2);
+    if(z<lo-1e-9||z>hi+1e-9)return;
+    let v;
+    if(hi-lo<1e-9)v=Math.max(e.r1,e.r2);
+    else if(e.t==='L')v=e.r1+(e.r2-e.r1)*(z-e.z1)/(e.z2-e.z1);
+    else{ const dz=z-e.cz, q=e.R*e.R-dz*dz; v=e.cr+(e.ccw?1:-1)*Math.sqrt(q>0?q:0); }
+    if(v>best)best=v;
+  });
+  return best;
+}
+
+/* ----- repère du tour, maillage, coupe exacte ----- */
+function tourBodies(setup){
+  if(typeof bodies==='undefined'||!bodies)return [];
+  const only=(setup&&Array.isArray(setup.bodies))?setup.bodies:null;
+  return bodies.filter(function(b){ return b&&!b.ghost&&b.visible!==false&&(!only||only.indexOf(b.id)>=0); });
+}
+function tourShapeOf(b){
+  try{
+    if(b.kind==='import'&&typeof importGeom!=='undefined'){ const e=importGeom.get(b.id); return (e&&e.brep)||null; }
+    if(b.kind==='body'&&b.shape)return b.shape;
+  }catch(e){}
+  return null;
+}
+let tourModelCache=null;
+function tourModelSig(setup){
+  const C=tourCfg(setup);
+  const ids=tourBodies(setup).map(function(b){ return b.id+(tourShapeOf(b)?'s':'m'); }).join(',');
+  return [(typeof _docVersion!=='undefined'?_docVersion:0),ids,C.axis,C.flip?1:0,
+    (typeof occtReady!=='undefined'&&occtReady)?1:0].join('|');
+}
+function tourModel(setup){
+  // {ok, W,U,V,Pf (repère monde), L, Rmax, elems (profil exact), pts (nuage de contrôle),
+  //  bore, src:'exact'|'maillage', warns}
+  const sig=tourModelSig(setup);
+  if(tourModelCache&&tourModelCache.setup===setup&&tourModelCache.sig===sig)return tourModelCache.m;
+  let m=null;
+  try{ m=tourModelBuild(setup); }catch(e){ m={ok:false,warns:['profil : '+((e&&e.message)||e)]}; }
+  tourModelCache={setup:setup,sig:sig,m:m};
+  return m;
+}
+function tourModelBuild(setup){
+  const BL=tourBodies(setup), warns=[];
+  if(!BL.length)return {ok:false,warns:['aucun corps à tourner']};
+  const meshes=[];
+  BL.forEach(function(b){ let mm=null; try{ mm=faoMeshFromBodyCached(b); }catch(e){} if(mm&&mm.v&&mm.v.length)meshes.push(mm); });
+  if(!meshes.length)return {ok:false,warns:['corps sans maillage']};
+  let x0=1/0,y0=1/0,z0=1/0,x1=-1/0,y1=-1/0,z1=-1/0;
+  meshes.forEach(function(mm){ mm.v.forEach(function(p){
+    if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<y0)y0=p[1]; if(p[1]>y1)y1=p[1]; if(p[2]<z0)z0=p[2]; if(p[2]>z1)z1=p[2]; }); });
+  const ext=[x1-x0,y1-y0,z1-z0], C=tourCfg(setup);
+  let ai=2;
+  if(C.axis!=='auto')ai={x:0,y:1,z:2}[C.axis];
+  else{
+    // axe auto : celui dont la section (deux autres côtés) est la plus « ronde » ; à égalité, le plus long
+    let best=1/0;
+    [2,0,1].forEach(function(a){
+      const e1=ext[(a+1)%3], e2=ext[(a+2)%3], s=Math.abs(e1-e2)/Math.max(e1,e2,1e-9);
+      if(s<best-0.02||(Math.abs(s-best)<=0.02&&ext[a]>ext[ai])){ best=Math.min(best,s); ai=a; }
+    });
+  }
+  const W=[0,0,0]; W[ai]=C.flip?-1:1;
+  const U=[0,0,0]; U[ai===2?0:2]=1; // plan du profil : vertical (Z en haut) dès que l'axe n'est pas Z, comme une vue de face
+  const V=[W[1]*U[2]-W[2]*U[1],W[2]*U[0]-W[0]*U[2],W[0]*U[1]-W[1]*U[0]];
+  const ctr=[(x0+x1)/2,(y0+y1)/2,(z0+z1)/2];
+  let phi=0;
+  // centre en travers de l'axe : moyenne des sommets (chaque cercle du maillage est réparti
+  // tout autour de l'axe) ; le milieu de la boîte décale l'axe quand le nombre de côtés est impair
+  { let n=0; const sm=[0,0,0];
+    meshes.forEach(function(mm){ mm.v.forEach(function(p){ sm[0]+=p[0]; sm[1]+=p[1]; sm[2]+=p[2]; n++; }); });
+    if(n)for(let k=0;k<3;k++)if(k!==ai)ctr[k]=sm[k]/n; }
+  // trous hors axe : leurs sommets décalent la moyenne ; cercle ajusté sur les sommets du plus
+  // grand Ø (les bords des trous sont sur ce même cylindre), gardé s'il colle au maillage
+  { const i1=(ai+1)%3, i2=(ai+2)%3; let c1=(x0+x1)/2*(i1===0)+(y0+y1)/2*(i1===1)+(z0+z1)/2*(i1===2), c2=(x0+x1)/2*(i2===0)+(y0+y1)/2*(i2===1)+(z0+z1)/2*(i2===2);
+    let fit=null;
+    for(let it=0;it<3;it++){
+      let Rm=0; meshes.forEach(function(mm){ mm.v.forEach(function(p){ const r=Math.hypot(p[i1]-c1,p[i2]-c2); if(r>Rm)Rm=r; }); });
+      const lim=Rm*(it?0.995:0.97);
+      let Sx=0,Sy=0,Sxx=0,Syy=0,Sxy=0,Sxz=0,Syz=0,Sz=0,N=0;
+      meshes.forEach(function(mm){ mm.v.forEach(function(p){ const u=p[i1]-c1, v=p[i2]-c2; if(Math.hypot(u,v)<lim)return; const w=u*u+v*v;
+        Sx+=u; Sy+=v; Sxx+=u*u; Syy+=v*v; Sxy+=u*v; Sxz+=u*w; Syz+=v*w; Sz+=w; N++; }); });
+      if(N<6)break;
+      // Kåsa : u² + v² + D u + E v + F = 0
+      const A=[[Sxx,Sxy,Sx],[Sxy,Syy,Sy],[Sx,Sy,N]], B=[-Sxz,-Syz,-Sz];
+      const det=function(m){ return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])-m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])+m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]); };
+      const d0=det(A); if(!(Math.abs(d0)>1e-12))break;
+      const col=function(j){ return A.map(function(r,i){ return r.map(function(x,k){ return k===j?B[i]:x; }); }); };
+      const D=det(col(0))/d0, E=det(col(1))/d0;
+      c1+=-D/2; c2+=-E/2; fit=true;
+    }
+    if(fit){
+      // contrôle : écart des sommets du grand Ø au cercle ajusté
+      let Rm=0; meshes.forEach(function(mm){ mm.v.forEach(function(p){ const r=Math.hypot(p[i1]-c1,p[i2]-c2); if(r>Rm)Rm=r; }); });
+      let e=0, N=0; meshes.forEach(function(mm){ mm.v.forEach(function(p){ const r=Math.hypot(p[i1]-c1,p[i2]-c2); if(r>Rm*0.97){ e=Math.max(e,Rm-r); N++; } }); });
+      const dm=Math.hypot(c1-ctr[i1],c2-ctr[i2]);
+      if(N>=6&&e<Math.max(0.02,Rm*0.03)&&dm>1e-6){ ctr[i1]=c1; ctr[i2]=c2; }
+    } }
+  const dot=function(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
+  let zmax=-1/0, zmin=1/0;
+  meshes.forEach(function(mm){ mm.v.forEach(function(p){ const t=dot([p[0]-ctr[0],p[1]-ctr[1],p[2]-ctr[2]],W); if(t>zmax)zmax=t; if(t<zmin)zmin=t; }); });
+  const Pf=[ctr[0]+W[0]*zmax,ctr[1]+W[1]*zmax,ctr[2]+W[2]*zmax];
+  const L=zmax-zmin;
+  const loc=function(p){ const d=[p[0]-Pf[0],p[1]-Pf[1],p[2]-Pf[2]], z=dot(d,W);
+    return [z,Math.hypot(d[0]-z*W[0],d[1]-z*W[1],d[2]-z*W[2])]; };
+  // enveloppe du MAILLAGE : r maxi par tranche de 0,05 mm (sommets + coupes des arêtes)
+  const H=0.05, NB=Math.max(1,Math.ceil(L/H)+1), rM=new Float64Array(NB).fill(-1), rV=new Float64Array(NB).fill(-1);
+  // rV : sommets seuls (sur les surfaces) ; rM : + coupes des arêtes — une corde passe au-dessus d'un creux
+  const bin=function(z){ return Math.max(0,Math.min(NB-1,Math.round(-z/H))); };
+  meshes.forEach(function(mm){
+    const Q=mm.v.map(loc);
+    Q.forEach(function(q){ const k=bin(q[0]); if(q[1]>rM[k])rM[k]=q[1]; if(q[1]>rV[k])rV[k]=q[1]; });
+    mm.t.forEach(function(t){
+      for(let e=0;e<3;e++){
+        const a=mm.v[t[e]], b=mm.v[t[(e+1)%3]], qa=Q[t[e]], qb=Q[t[(e+1)%3]];
+        const za=qa[0], zb=qb[0];
+        const k0=Math.ceil(Math.min(-za,-zb)/H), k1=Math.floor(Math.max(-za,-zb)/H);
+        for(let k=k0;k<=k1&&k-k0<4000;k++){
+          const zz=-k*H, s=(zz-za)/((zb-za)||1e-30);
+          if(s<0||s>1)continue;
+          const r=loc([a[0]+(b[0]-a[0])*s,a[1]+(b[1]-a[1])*s,a[2]+(b[2]-a[2])*s])[1];
+          if(k>=0&&k<NB&&r>rM[k])rM[k]=r;
+        }
+      }
+    });
+  });
+  let Rmax=0; for(let k=0;k<NB;k++)if(rM[k]>Rmax)Rmax=rM[k];
+  // coupe EXACTE par le plan (axe, U)
+  let elems=null, src='maillage', prims=[], primsPos=[];
+  // plan de coupe : tourné autour de l'axe pour passer loin des trous hors axe (perçages à l'axe C),
+  // sinon un trou radial ou axial creuserait le profil tourné ; C = 0 reste sur U
+  try{ phi=tourSectionAngle(tourCHolesRaw(W,U,V,Pf,null)); }catch(e){ phi=0; }
+  const cp=Math.cos(phi*Math.PI/180), sp=Math.sin(phi*Math.PI/180);
+  const U2=[cp*U[0]+sp*V[0],cp*U[1]+sp*V[1],cp*U[2]+sp*V[2]], V2=[cp*V[0]-sp*U[0],cp*V[1]-sp*U[1],cp*V[2]-sp*U[2]];
+  if(typeof occtReady!=='undefined'&&occtReady&&typeof occIsectSection==='function'){
+    const B={o:{x:Pf[0],y:Pf[1],z:Pf[2]},n:{x:V2[0],y:V2[1],z:V2[2]},u:{x:W[0],y:W[1],z:W[2]},v:{x:U2[0],y:U2[1],z:U2[2]}};
+    let nOk=0;
+    BL.forEach(function(b){ const sh=tourShapeOf(b); if(!sh)return;
+      try{ const L2=occIsectSection(sh,B,false); if(L2&&L2.length){ nOk++; tourPrimsNorm(L2).forEach(function(p){prims.push(p);}); } }catch(e){} });
+    if(nOk){
+      const P=tourPiecesFromPrims(prims);
+      const E=tourEnvelope(P);
+      // contrôle : la coupe doit recouvrir le maillage (repère et corps cohérents)
+      let bad=0, far=0, n=0;
+      for(let k=0;k<NB;k++){ if(rV[k]<0)continue; n++;
+        const re=Math.max(tourElemsEvalTop(E,-k*H),k?tourElemsEvalTop(E,-k*H+H/2):-1/0,k<NB-1?tourElemsEvalTop(E,-k*H-H/2):-1/0);
+        if(!(re>-1/0)||rV[k]>re+0.03)bad++;
+        if(!(re>-1/0)||Math.abs(rM[k]-re)>1)far++; }
+      if(E.length&&far<=n*0.2){ elems=E; src='exact'; if(bad)warns.push('pièce pas entièrement de révolution : '+Math.round(bad*H*10)/10+' mm de longueur où elle dépasse de la coupe — le tournage s’arrête à sa forme réelle'); }
+      else if(E.length)warns.push('coupe exacte incohérente avec le maillage : profil pris sur le maillage');
+      primsPos=prims;
+    }
+  }
+  if(!elems){
+    // repli : polyligne du maillage simplifiée (sans arcs)
+    const pts=[[0,0]];
+    for(let k=0;k<NB;k++)if(rM[k]>=0)pts.push([-k*H,rM[k]]);
+    pts.push([-(NB-1)*H,0]);
+    const S=tourSimplify(pts,0.01);
+    elems=[];
+    for(let i=0;i+1<S.length;i++)elems.push({t:'L',z1:S[i][0],r1:S[i][1],z2:S[i+1][0],r2:S[i+1][1]});
+  }
+  // nuage de contrôle : points du profil exact + sommets du maillage qui dépassent
+  const pts=tourElemsSample(elems,0.01);
+  const rC=src==='exact'?rV:rM;
+  for(let k=0;k<NB;k++){ if(rC[k]<0)continue; const z=-k*H, re=Math.max(tourElemsEvalTop(elems,z),tourElemsEvalTop(elems,z+H/2),tourElemsEvalTop(elems,z-H/2)); if(rC[k]>re+0.005)pts.push([z,rC[k]]); }
+  if(src==='exact'){ Rmax=0; tourElemsSample(elems,0.02).forEach(function(p){ if(p[1]>Rmax)Rmax=p[1]; }); } // Ø exact (les arêtes du maillage débordent d'un creux)
+  const bore=tourBoreFrom(primsPos,L);
+  let inner=null;
+  if(src==='exact'&&bore){ try{ inner=tourInnerFrom(primsPos,L); }catch(e){ inner=null; } }
+  return {ok:true,W:W,U:U,V:V,Pf:Pf,L:L,Rmax:Rmax,elems:elems,pts:pts,bore:bore,inner:inner,src:src,warns:warns,phi:phi};
+}
+function tourSimplify(P,tol){ // Douglas-Peucker
+  if(P.length<3)return P.slice();
+  const keep=new Uint8Array(P.length); keep[0]=keep[P.length-1]=1;
+  const st=[[0,P.length-1]];
+  while(st.length){
+    const s=st.pop(), a=P[s[0]], b=P[s[1]], dx=b[0]-a[0], dy=b[1]-a[1], l=Math.hypot(dx,dy)||1e-30;
+    let im=-1, dm=tol;
+    for(let i=s[0]+1;i<s[1];i++){ const d=Math.abs((P[i][0]-a[0])*dy-(P[i][1]-a[1])*dx)/l; if(d>dm){dm=d;im=i;} }
+    if(im>=0){ keep[im]=1; st.push([s[0],im],[im,s[1]]); }
+  }
+  return P.filter(function(p,i){return keep[i];});
+}
+function tourElemsSample(E,step){
+  const out=[];
+  E.forEach(function(e){
+    out.push([e.z1,e.r1]);
+    if(e.t==='L'){
+      const l=Math.hypot(e.z2-e.z1,e.r2-e.r1), n=Math.max(1,Math.ceil(l/step));
+      for(let i=1;i<n;i++)out.push([e.z1+(e.z2-e.z1)*i/n,e.r1+(e.r2-e.r1)*i/n]);
+    }else{
+      const a0=Math.atan2(e.r1-e.cr,e.z1-e.cz), a1=Math.atan2(e.r2-e.cr,e.z2-e.cz);
+      let d=a1-a0; const T=2*Math.PI;
+      if(e.ccw){ while(d<=0)d+=T; } else { while(d>=0)d-=T; }
+      const n=Math.max(1,Math.ceil(Math.abs(d)*e.R/step));
+      for(let i=1;i<n;i++){ const a=a0+d*i/n; out.push([e.cz+e.R*Math.cos(a),e.cr+e.R*Math.sin(a)]); }
+    }
+    out.push([e.z2,e.r2]);
+  });
+  return out;
+}
+function tourBoreFrom(prims,L){
+  // Alésage dans l'axe, ouvert à l'avant : rayon, longueur au Ø plein, débouchant ?
+  // Le long d'une droite radiale à z, les bords coupés (côté r ≥ 0 de la coupe) :
+  // en nombre PAIR, l'axe est hors matière (trou).
+  if(!prims||!prims.length)return null;
+  const P=[];
+  prims.forEach(function(p){
+    if(p.type==='line'){ if(Math.abs(p.x2-p.x1)>1e-7)P.push({t:'L',z1:p.x1,r1:p.y1,z2:p.x2,r2:p.y2,lo:Math.min(p.x1,p.x2),hi:Math.max(p.x1,p.x2)}); }
+  });
+  tourPiecesFromPrims(prims.filter(function(p){return p.type==='arc'||p.type==='circle';})).forEach(function(q){ if(!q.m)P.push(q); });
+  const cuts=function(z){
+    const R=[];
+    P.forEach(function(p){ if(p.lo<z&&p.hi>z){ let v; if(p.t==='L'){ v=p.r1+(p.r2-p.r1)*(z-p.z1)/(p.z2-p.z1); } else v=tourArcEval(p,z); if(v>1e-6)R.push(v); } });
+    return R.sort(function(a,b){return a-b;});
+  };
+  const c0=cuts(-0.02);
+  if(c0.length<2||c0.length%2)return null;
+  const rb=c0[0];
+  let full=0, end=0, through=true;
+  for(let z=-0.02;z>-L+0.01;z-=0.02){
+    const c=cuts(z);
+    if(!c.length||c.length%2){ through=false; end=-z; break; }
+    if(!full&&c[0]<rb-0.01)full=-z;
+  }
+  if(through){ end=L; if(!full)full=L; }
+  if(!full)full=end;
+  return {r:rb,full:full,end:end,through:through};
+}
+// Profil INTÉRIEUR (étape 2) : la paroi de l'alésage, de la face avant vers le fond.
+// Le long d'une droite radiale à z, les bords coupés du côté r ≥ 0 de la coupe : en nombre
+// pair, l'axe est hors matière et le plus bas est la paroi. Chaîne d'éléments comme
+// tourEnvelope (z décroissant), sauts radiaux en droites verticales ; un fond (alésage
+// borgne) finit par une verticale jusqu'à l'axe.
+function tourInnerFrom(prims,L){
+  const P=tourPiecesFromPrims(prims).filter(function(p){ return !p.m; });
+  if(!P.length)return null;
+  const BZ=[0];
+  P.forEach(function(p){ if(p.lo<0.5&&p.hi>-L-0.5)BZ.push(Math.min(0,p.lo),Math.min(0,p.hi)); });
+  for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++)tourIsectZ(P[i],P[j]).forEach(function(z){ if(z<0)BZ.push(z); });
+  BZ.push(-L);
+  BZ.sort(function(a,b){return b-a;});
+  const Z=[]; BZ.forEach(function(z){ if(z<=1e-9&&z>=-L-1e-9&&(!Z.length||Z[Z.length-1]-z>1e-7))Z.push(z); });
+  const iv=[];
+  let through=true, zb=-L;
+  for(let i=0;i+1<Z.length;i++){
+    const hi=Z[i], lo=Z[i+1], zm=(hi+lo)/2;
+    const V=[];
+    P.forEach(function(p){ if(p.lo<=zm&&p.hi>=zm){ const v=tourPieceEval(p,zm); if(v>1e-6)V.push({v:v,p:p}); } });
+    if(V.length<2||V.length%2){ through=false; zb=hi; break; }
+    V.sort(function(a,b){return a.v-b.v;});
+    const best=V[0].p;
+    if(iv.length&&iv[iv.length-1].p===best&&Math.abs(iv[iv.length-1].lo-hi)<1e-7)iv[iv.length-1].lo=lo;
+    else iv.push({p:best,hi:hi,lo:lo});
+  }
+  if(!iv.length||iv[0].hi<-1e-6)return null;
+  const E=[];
+  let cz=0, cr=null;
+  const push=function(e){ if(Math.hypot(e.z2-e.z1,e.r2-e.r1)>1e-7)E.push(e); };
+  iv.forEach(function(I){
+    const r1=tourPieceEval(I.p,I.hi), r2=tourPieceEval(I.p,I.lo);
+    if(cr!==null&&(Math.abs(r1-cr)>1e-6||Math.abs(I.hi-cz)>1e-7))push({t:'L',z1:cz,r1:cr,z2:I.hi,r2:r1});
+    if(I.p.t==='L')push({t:'L',z1:I.hi,r1:r1,z2:I.lo,r2:r2});
+    else push({t:'A',z1:I.hi,r1:r1,z2:I.lo,r2:r2,cz:I.p.cz,cr:I.p.cr,R:I.p.R,ccw:I.p.up});
+    cz=I.lo; cr=r2;
+  });
+  if(!through&&cr>1e-6)push({t:'L',z1:cz,r1:cr,z2:cz,r2:0});
+  let rmin=1/0, rmax=0;
+  tourElemsSample(E,0.05).forEach(function(q){ if(q[1]>1e-6&&q[1]<rmin)rmin=q[1]; if(q[1]>rmax)rmax=q[1]; });
+  return {elems:E,through:through,zb:through?-L:zb,r0:E.length?E[0].r1:0,rmin:rmin,rmax:rmax};
+}
+/* ----- brut et limites ----- */
+function tourStock(setup){
+  const C=tourCfg(setup), M=tourModel(setup);
+  const SP=C.rep?tourStockProfile(setup):null;
+  if(SP){
+    // reprise : la pièce sortie du premier posage, retournée, tenue sur pince mm côté arrière
+    const L=(M&&M.ok)?M.L:SP.L, chuck=-L+C.rep.pince;
+    return {R:SP.R, d:2*SP.R, face:SP.zf, sortie:SP.zf-chuck, chuck:chuck, L:L, rep:SP};
+  }
+  const L=(M&&M.ok)?M.L:50, Rp=(M&&M.ok)?M.Rmax:20;
+  const d=C.d>0?C.d:(Math.ceil(2*Rp-0.005)+2); // 36,00001 → 36
+  const face=C.face;
+  const sortie=C.sortie>0?C.sortie:(Math.ceil(L+face)+15);
+  return {R:d/2, d:d, face:face, sortie:sortie, chuck:face-sortie, L:L};
+}
+/* ----- reprise de la 2e face (étape 2) -----
+   Posage tour dont tour.reprise = {from: posage d'origine, sur: matière laissée sur la
+   face à reprendre, pince: longueur tenue dans le mandrin}. Son brut est le résultat de
+   la simulation du posage d'origine (le morceau tronçonné), retourné : z2 = −L − z1. */
+function tourSetupById(id){
+  try{ const r=faoRoot(); return (r.setups||[]).filter(function(x){ return x&&x.id===id; })[0]||null; }catch(e){ return null; }
+}
+function tourRepriseOf(setup){
+  // posage qui reprend celui-ci (pour placer le tronçonnage avec la surépaisseur)
+  try{ const r=faoRoot(); return (r.setups||[]).filter(function(x){ return tourIs(x)&&x!==setup&&x.tour&&x.tour.reprise&&x.tour.reprise.from===setup.id; })[0]||null; }catch(e){ return null; }
+}
+let tourSPCache=new WeakMap(), tourSPBusy=0;
+function tourStockSig(setup){
+  const C=tourCfg(setup); if(!C.rep)return '';
+  const src=tourSetupById(C.rep.from); if(!src||src===setup)return 'x';
+  return JSON.stringify([C.rep,src.ops,src.tools,src.tour,src.bodies])+'|'+tourModelSig(src);
+}
+function tourStockProfile(setup){
+  const C=tourCfg(setup); if(!C.rep)return null;
+  const src=tourSetupById(C.rep.from); if(!src||src===setup||!tourIs(src)||tourSPBusy>3)return null;
+  const sig=tourStockSig(setup), e=tourSPCache.get(setup);
+  if(e&&e.sig===sig)return e.v;
+  let v=null;
+  tourSPBusy++;
+  try{ v=tourStockProfileBuild(setup,src,C); }catch(err){ v=null; }
+  finally{ tourSPBusy--; }
+  tourSPCache.set(setup,{sig:sig,v:v});
+  return v;
+}
+function tourStockProfileBuild(setup,src,C){
+  const M1=tourModel(src); if(!M1||!M1.ok)return null;
+  const sm=tourSimBuild(src); if(!sm)return null;
+  tourSimAdvance(sm,sm.T+1);
+  const L=M1.L, g=sm.g, z0=sm.z0, n=sm.n, RO=sm.rout, RI=sm.rin;
+  const has=function(k){ return k>=0&&k<n&&RO[k]-RI[k]>1e-3; };
+  let k=Math.floor((-L/2-z0)/g); if(!has(k))return null;
+  let ka=k, kb=k; while(has(ka-1))ka--; while(has(kb+1))kb++;
+  const z1a=z0+ka*g, z1b=z0+(kb+1)*g;
+  // sans tronçonnage, la pièce tient encore à la barre : coupée à sur mm derrière la face
+  const zc=-L-C.rep.sur; let a=ka; if(z1a<zc-1e-9)a=Math.max(ka,Math.ceil((zc-z0)/g));
+  const zf=-L-(z0+a*g), zb=-L-z1b;
+  const col=function(z2){ return Math.floor((-L-z2-z0)/g); };
+  let R=0; for(let j=a;j<=kb;j++)if(RO[j]>R)R=RO[j];
+  const Rat=function(z2){ const j=col(z2); return (j>=a&&j<=kb)?RO[j]:-1/0; };
+  const RIat=function(z2){ const j=col(z2); return (j>=a&&j<=kb)?RI[j]:0; };
+  // trou à l'avant de la reprise (côté tronçonné) et sa profondeur
+  // (la face avant de la reprise est la colonne a, côté tronçonné)
+  let rin0=RI[a], dep=0;
+  for(let j=a;j<=kb&&RI[j]>1e-3;j++){ dep=(j+1-a)*g; if(RI[j]<rin0)rin0=RI[j]; }
+  return {zf:+zf.toFixed(4),zb:zb,R:R,L:L,Rat:Rat,RIat:RIat,rin0:rin0>1e-3?rin0:0,rinDepth:dep-Math.max(0,zf),g:g};
+}
+function tourStockTopFn(setup){ const S=tourStock(setup); return S.rep?S.rep.Rat:null; }
+function tourZEnd(setup,op){
+  // limite arrière (pointe de l'outil) : 1 mm derrière la face arrière, jamais à
+  // moins de 3 mm du mandrin
+  const S=tourStock(setup);
+  let z=(op&&isFinite(+op.zEnd)&&op.zEnd!==null&&op.zEnd!=='')?+op.zEnd:-(S.L+1);
+  if(z<S.chuck+3)z=S.chuck+3;
+  return z;
+}
+
+/* ----- étape 3 : trous hors axe (outils tournants, axe C) ----- */
+// Trous de la fonction Perçage du modèle qui ne sont pas dans l'axe du tour :
+//  radiaux (axe du trou qui coupe l'axe du tour, à angle droit) ou axiaux (parallèles à l'axe, décalés).
+// Repère : z le long de l'axe (0 = face avant), C en degrés de U vers V (0 à 360).
+function tourCHolesRaw(W,U,V,Pf,M){
+  const out=[];
+  if(typeof doc==='undefined'||!doc||!Array.isArray(doc.features)||typeof holeNorm!=='function'||typeof holeAxis!=='function')return out;
+  const dot=function(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; };
+  const ang=function(a){ let c=a*180/Math.PI; c=((c%360)+360)%360; return Math.round(c*1000)/1000%360; };
+  doc.features.forEach(function(f){
+    if(!f||f.type!=='hole'||f.visible===false||f.suppressed)return;
+    try{
+      const sk=(doc.sketches||[]).find(function(q){ return q.id===f.sketchId; }); if(!sk)return;
+      const N=holeNorm(f), A=holeAxis(f,sk), d=[A.dir.x,A.dir.y,A.dir.z];
+      const dz=dot(d,W), du=dot(d,U), dv=dot(d,V);
+      const tip=N.tip>0?N.r/Math.tan(N.tip*Math.PI/360):0;
+      const thr=f.thread&&f.thread.size?(typeof holeThreadLabel==='function'?holeThreadLabel(f.thread):f.thread.size):'';
+      A.pts.forEach(function(p,i){
+        const v=[p.x-Pf[0],p.y-Pf[1],p.z-Pf[2]], z=dot(v,W), ru=dot(v,U), rv=dot(v,V), r=Math.hypot(ru,rv);
+        const h={fid:f.id,key:f.id+':'+(p.id||i),d:+(2*N.r).toFixed(3),r:N.r,depth:N.depth,through:!!N.through,tip:tip,kind:N.kind,thr:thr,
+          end:N.end,ok:true,why:''};
+        if(Math.abs(Math.abs(dz)-1)<1e-3){
+          if(r<0.05)return; // dans l'axe : perçage en bout du tour
+          h.ax='ax'; h.z=z; h.rr=r; h.c=ang(Math.atan2(rv,ru)); h.fromBack=dz>0;
+          if(h.fromBack){ h.ok=false; h.why='percé depuis l’arrière : à faire en reprise'; }
+        }else if(Math.abs(dz)<1e-3){
+          // radial : la droite du trou passe par l'axe ; C = côté d'où entre le foret (−d)
+          const ou=-du/Math.hypot(du,dv), ov=-dv/Math.hypot(du,dv);
+          const re=ru*ou+rv*ov, off=Math.abs(ru*ov-rv*ou);
+          h.ax='rad'; h.z=z; h.c=ang(Math.atan2(ov,ou)); h.rr=re;
+          if(off>0.05){ h.ok=false; h.why='trou décalé de '+(+off.toFixed(2))+' mm de l’axe : demande un axe Y'; }
+          if(re<0){ h.ok=false; h.why='perçage vers l’extérieur'; }
+        }else{ h.ax='inc'; h.z=z; h.c=0; h.rr=r; h.ok=false; h.why='trou incliné : demande un axe B'; }
+        if(h.ok&&N.kind!=='simple')h.note=N.kind==='cbore'?'lamage non fait':N.kind==='csink'?'fraisure non faite':'étage non fait';
+        if(h.ok&&(N.end==='next'||N.end==='upto'))h.note=(h.note?h.note+', ':'')+'profondeur prise sur la fiche du trou';
+        out.push(h);
+      });
+    }catch(e){}
+  });
+  return out;
+}
+function tourCHolesOf(setup){
+  const M=tourModel(setup); if(!M||!M.ok)return [];
+  return tourCHolesRaw(M.W,M.U,M.V,M.Pf,M);
+}
+function tourSectionAngle(H){
+  // angle du plan de coupe le plus loin de tous les trous (le plan contient C et C + 180°)
+  if(!H||!H.length)return 0;
+  const A=H.filter(function(h){ return h.ax==='ax'||h.ax==='rad'; }).map(function(h){ return h.c%180; });
+  if(!A.length)return 0;
+  const dist=function(p){ let m=1/0; A.forEach(function(a){ let e=Math.abs(p-a)%180; e=Math.min(e,180-e); if(e<m)m=e; }); return m; };
+  if(dist(0)>=20)return 0;
+  let best=0, bd=-1;
+  for(let p=0;p<180;p++){ const e=dist(p); if(e>bd+1e-9){ bd=e; best=p; } }
+  return best;
+}
+function tourLiveDrillFor(s,dir,d){
+  // foret motorisé de ce sens au Ø du trou : celui de la liste, sinon un inutilisé mis à ce Ø, sinon un ajouté
+  const T=s.tools||(s.tools=[]), k=dir==='ax'?'ldrilla':'ldrillr';
+  const ok=T.filter(function(t){ return tourToolMatch(t,k)&&Math.abs(+t.d-d)<0.01; })[0];
+  if(ok)return ok;
+  const used=function(t){ return (s.ops||[]).some(function(o){ return o&&o.toolId===t.id; }); };
+  let t=T.filter(function(t){ return tourToolMatch(t,k)&&!used(t); })[0];
+  if(!t){ t=tourToolNew(k,s); T.push(t); }
+  t.d=+(+d).toFixed(3); t.name='Foret motorisé '+(dir==='ax'?'axial':'radial')+' Ø'+(+t.d.toFixed(2));
+  return t;
+}
+
+/* ═══════════════ 89-fao-tour-20-parcours.js — fao tour 20 parcours ═══════════════ */
+/* ═══ Tournage : trajectoires (V1.2.7) ═══
+   Coordonnées (z, x) : z le long de l'axe (0 = face avant de la pièce finie),
+   x = RAYON (le programme écrit le diamètre). Les mouvements rendus sont ceux du
+   POINT PROGRAMMÉ de l'outil :
+   - plaquette : coin théorique (z = centre du bec − rε, x = centre − rε), celui
+     que la machine mesure quand on touche une face puis un diamètre ;
+   - foret : la pointe, sur l'axe ;
+   - lame de tronçonnage : son coin AVANT (côté pièce), en bas.
+   Mouvement : {rap:1|0, z, x, arc?:{cz,cx,R,cw}} — cw vu Z à droite, X en haut.
+
+   Calcul : pour chaque position z du CENTRE du bec, le rayon le plus bas où la
+   plaquette entière (bec + deux arêtes) ne touche pas le profil (« contrainte »).
+   La finition suit cette contrainte et retrouve les vraies lignes et les vrais
+   arcs du profil décalé (G1 / G2 / G3) ; là où les arêtes de la plaquette
+   empêchent de descendre (creux trop raide), elle passe au-dessus et le dit. */
+
+function tourInsertGeo(t,s){
+  // Plaquette : bec de rayon rε (+ surépaisseur s), arête principale à κ de l'avance
+  // (vers −Z), arête secondaire à ε de la première. Centre du bec en (0, 0).
+  const D=Math.PI/180;
+  const re=Math.max(0.01,+t.re||0.4)+(s>0?s:0);
+  const eps=Math.max(20,Math.min(100,+t.eps||80))*D, kap=Math.max(60,Math.min(120,+t.kap||95))*D;
+  const l=Math.max(2,+t.l||12);
+  const d1=[-Math.cos(kap),Math.sin(kap)];
+  const d2=[d1[0]*Math.cos(eps)+d1[1]*Math.sin(eps),-d1[0]*Math.sin(eps)+d1[1]*Math.cos(eps)];
+  const bl=Math.hypot(d1[0]+d2[0],d1[1]+d2[1]), b=[(d1[0]+d2[0])/bl,(d1[1]+d2[1])/bl];
+  const k=re/Math.sin(eps/2), V=[-b[0]*k,-b[1]*k], tt=re/Math.tan(eps/2);
+  const T1=[V[0]+d1[0]*tt,V[1]+d1[1]*tt], T2=[V[0]+d2[0]*tt,V[1]+d2[1]*tt];
+  const A1=[V[0]+d1[0]*l,V[1]+d1[1]*l], A2=[V[0]+d2[0]*l,V[1]+d2[1]*l];
+  const F=[V[0]+(d1[0]+d2[0])*l,V[1]+(d1[1]+d2[1])*l];
+  const a1=Math.atan2(T1[1],T1[0]), a2=a1+(Math.PI-eps);
+  const edges=[[T2,A2],[A2,F],[F,A1],[A1,T1]];
+  const poly=[];
+  for(let i=0;i<=16;i++){ const a=a1+(a2-a1)*i/16; poly.push([re*Math.cos(a),re*Math.sin(a)]); }
+  poly.push(A2,F,A1);
+  let x0=1/0,x1=-1/0; poly.forEach(function(p){ if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; });
+  const E=edges.map(function(e){ const p=e[0],q=e[1]; return {lo:Math.min(p[0],q[0]),hi:Math.max(p[0],q[0]),
+    p:p,q:q,m:Math.abs(q[0]-p[0])>1e-12?(q[1]-p[1])/(q[0]-p[0]):null}; });
+  // dz où le point BAS du bec est sur l'arc du bec
+  const low=function(dz){
+    let v=1/0;
+    if(dz>=-re&&dz<=re){
+      const y=-Math.sqrt(Math.max(0,re*re-dz*dz));
+      if(tourAngIn(Math.atan2(y,dz),a1,a2))v=y;
+    }
+    for(let i=0;i<4;i++){ const e=E[i];
+      if(dz<e.lo-1e-12||dz>e.hi+1e-12)continue;
+      const y=e.m===null?Math.min(e.p[1],e.q[1]):e.p[1]+e.m*(dz-e.p[0]);
+      if(y<v)v=y; }
+    return v;
+  };
+  const lowNose=function(dz){ return (dz>=-re&&dz<=re)?-Math.sqrt(Math.max(0,re*re-dz*dz)):1/0; };
+  return {re:re,poly:poly,x0:x0,x1:x1,low:low,lowNose:lowNose};
+}
+function tourProfilePts(M,zEnd,ext){
+  // Nuage du profil, la face arrière remplacée par un prolongement horizontal
+  // (la pièce continue dans la barre jusqu'au tronçonnage).
+  const L=M.L, out=[];
+  let rBack=0;
+  M.pts.forEach(function(p){ if(p[0]>-L+1e-6)out.push(p); });
+  // rayon au ras de la face arrière
+  out.forEach(function(p){ if(p[0]<=-L+0.02&&p[1]>rBack)rBack=p[1]; });
+  if(!(rBack>0))rBack=Math.max(0,tourElemsEvalTop(M.elems,-L+0.01));
+  const z1=Math.min(zEnd,-L)-Math.max(1,ext||0);
+  for(let z=-L;z>=z1;z-=0.01)out.push([z,rBack]);
+  return out;
+}
+function tourConstraint(pts,geo,zTop,zBot,h,dr,bz){
+  // C[i] = rayon mini du centre du bec à z = zTop − i·h (−Infinity = rien sous l'outil)
+  const N=Math.max(2,Math.floor((zTop-zBot)/h+1e-9)+1);
+  // un point par case de 0,0002 mm en z (le plus haut) : les points d'une même face verticale se
+  // dominent ; une case plus large perdrait les points bas d'une pente raide (bec trop enfoncé)
+  const hb=2e-4;
+  const mp=new Map();
+  pts.forEach(function(p){ const k=Math.round(p[0]/hb), e=mp.get(k); if(!e||p[1]>e[1])mp.set(k,p); });
+  const P=Array.from(mp.values()).sort(function(a,b){return b[0]-a[0];});
+  const PZ=new Float64Array(P.length), PR=new Float64Array(P.length);
+  P.forEach(function(p,i){ PZ[i]=p[0]; PR[i]=p[1]; });
+  const lowB=bz>0?function(dz){ let v=1/0; for(let j=0;j<=4;j++){ const w=geo.low(dz-bz+bz*j/2); if(w<v)v=w; } return v; }:geo.low;
+  const C=new Float64Array(N), CN=new Float64Array(N);
+  let j0=0;
+  const zmin=geo.x0-bz, zmax=geo.x1+bz;
+  for(let i=0;i<N;i++){
+    const zi=zTop-i*h, hi=zi+zmax, lo=zi+zmin;
+    while(j0<P.length&&PZ[j0]>hi)j0++;
+    let c=-1/0, cn=-1/0;
+    for(let j=j0;j<P.length&&PZ[j]>=lo;j++){
+      const dz=PZ[j]-zi;
+      const w=lowB(dz);
+      if(w<1/0){ const v=PR[j]+dr-w; if(v>c)c=v; }
+      const wn=geo.lowNose(dz);
+      if(wn<1/0){ const v=PR[j]+dr-wn; if(v>cn)cn=v; }
+    }
+    C[i]=c; CN[i]=cn;
+  }
+  return {zTop:zTop,h:h,N:N,C:C,CN:CN};
+}
+function tourOpTool(setup,op){ return tourToolById(setup,op.toolId)||tourToolFor(setup,op.type,tourOpCote(op)); }
+function tourCut(setup,op){
+  const t=tourOpTool(setup,op)||{};
+  const vc=(isFinite(+op.vc)&&+op.vc>0)?+op.vc:(+t.vc>0?+t.vc:150);
+  let f=(isFinite(+op.f)&&+op.f>0)?+op.f:(+t.f>0?+t.f:0.1), D=0;
+  if(op.type==='tour_thread'){ const th=tourOpGen(setup,op).thread; f=th?th.P:f; D=th?th.D:0; } // avance = pas, broche constante au Ø du filet
+  return {vc:vc,f:f,t:t,D:D};
+}
+// Ø qui fixe la vitesse de broche : foret et filetage à vitesse constante (G97), sinon le Ø coupé (G96)
+function tourSpinD(cut,x){ const t=cut.t||{}; if(t.kind==='tdrill'||t.kind==='ldrill')return Math.max(0.5,+t.d||10); if(cut.D>0)return cut.D; return Math.max(1,2*Math.abs(x)); }
+function tourFrontZ(setup,op){
+  // surface avant de la matière quand l'opération commence : dressée par un
+  // Dressage actif placé avant, sinon celle du brut
+  const S=tourStock(setup); let z=S.face;
+  const ops=setup.ops||[];
+  for(let i=0;i<ops.length&&ops[i]!==op;i++){ const o=ops[i]; if(o&&o.on!==false&&o.type==='tour_face')z=Math.min(z,Math.max(0,+o.laisse||0)); }
+  return z;
+}
+function tourSafe(setup){ const S=tourStock(setup), C=tourCfg(setup); return {x:S.R+C.clrX, z:S.face+C.clrZ}; }
+
+/* ----- opérations ----- */
+function tourGenFace(setup,op){
+  const S=tourStock(setup), sf=tourSafe(setup), t=tourOpTool(setup,op), re=+t.re||0.4;
+  const zf=Math.max(0,+op.laisse||0), ap=Math.max(0.05,+op.ap||1);
+  const mv=[], W=[];
+  if(t.kind!=='turn')W.push('outil de dressage : prendre une plaquette');
+  const span=S.face-zf;
+  const n=Math.max(1,Math.ceil(span/ap-1e-9));
+  const xe=-(re+0.1); // le bec passe le centre
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  for(let k=1;k<=n;k++){
+    const z=span>1e-9?S.face-span*k/n:zf;
+    mv.push({rap:1,z:z,x:sf.x});
+    mv.push({rap:0,z:z,x:xe});
+    mv.push({rap:0,z:z+0.5,x:xe});
+    mv.push({rap:1,z:z+0.5,x:sf.x});
+  }
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  return {moves:mv,warns:W,info:n+' passe'+(n>1?'s':'')+' de '+(+(span/n).toFixed(3))+' mm jusqu’à Z'+(+zf.toFixed(3))};
+}
+/* ----- contexte d'usinage : extérieur, ou intérieur vu en MIROIR -----
+   L'intérieur (alésage) se calcule comme l'extérieur dans le repère (z, −r) : la paroi
+   devient un profil avec la pièce DESSOUS, la barre d'alésage une plaquette ordinaire,
+   l'axe (le trou percé) le côté dégagé. Les mouvements sont rendus au repère réel
+   (x → −x, sens des arcs inversé) par tourCtxBack. */
+function tourMirrorElems(E){
+  return E.map(function(e){ const o={t:e.t,z1:e.z1,r1:-e.r1,z2:e.z2,r2:-e.r2};
+    if(e.t==='A'){ o.cz=e.cz; o.cr=-e.cr; o.R=e.R; o.ccw=!e.ccw; } return o; });
+}
+function tourHoleR(setup,op){
+  // trou déjà là quand l'opération commence : le plus grand foret actif placé avant
+  // {r, depth (au Ø plein, depuis la face avant)} ; ou le brut d'une reprise
+  let r=0, depth=0;
+  const ops=setup.ops||[];
+  for(let i=0;i<ops.length&&ops[i]!==op;i++){
+    const o=ops[i]; if(!o||o.on===false||o.type!=='tour_drill')continue;
+    const t=tourOpTool(setup,o); if(!t||t.kind!=='tdrill')continue;
+    const g=tourOpGen(setup,o); let zt=0; g.moves.forEach(function(m){ if(m.z<zt)zt=m.z; });
+    const d=Math.max(0.5,+t.d||10), half=Math.max(30,Math.min(90,(+t.ang||118)/2))*Math.PI/180, tip=(d/2)/Math.tan(half);
+    if(d/2>r){ r=d/2; depth=-zt-tip; }
+  }
+  const SP=tourStockProfile(setup);
+  if(SP&&SP.rin0>r){ r=SP.rin0; depth=SP.rinDepth; }
+  return {r:r,depth:depth};
+}
+function tourCtx(setup,op){
+  const M=tourModel(setup); if(!M||!M.ok)return {err:(M&&M.warns&&M.warns[0])||'profil introuvable',M:M};
+  const S=tourStock(setup), sf=tourSafe(setup);
+  const zS=tourFrontZ(setup,op);
+  if(op.cote!=='int'){
+    const zEnd=tourZEnd(setup,op);
+    return {M:M,inner:false,top:S.R,topAt:tourStockTopFn(setup),safe:sf,zS:zS,zEnd:zEnd,floor:null,src:M.src,
+      pts:function(ext){ return tourProfilePts(M,zEnd,ext); },
+      cand:function(ext){
+        // profil prolongé (pour les candidats) : face arrière remplacée par l'horizontale
+        const E=[];
+        M.elems.forEach(function(e){ if(Math.min(e.z1,e.z2)<-M.L+1e-6&&Math.abs(e.z1-e.z2)<1e-9)return; E.push(e); });
+        if(E.length){ const e=E[E.length-1]; E.push({t:'L',z1:e.z2,r1:e.r2,z2:Math.min(zEnd,-M.L)-ext,r2:e.r2}); }
+        return E;
+      }};
+  }
+  const I=M.inner;
+  if(!I)return {err:M.src==='exact'?'pas d’alésage dans la pièce (axe plein à l’avant)':'intérieur : profil exact requis (noyau)',M:M};
+  const H=tourHoleR(setup,op);
+  if(!(H.r>0))return {err:'intérieur : percer d’abord (Perçage en bout avant cette opération)',M:M};
+  const warns=[];
+  let zEnd=I.through?tourZEnd(setup,op):I.zb;
+  if(isFinite(+op.zEnd)&&op.zEnd!==null&&op.zEnd!=='')zEnd=Math.max(+op.zEnd,I.through?-1/0:I.zb);
+  // trou percé moins profond que la paroi (débouchant : la longueur de la pièce) : intérieur arrêté au trou
+  const need=I.through?M.L:-I.zb;
+  if(H.depth>0&&H.depth<need-1e-6)warns.push('trou percé sur '+(+H.depth.toFixed(2))+' mm seulement : intérieur arrêté là');
+  if(H.depth>0&&-zEnd>H.depth)zEnd=-H.depth;
+  const Rf=Math.max(I.r0,tourElemsEvalTop(M.elems,-1e-3));
+  const ME=tourMirrorElems([{t:'L',z1:0,r1:Rf,z2:0,r2:I.r0}].concat(I.elems));
+  const clr=Math.min(1,0.3*H.r);
+  const tail=function(ext){
+    const e=ME[ME.length-1], z1=Math.min(zEnd,e.z2)-ext;
+    return I.through?{t:'L',z1:e.z2,r1:e.r2,z2:z1,r2:e.r2}:{t:'L',z1:e.z2,r1:0,z2:z1,r2:0};
+  };
+  return {M:M,inner:true,top:-H.r,topAt:null,safe:{x:-(H.r-clr),z:sf.z},outSafe:sf,zS:zS,zEnd:zEnd,floor:-1/0,src:M.src,hole:H,
+    cap:I.through?null:(-H.r),warns:warns,
+    pts:function(ext){ return tourElemsSample(ME.concat([tail(ext)]),0.01); },
+    cand:function(ext){ return ME.concat([tail(ext)]); }};
+}
+function tourOpZEnd(setup,op){ // Z de fin affiché dans la fiche
+  if(op.cote==='int'){ const c=tourCtx(setup,op); return c.err?tourZEnd(setup,op):+c.zEnd.toFixed(3); }
+  return tourZEnd(setup,op);
+}
+function tourCtxBack(ctx,r){
+  // mouvements du repère miroir → repère réel, avec l'entrée et la sortie par l'avant
+  if(!ctx.inner||!r||!r.moves.length)return r;
+  const mv=r.moves.map(function(m){ const o={rap:m.rap,z:m.z,x:-m.x}; if(m.arc)o.arc={cz:m.arc.cz,cx:-m.arc.cx,R:m.arc.R,cw:!m.arc.cw}; return o; });
+  const sf=ctx.outSafe;
+  mv.unshift({rap:1,z:sf.z,x:sf.x});
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  r.moves=mv;
+  return r;
+}
+function tourBarCheck(ctx,t,r){
+  const dm=+t.dmin||0;
+  if(dm>0&&2*ctx.hole.r<dm-1e-6)r.warns.push('barre pour Ø'+(+dm.toFixed(2))+' mini dans un trou Ø'+(+(2*ctx.hole.r).toFixed(2)));
+}
+function tourGenRough(setup,op){
+  const t=tourOpTool(setup,op), inner=op.cote==='int';
+  if(t.kind!==(inner?'bore':'turn'))return {moves:[],warns:[inner?'chariotage intérieur : choisir une barre d’alésage':'chariotage : choisir une plaquette'],info:''};
+  const ctx=tourCtx(setup,op); if(ctx.err)return {moves:[],warns:[ctx.err],info:''};
+  const r=tourRoughCore(ctx,op,t);
+  if(ctx.warns)r.warns=ctx.warns.concat(r.warns);
+  if(inner)tourBarCheck(ctx,t,r);
+  return tourCtxBack(ctx,r);
+}
+function tourRoughCore(ctx,op,t){
+  const re=+t.re||0.4, W=[];
+  const ap=Math.max(0.1,+op.ap||2), sx=Math.max(0,isFinite(+op.sx)?+op.sx:0.3), sz=Math.max(0,isFinite(+op.sz)?+op.sz:0.1);
+  const m=Math.min(sx,sz), geo=tourInsertGeo(t,m);
+  const zEnd=ctx.zEnd, zS=ctx.zS, sf=ctx.safe, S={R:ctx.top};
+  const pts=ctx.pts(geo.x1+2);
+  const h=0.02;
+  const zTop=zS+re+1, zBot=zEnd+re;
+  const K=tourConstraint(pts,geo,zTop,zBot,h,sx-m,sz-m);
+  const N=K.N, zAt=function(i){ return zTop-i*h; };
+  let C=K.C;
+  let cmin=1/0; for(let i=0;i<N;i++)if(C[i]>-1/0&&C[i]<cmin)cmin=C[i];
+  if(!(cmin<1/0))return {moves:[],warns:['rien à charioter'],info:''};
+  // devant la pièce (rien dessous) : passes jusqu'au plus petit rayon de la pièce, le reste au dressage
+  const C0=C; C=new Float64Array(N); for(let i=0;i<N;i++)C[i]=C0[i]>-1/0?C0[i]:cmin;
+  const mv=[];
+  const P=function(rap,z,c){ mv.push({rap:rap,z:z-re,x:c-re}); }; // centre du bec → point programmé
+  const top=S.R+re;
+  // brut d'une reprise (pas un cylindre) : rien à couper là où la matière est sous le niveau
+  const TA=ctx.topAt, mat=TA?function(i,c){ const z=zAt(i)-re; return Math.max(TA(z),TA(z-re),TA(z+re))>c-re+0.01; }:function(){ return true; };
+  const lev=[];
+  for(let c=top-ap;c>cmin+1e-6;c-=ap)lev.push(c);
+  if(!lev.length||lev[lev.length-1]-cmin>0.005)lev.push(cmin);
+  const xs=sf.x+re; // dégagement radial (centre)
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  let nPass=0;
+  lev.forEach(function(c,li){
+    const cp=li?lev[li-1]:top;
+    let i=0;
+    while(i<N){
+      if(!(C[i]<c-1e-9)||!mat(i,c)){ i++; continue; }
+      let ia=i; while(i<N&&C[i]<c-1e-9&&mat(i,c))i++;
+      const ib=i-1;
+      if(ib-ia<1&&ia>0)continue; // morceau d'une case : rien à enlever
+      nPass++;
+      if(ia===0){
+        P(1,zAt(0),xs); P(1,zAt(0),c);
+      }else{
+        let j=ia-1; while(j>0&&C[j]<cp)j--;
+        const j1=Math.min(j+1,ia);
+        P(1,zAt(j1),xs);
+        const e0=Math.min(C[j1],cp);
+        P(1,zAt(j1),Math.min(cp+0.5,xs));
+        const seg=[]; for(let q=j1;q<ia;q++)seg.push([zAt(q),Math.min(C[q],cp)]);
+        seg.push([zAt(ia),c]);
+        tourSimplify([[zAt(j1),e0]].concat(seg),0.005).forEach(function(p){ P(0,p[0],p[1]); });
+      }
+      P(0,zAt(ib),c);
+      if(ib>=N-1){ P(0,zAt(ib)+0.5,c+0.5); }
+      else{
+        const seg=[[zAt(ib),c]]; let q=ib+1;
+        for(;q<N&&C[q]<cp;q++)seg.push([zAt(q),C[q]]);
+        if(q<N)seg.push([zAt(q),cp]);
+        const S2=tourSimplify(seg,0.005); S2.shift();
+        S2.forEach(function(p){ P(0,p[0],p[1]); });
+        const last=S2.length?S2[S2.length-1]:[zAt(ib),c];
+        P(0,last[0]+0.5,last[1]+0.5);
+      }
+      const l=mv[mv.length-1];
+      mv.push({rap:1,z:l.z,x:sf.x});
+    }
+  });
+  if(op.profil!==false){
+    // passe de profil : enlève les marches laissées entre les passes
+    let f=0; while(f<N&&!(C0[f]>-1/0))f++;
+    if(f<N){
+      const seg=[]; for(let q=f;q<N;q++)seg.push([zAt(q),Math.max(C[q]>-1/0?C[q]:-1/0,cmin)]);
+      const S2=tourSimplify(seg,0.005);
+      P(1,S2[0][0]+1,xs); P(1,S2[0][0]+1,Math.min(S2[0][1],xs));
+      S2.forEach(function(p){ P(0,p[0],p[1]); });
+      const last=S2[S2.length-1]; P(0,last[0]+0.5,last[1]+0.5);
+      const l=mv[mv.length-1]; mv.push({rap:1,z:l.z,x:sf.x});
+    }
+  }
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  // matière laissée : seulement là où le brut (reprise) en a encore au-dessus du bec
+  const TL=ctx.topAt, held=function(i,cn){ return !TL||TL(zAt(i))>cn-re+0.02; };
+  let left=0; for(let i=0;i<N;i++)if(C0[i]>-1/0&&C0[i]>K.CN[i]+0.02&&held(i,K.CN[i]))left++;
+  if(left*h>0.2)W.push('creux trop raides pour cette plaquette sur '+(+(left*h).toFixed(1))+' mm : matière laissée (outil plus pointu à prévoir)');
+  return {moves:mv,warns:W,info:lev.length+' niveau'+(lev.length>1?'x':'')+' de '+(+ap.toFixed(2))+' mm, '+nPass+' passe'+(nPass>1?'s':'')+(op.profil!==false?' + passe de profil':'')+', laisse '+(+sx.toFixed(2))+' / '+(+sz.toFixed(2))+' mm'};
+}
+/* ----- finition : contrainte → vraies lignes et vrais arcs ----- */
+function tourCands(E,Rp){
+  const C=[];
+  E.forEach(function(e){
+    if(e.t==='L'){
+      const dz=e.z2-e.z1, dr=e.r2-e.r1, l=Math.hypot(dz,dr); if(l<1e-9)return;
+      const d=[dz/l,dr/l], n=[d[1],-d[0]];
+      C.push({t:'L',pz:e.z1+n[0]*Rp,pr:e.r1+n[1]*Rp,dz:d[0],dr:d[1],vert:Math.abs(d[0])<1e-9});
+    }else{
+      const a1=Math.atan2(e.r1-e.cr,e.z1-e.cz), a2=Math.atan2(e.r2-e.cr,e.z2-e.cz);
+      let d=a2-a1; const T=2*Math.PI; if(e.ccw){ while(d<=0)d+=T; } else { while(d>=0)d-=T; }
+      const am=a1+d/2, mz=e.cz+e.R*Math.cos(am), mr=e.cr+e.R*Math.sin(am);
+      const tg=e.ccw?[-Math.sin(am),Math.cos(am)]:[Math.sin(am),-Math.cos(am)], n=[tg[1],-tg[0]];
+      const vex=n[0]*(mz-e.cz)+n[1]*(mr-e.cr)>0;
+      const R2=vex?e.R+Rp:e.R-Rp;
+      if(R2>1e-6)C.push({t:'C',cz:e.cz,cr:e.cr,R:R2});
+    }
+    C.push({t:'C',cz:e.z1,cr:e.r1,R:Rp});
+  });
+  if(E.length){ const e=E[E.length-1]; C.push({t:'C',cz:e.z2,cr:e.r2,R:Rp}); }
+  return C;
+}
+function tourCandDist(c,z,r){
+  if(c.t==='L')return Math.abs((z-c.pz)*c.dr-(r-c.pr)*c.dz);
+  return Math.abs(Math.hypot(z-c.cz,r-c.cr)-c.R);
+}
+function tourCandProj(c,z,r){
+  if(c.t==='L'){ const s=(z-c.pz)*c.dz+(r-c.pr)*c.dr; return [c.pz+c.dz*s,c.pr+c.dr*s]; }
+  const a=Math.atan2(r-c.cr,z-c.cz); return [c.cz+c.R*Math.cos(a),c.cr+c.R*Math.sin(a)];
+}
+function tourCandX(A,B){
+  // intersections de deux candidats (droite / cercle)
+  const out=[];
+  if(A.t==='L'&&B.t==='L'){
+    const den=A.dz*B.dr-A.dr*B.dz; if(Math.abs(den)<1e-12)return out;
+    const s=((B.pz-A.pz)*B.dr-(B.pr-A.pr)*B.dz)/den; out.push([A.pz+A.dz*s,A.pr+A.dr*s]); return out;
+  }
+  if(A.t==='C'&&B.t==='L')return tourCandX(B,A);
+  if(A.t==='L'){
+    const fz=A.pz-B.cz, fr=A.pr-B.cr, b=fz*A.dz+fr*A.dr, c=fz*fz+fr*fr-B.R*B.R, D=b*b-c;
+    if(D<-1e-12)return out; const s=Math.sqrt(Math.max(0,D));
+    [-b-s,-b+s].forEach(function(t){ out.push([A.pz+A.dz*t,A.pr+A.dr*t]); }); return out;
+  }
+  const dx=B.cz-A.cz, dy=B.cr-A.cr, d=Math.hypot(dx,dy);
+  if(d<1e-12||d>A.R+B.R+1e-9||d<Math.abs(A.R-B.R)-1e-9)return out;
+  const l=(A.R*A.R-B.R*B.R+d*d)/(2*d), h=Math.sqrt(Math.max(0,A.R*A.R-l*l));
+  const mx=A.cz+dx*l/d, my=A.cr+dy*l/d;
+  out.push([mx-dy*h/d,my+dx*h/d],[mx+dy*h/d,my-dx*h/d]);
+  return out;
+}
+function tourFitPath(K,cands,pre,tol){
+  // K : contrainte échantillonnée ; pre : {cand, z, r} = montée le long de la face avant.
+  // Rend une suite de segments {z,r,arc?:{cz,cr,R,ccw}} depuis le point de départ.
+  const N=K.N, h=K.h, Z=function(i){ return K.zTop-i*h; };
+  const on=function(c,i){ return K.C[i]>-1/0&&tourCandDist(c,Z(i),K.C[i])<tol; };
+  const asg=new Int32Array(N).fill(-1);
+  let cur=-1;
+  for(let i=0;i<N;i++){
+    if(!(K.C[i]>-1/0)){ cur=-1; continue; }
+    if(cur>=0&&on(cands[cur],i)){ asg[i]=cur; continue; }
+    let pick=-1;
+    for(let c=0;c<cands.length;c++){
+      if(!on(cands[c],i))continue;
+      if(pick<0)pick=c;
+      if(i+1<N&&on(cands[c],i+1)&&!(cands[c].vert)){ pick=c; break; }
+    }
+    asg[i]=pick; cur=pick;
+  }
+  // morceaux : la montée le long de la face avant, puis un morceau par candidat
+  const P=[{c:pre.cand,s:[pre.z,pre.r],e:null,pre:1}];
+  for(let i=0;i<N;){
+    const a=asg[i]; let j=i; while(j+1<N&&asg[j+1]===a)j++;
+    if(K.C[i]>-1/0){
+      const c=a>=0?cands[a]:null, s0=[Z(i),K.C[i]], s1=[Z(j),K.C[j]], mi=(i+j)>>1;
+      const pc={c:c,i0:i,i1:j};
+      if(c){ pc.s=tourCandProj(c,s0[0],s0[1]); pc.e=tourCandProj(c,s1[0],s1[1]); pc.m=tourCandProj(c,Z(mi),K.C[mi]); }
+      else{ pc.s=s0; pc.e=s1; }
+      P.push(pc);
+    }
+    i=j+1;
+  }
+  const pickX=function(L,q){ let b=null,bd=1/0; L.forEach(function(X){ const d=Math.hypot(X[0]-q[0],X[1]-q[1]); if(d<bd){bd=d;b=X;} }); return b; };
+  const link=[]; // segment droit à insérer entre P[k−1] et P[k]
+  for(let k=1;k<P.length;k++){
+    const A=P[k-1], B=P[k];
+    const aEnd=A.e||[A.s[0],B.s[1]];
+    if(A.c&&B.c){
+      const X=pickX(tourCandX(A.c,B.c),B.s);
+      const lim=4*h+(A.pre?Math.abs(B.s[1]-A.s[1]):0);
+      if(X&&Math.hypot(X[0]-B.s[0],X[1]-B.s[1])<lim&&(A.pre||Math.hypot(X[0]-aEnd[0],X[1]-aEnd[1])<lim+Math.abs(aEnd[1]-B.s[1]))){
+        A.e=X; B.s=X; continue;
+      }
+      let done=false;
+      for(let c=0;c<cands.length&&!done;c++){
+        const V=cands[c]; if(!V.vert||V===A.c||V===B.c)continue;
+        if(V.pz<Math.min(aEnd[0],B.s[0])-2*h||V.pz>Math.max(aEnd[0],B.s[0])+2*h)continue;
+        const X1=pickX(tourCandX(A.c,V),aEnd), X2=pickX(tourCandX(V,B.c),B.s);
+        if(X1&&X2&&Math.hypot(X1[0]-aEnd[0],X1[1]-aEnd[1])<4*h&&Math.hypot(X2[0]-B.s[0],X2[1]-B.s[1])<4*h){
+          A.e=X1; B.s=X2; link[k]=1; done=true;
+        }
+      }
+      if(done)continue;
+    }
+    if(!A.e)A.e=aEnd;
+    link[k]=1;
+  }
+  const last=P[P.length-1]; if(!last.e)last.e=last.s;
+  const out=[];
+  const pushTo=function(c,from,to,mid){
+    if(Math.hypot(to[0]-from[0],to[1]-from[1])<1e-6)return;
+    if(c&&c.t==='C'&&c.R>1e-6&&mid){
+      const T=2*Math.PI, a0=Math.atan2(from[1]-c.cr,from[0]-c.cz), am=Math.atan2(mid[1]-c.cr,mid[0]-c.cz), a1=Math.atan2(to[1]-c.cr,to[0]-c.cz);
+      const ccw=((am-a0)%T+T)%T<=((a1-a0)%T+T)%T;
+      let sw=a1-a0; if(ccw){ while(sw<=0)sw+=T; } else { while(sw>=0)sw-=T; }
+      if(Math.abs(sw)<1e-7)return;
+      if(Math.abs(sw)>Math.PI*0.95){ const ah=a0+sw/2; out.push({z:c.cz+c.R*Math.cos(ah),r:c.cr+c.R*Math.sin(ah),arc:{cz:c.cz,cr:c.cr,R:c.R,ccw:ccw}}); }
+      out.push({z:to[0],r:to[1],arc:{cz:c.cz,cr:c.cr,R:c.R,ccw:ccw}});
+    }else out.push({z:to[0],r:to[1]});
+  };
+  let at=P[0].s;
+  P.forEach(function(pc,k){
+    if(k&&link[k])pushTo(null,at,pc.s,null);
+    if(pc.c){
+      // milieu : sur l'arc entre le début et la fin réels (après jonctions)
+      let mid=pc.m;
+      if(pc.c.t==='C'&&mid){
+        const T=2*Math.PI, ang=function(q){ return Math.atan2(q[1]-pc.c.cr,q[0]-pc.c.cz); };
+        const a0=ang(pc.s), am=ang(mid), a1=ang(pc.e), ccw=((am-a0)%T+T)%T<=((a1-a0)%T+T)%T;
+        let sw=a1-a0; if(ccw){ while(sw<=0)sw+=T; } else { while(sw>=0)sw-=T; }
+        const ah=a0+sw/2; mid=[pc.c.cz+pc.c.R*Math.cos(ah),pc.c.cr+pc.c.R*Math.sin(ah)];
+      }
+      pushTo(pc.c,pc.s,pc.e,mid);
+    }else{
+      const seg=[pc.s]; for(let i=pc.i0;i<=pc.i1;i++)seg.push([Z(i),K.C[i]]);
+      const S=tourSimplify(seg,0.002); S.shift();
+      S.forEach(function(q){ out.push({z:q[0],r:q[1]}); });
+    }
+    at=pc.e||at;
+  });
+  return out;
+}
+function tourGenFinish(setup,op){
+  const t=tourOpTool(setup,op), inner=op.cote==='int';
+  if(t.kind!==(inner?'bore':'turn'))return {moves:[],warns:[inner?'alésage : choisir une barre d’alésage':'finition : choisir une plaquette'],info:''};
+  const ctx=tourCtx(setup,op); if(ctx.err)return {moves:[],warns:[ctx.err],info:''};
+  const r=tourFinishCore(ctx,op,t);
+  if(ctx.warns)r.warns=ctx.warns.concat(r.warns);
+  if(inner)tourBarCheck(ctx,t,r);
+  return tourCtxBack(ctx,r);
+}
+function tourFinishCore(ctx,op,t){
+  const sf=ctx.safe, re=+t.re||0.4;
+  const s=Math.max(0,+op.laisse||0), geo=tourInsertGeo(t,s), Rp=geo.re;
+  const zEnd=ctx.zEnd;
+  const pts=ctx.pts(geo.x1+2);
+  const E=ctx.cand(geo.x1+2);
+  const h=0.01, zTop=Rp-1e-4, zBot=zEnd+re;
+  const K=tourConstraint(pts,geo,zTop,zBot,h,0,0);
+  const cands=tourCands(E,Rp);
+  // départ : face avant, 1 mm sous son coin
+  let r0=0; for(let i=0;i<E.length;i++){ const e=E[i]; if(Math.abs(e.z1)<1e-6&&Math.abs(e.z2)<1e-6){ r0=Math.max(e.r1,e.r2); continue; } break; }
+  const rS=Math.max(ctx.floor===null?re:ctx.floor,r0-1+Rp-re);
+  const front={t:'L',pz:Rp,pr:0,dz:0,dr:1,vert:true};
+  let segs=tourFitPath(K,cands,{cand:front,z:Rp,r:rS},6e-4);
+  if(ctx.cap!=null){
+    // fond d'un alésage borgne : la remontée le long du fond s'arrête au trou percé
+    const cap=ctx.cap+Rp, out=[]; let pz=Rp, pr=rS;
+    for(let i=0;i<segs.length;i++){ const g=segs[i];
+      if(g.r>cap+1e-9){ if(!g.arc&&g.r-pr>1e-9){ const u=(cap-pr)/(g.r-pr); if(u>1e-6)out.push({z:pz+(g.z-pz)*u,r:cap}); } break; }
+      out.push(g); pz=g.z; pr=g.r; }
+    segs=out;
+  }
+  const mv=[];
+  const P=function(rap,z,c,arc){ const m={rap:rap,z:z-re,x:c-re}; if(arc)m.arc={cz:arc.cz-re,cx:arc.cr-re,R:arc.R,cw:!arc.ccw}; mv.push(m); };
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  P(1,Rp+2,rS); P(0,Rp,rS);
+  let nArc=0, nLin=0;
+  segs.forEach(function(g){ if(g.arc)nArc++; else nLin++; P(0,g.z,g.r,g.arc); });
+  const l=mv[mv.length-1];
+  mv.push({rap:0,z:l.z,x:l.x+1});
+  mv.push({rap:1,z:l.z,x:sf.x});
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  const W=[];
+  const TL=ctx.topAt;
+  let left=0; for(let i=0;i<K.N;i++)if(K.C[i]>K.CN[i]+0.01&&(!TL||TL(zTop-i*h)>K.CN[i]-Rp+0.02))left++;
+  if(left*h>0.05)W.push('creux trop raides pour cette plaquette sur '+(+(left*h).toFixed(1))+' mm : la finition passe au-dessus (matière laissée)');
+  return {moves:mv,warns:W,info:nLin+' droite'+(nLin>1?'s':'')+', '+nArc+' arc'+(nArc>1?'s':'')+' (G2/G3)'+(s?', laisse '+s+' mm':'')+(ctx.src==='exact'?'':' — profil du maillage')};
+}
+function tourGenDrill(setup,op){
+  const M=tourModel(setup), S=tourStock(setup), sf=tourSafe(setup), t=tourOpTool(setup,op);
+  if(t.kind!=='tdrill')return {moves:[],warns:['perçage : choisir un foret'],info:''};
+  const d=Math.max(0.5,+t.d||10), half=Math.max(30,Math.min(90,(+t.ang||118)/2))*Math.PI/180, tip=(d/2)/Math.tan(half);
+  const W=[];
+  let depth=+op.depth, plein=op.plein!==false, src='saisie';
+  const B=M&&M.ok?M.bore:null;
+  if(!(depth>0)){
+    if(B){ depth=B.through?(M.L+0.5):(plein?B.full:B.end); src=B.through?'trou débouchant':'trou du modèle'; if(B.through)plein=true;
+      const rr=(M.inner&&M.inner.rmin<1/0)?Math.min(B.r,M.inner.rmin):B.r; if(Math.abs(2*rr-d)>0.05)W.push('foret Ø'+(+d.toFixed(2))+' pour un trou Ø'+(+(2*rr).toFixed(2))); }
+    else { depth=2*d; src='par défaut'; }
+  }
+  const zTip=-(depth+(plein?tip:0));
+  const zS=tourFrontZ(setup,op)+1;
+  const q=Math.max(0,+op.q||0);
+  const mv=[{rap:1,z:sf.z,x:sf.x},{rap:1,z:sf.z,x:0},{rap:1,z:zS,x:0}];
+  let zc=zS, nb=0;
+  if(q>0){
+    let z=zS;
+    while(z>zTip+1e-9){
+      const zn=Math.max(zTip,z-q);
+      if(nb)mv.push({rap:1,z:Math.min(zS,z+0.5),x:0});
+      mv.push({rap:0,z:zn,x:0}); nb++;
+      if(zn>zTip+1e-9)mv.push({rap:1,z:zS,x:0});
+      z=zn;
+    }
+  }else{ mv.push({rap:0,z:zTip,x:0}); nb=1; }
+  zc=zTip;
+  mv.push({rap:1,z:sf.z,x:0},{rap:1,z:sf.z,x:sf.x});
+  if(zTip-tip<S.chuck+1)W.push('le foret atteint le mandrin');
+  return {moves:mv,warns:W,info:'Ø'+(+d.toFixed(2))+', profondeur '+(+depth.toFixed(2))+' mm'+(plein?' au Ø plein':' à la pointe')+' ('+src+'), pointe à Z'+(+zc.toFixed(3))+(nb>1?', '+nb+' débourrages':'')};
+}
+function tourGenPart(setup,op){
+  const M=tourModel(setup), S=tourStock(setup), sf=tourSafe(setup), t=tourOpTool(setup,op);
+  if(t.kind!=='part')return {moves:[],warns:['tronçonnage : choisir une lame de tronçonnage'],info:''};
+  const w=Math.max(0.5,+t.w||3);
+  const L=M&&M.ok?M.L:S.L;
+  const RP=tourRepriseOf(setup), zr=(isFinite(+op.z)&&op.z!==null&&op.z!=='')?+op.z:-L-(RP?tourCfg(RP).rep.sur:0);
+  // pièce percée de part en part : la lame s'arrête 0,3 mm dans le trou (la pièce tombe)
+  const HR=(+op.dEnd>0)?null:tourHoleR(setup,op);
+  const xe=(+op.dEnd>0)?(+op.dEnd)/2:((HR&&HR.r>0.5&&HR.depth>=-zr-1e-6)?HR.r-0.3:-0.2);
+  const W=[];
+  if(zr-w<S.chuck+1)W.push('la lame touche le mandrin : sortir la barre davantage');
+  if(S.R-xe>(+t.h||20)+1e-6)W.push('profondeur de coupe '+(+(S.R-xe).toFixed(1))+' mm > profondeur utile de la lame ('+(+t.h||20)+' mm)');
+  const q=Math.max(0,+op.q||0);
+  const mv=[{rap:1,z:sf.z,x:sf.x},{rap:1,z:zr,x:sf.x},{rap:1,z:zr,x:S.R+0.5}];
+  if(q>0){
+    let x=S.R+0.5;
+    while(x>xe+1e-9){ const xn=Math.max(xe,x-q); mv.push({rap:0,z:zr,x:xn}); if(xn>xe+1e-9)mv.push({rap:1,z:zr,x:xn+0.3}); x=xn; }
+  }else mv.push({rap:0,z:zr,x:xe});
+  mv.push({rap:1,z:zr,x:sf.x},{rap:1,z:sf.z,x:sf.x});
+  return {moves:mv,warns:W,info:'coupe à Z'+(+zr.toFixed(3))+' (coin avant de la lame, largeur '+w+' mm) jusqu’à Ø'+(+Math.max(0,2*xe).toFixed(2))};
+}
+/* ----- gorges (étape 2) -----
+   Zones : là où la plaquette de FINITION du même côté laisse de la matière (sa trace
+   balayée reste au-dessus du profil), l'outil à gorge plonge, au pas de 0,8 × sa
+   largeur, jusqu'au fond permis (la lame entière ne touche jamais la pièce), puis
+   une passe de fond reprend la surépaisseur fin. Point programmé : coin AVANT bas
+   de la lame (comme le tronçonnage) ; à l'intérieur, coin avant côté paroi. */
+function tourBladeGeo(w,rc){
+  const half=w/2, r=Math.max(0,Math.min(half-0.005,rc||0));
+  const low=function(dz){ const a=Math.abs(dz); if(a>half+1e-12)return 1/0; if(a<=half-r)return 0; const u=a-(half-r); return r-Math.sqrt(Math.max(0,r*r-u*u)); };
+  return {re:0,x0:-half,x1:half,low:low,lowNose:low};
+}
+function tourGroovesFor(ctx,setup,h){
+  // zones où la finition laisse de la matière : [{ja, jb}] sur la grille de pas h, depuis zTop
+  const inner=ctx.inner;
+  const fop=(setup.ops||[]).filter(function(o){ return o&&o.on!==false&&o.type==='tour_finish'&&(o.cote==='int')===inner; })[0];
+  const ft=fop?tourOpTool(setup,fop):tourToolFor(setup,'tour_finish',inner?'int':'ext');
+  if(!ft||ft.kind!==(inner?'bore':'turn'))return {err:'pas de plaquette de finition '+(inner?'intérieure':'extérieure')+' pour situer les gorges'};
+  const fg=tourInsertGeo(ft,0), ext=Math.max(fg.x1,6)+2;
+  const pts=ctx.pts(ext);
+  const zTop=Math.max(fg.re,1)+1, zBot=ctx.zEnd;
+  const K=tourConstraint(pts,fg,zTop,zBot,h,0,0);
+  const N=K.N;
+  // trace balayée de la finition : le point le plus bas de la plaquette au-dessus de chaque z
+  const Sw=new Float64Array(N).fill(1/0);
+  const w0=Math.ceil(-fg.x0/h)+1, w1=Math.ceil(fg.x1/h)+1;
+  for(let i=0;i<N;i++){ const c=K.C[i]; if(!(c>-1/0))continue;
+    for(let j=Math.max(0,i-w1);j<=Math.min(N-1,i+w0);j++){ const lw=fg.low((i-j)*h); if(lw<1/0){ const v=c+lw; if(v<Sw[j])Sw[j]=v; } } }
+  // dessus de la pièce par case
+  const Pt=new Float64Array(N).fill(-1/0);
+  pts.forEach(function(p){ const j=Math.round((zTop-p[0])/h); if(j>=0&&j<N&&p[1]>Pt[j])Pt[j]=p[1]; });
+  const left=function(j){ return Pt[j]>-1/0&&Sw[j]<1/0&&Sw[j]-Pt[j]>0.02; };
+  const Z=[]; let j=0;
+  while(j<N){
+    if(!left(j)){ j++; continue; }
+    const a=j; while(j<N&&left(j))j++;
+    const b=j-1;
+    if(Z.length&&a-Z[Z.length-1].jb<=Math.ceil(0.2/h))Z[Z.length-1].jb=b; else Z.push({ja:a,jb:b});
+  }
+  // un coin rentrant garde le rayon du bec de finition : pas une gorge
+  const keep=function(z){ let dm=0; for(let k=z.ja;k<=z.jb;k++){ const d=Sw[k]-Pt[k]; if(d>dm)dm=d; }
+    return (z.jb-z.ja)*h>=0.05&&(dm>1.05*fg.re+0.01||(z.jb-z.ja)*h>2*fg.re+0.1); };
+  return {zones:Z.filter(keep),Sw:Sw,Pt:Pt,zTop:zTop,N:N,pts:pts,ft:ft};
+}
+function tourGenGroove(setup,op){
+  const t=tourOpTool(setup,op), inner=op.cote==='int';
+  if(t.kind!=='groove'||!!t.int!==inner)return {moves:[],warns:['gorge : choisir un outil à gorge '+(inner?'intérieur':'extérieur')],info:''};
+  const ctx=tourCtx(setup,op); if(ctx.err)return {moves:[],warns:[ctx.err],info:''};
+  const r=tourGrooveCore(ctx,op,t,setup);
+  if(ctx.warns)r.warns=ctx.warns.concat(r.warns);
+  if(inner)tourBarCheck(ctx,t,r);
+  return tourCtxBack(ctx,r);
+}
+function tourGrooveCore(ctx,op,t,setup){
+  const W=[], h=0.02, sf=ctx.safe;
+  const w=Math.max(0.3,+t.w||2), half=w/2, hU=Math.max(0.5,+t.h||4);
+  const G=tourGroovesFor(ctx,setup,h); if(G.err)return {moves:[],warns:[G.err],info:''};
+  if(!G.zones.length)return {moves:[],warns:['aucune gorge : la finition atteint tout le profil'],info:''};
+  // morceaux d'une même gorge séparés de moins d'une largeur d'outil : une seule
+  const ZN=[]; G.zones.forEach(function(z){ const p=ZN[ZN.length-1]; if(p&&(z.ja-p.jb)*h<w)p.jb=z.jb; else ZN.push({ja:z.ja,jb:z.jb}); });
+  const lai=Math.max(0,+op.laisse||0), fin=Math.max(0,isFinite(+op.fin)?+op.fin:0.1), q=Math.max(0,+op.q||0);
+  const geo=tourBladeGeo(w,+t.rc||0);
+  const zTop=G.zTop, hb=0.005;
+  const K=tourConstraint(G.pts,geo,zTop,ctx.zEnd-half,hb,lai,0);
+  const Cb=function(z){ const i=Math.round((zTop-z)/hb); return (i>=0&&i<K.N)?K.C[i]:-1/0; };
+  const mv=[{rap:1,z:sf.z,x:sf.x}];
+  let nP=0; const info=[];
+  ZN.forEach(function(Zn){
+    const za=zTop-Zn.ja*h, zb=zTop-Zn.jb*h, span=za-zb;
+    let top=-1/0; for(let j=Zn.ja;j<=Zn.jb;j++)if(G.Sw[j]<1/0&&G.Sw[j]>top)top=G.Sw[j];
+    const xr=Math.min(top+0.5,sf.x);
+    // centres utiles : là où la lame descend sous la matière laissée (contre les parois, à 0,005 mm)
+    let qa=null, qb=null;
+    const i0=Math.max(0,Math.ceil((zTop-za-half)/hb)), inR=function(i){ return i<K.N&&zTop-i*hb>=zb-half-1e-9; };
+    let lo=1/0; for(let i=i0;inR(i);i++)if(K.C[i]<lo)lo=K.C[i];
+    // la lame descend au moins aux 3/4 de la gorge (une position à cheval sur un épaulement ne sert à rien)
+    const thr=top-0.75*Math.max(0.02,top-lo);
+    for(let i=i0;inR(i);i++){ if(K.C[i]<=thr+1e-9){ const z=zTop-i*hb; if(qa===null)qa=z; qb=z; } }
+    const C=[];
+    if(qa===null){ W.push('gorge de '+(+span.toFixed(2))+' mm plus étroite que l’outil ('+w+' mm) à Z'+(+za.toFixed(2))); }
+    else{ const sp=qa-qb, n=sp>1e-6?Math.max(1,Math.ceil(sp/(0.8*w)-1e-9))+1:1; for(let k=0;k<n;k++)C.push(n>1?qa-sp*k/(n-1):qa); }
+    let bot=1/0;
+    C.forEach(function(zc){
+      const b=Cb(zc); if(!(b>-1/0))return;
+      if(b<bot)bot=b;
+      const d=C.length>1&&fin>0?b+fin:b, zp=zc+half;
+      mv.push({rap:1,z:zp,x:sf.x},{rap:1,z:zp,x:xr});
+      if(q>0){ let x=xr; while(x>d+1e-9){ const xn=Math.max(d,x-q); mv.push({rap:0,z:zp,x:xn}); if(xn>d+1e-9)mv.push({rap:1,z:zp,x:Math.min(xr,xn+0.3)}); x=xn; } }
+      else mv.push({rap:0,z:zp,x:d});
+      mv.push({rap:1,z:zp,x:xr});
+      nP++;
+    });
+    if(C.length>1&&fin>0){
+      // passe de fond, de l'avant vers l'arrière, en suivant le fond permis
+      const z0=C[0], z1=C[C.length-1], seg=[];
+      for(let z=z0;z>=z1-1e-9;z-=hb){ const b=Cb(z); if(b>-1/0)seg.push([z+half,b]); }
+      const S2=tourSimplify(seg,0.002);
+      if(S2.length){ mv.push({rap:1,z:S2[0][0],x:xr},{rap:0,z:S2[0][0],x:S2[0][1]});
+        S2.slice(1).forEach(function(p){ mv.push({rap:0,z:p[0],x:p[1]}); });
+        const l=S2[S2.length-1]; mv.push({rap:0,z:l[0],x:xr}); }
+    }
+    if(top-bot>hU+1e-6)W.push('gorge de '+(+(top-bot).toFixed(2))+' mm de profondeur > profondeur utile de l’outil ('+hU+' mm)');
+    mv.push({rap:1,z:mv[mv.length-1].z,x:sf.x});
+    info.push('Z'+(+za.toFixed(2))+' → '+(+zb.toFixed(2)));
+  });
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  return {moves:mv,warns:W,info:ZN.length+' gorge'+(ZN.length>1?'s':'')+' ('+info.join(', ')+'), '+nP+' plongée'+(nP>1?'s':'')+(fin>0?' + passe de fond':'')};
+}
+/* ----- filetage (étape 2) -----
+   Le filet vient du MODÈLE : fonction Filetage d'un axe (extérieur) ou trou taraudé
+   (intérieur), dans l'axe du tour, son bout libre vers l'avant. Pas et Ø du filet ;
+   profondeur ISO de l'outil : 0,6134·P à l'extérieur, (D − D1)/2 à l'intérieur.
+   Passes à section constante (profondeur √k), puis passes à vide ; vitesse de broche
+   constante (G97). Le programme Fagor écrit le cycle G86, le Siemens les passes G33. */
+function tourThreadsOf(setup){
+  const M=tourModel(setup), out=[];
+  if(!M||!M.ok||typeof doc==='undefined'||!doc||!Array.isArray(doc.features))return out;
+  const onAx=function(o,d){
+    const v=[o[0]-M.Pf[0],o[1]-M.Pf[1],o[2]-M.Pf[2]], z=v[0]*M.W[0]+v[1]*M.W[1]+v[2]*M.W[2];
+    const off=Math.hypot(v[0]-z*M.W[0],v[1]-z*M.W[1],v[2]-z*M.W[2]);
+    const dz=d[0]*M.W[0]+d[1]*M.W[1]+d[2]*M.W[2];
+    return {z:z,dz:dz,ok:off<0.05&&Math.abs(Math.abs(dz)-1)<1e-3};
+  };
+  doc.features.forEach(function(f){
+    if(!f||f.visible===false)return;
+    try{
+      if(f.type==='xthread'&&f.size&&typeof threadGeo!=='undefined'){
+        const g=threadGeo.get(f.id); if(!g||!Array.isArray(g.o)||!Array.isArray(g.d))return;
+        const a=onAx(g.o,g.d); if(!a.ok)return;
+        const t=typeof isoThread==='function'?isoThread(f.size):null;
+        const P=+g.P||+f.p||(t?t[2]:0); if(!(P>0))return;
+        const D=t?+t[1]:2*g.R;
+        out.push({int:false,fid:f.id,label:typeof threadLabel==='function'?threadLabel(f):f.size,P:P,D:D,
+          rc:Math.min(D/2,g.R+0.01),depth:0.6134*P,z0:a.z,z1:a.z+g.len*a.dz,lh:!!(f.lh||g.lh),dz:a.dz});
+      }
+      if(f.type==='hole'&&f.thread&&f.thread.size&&typeof holeNorm==='function'&&typeof holeAxis==='function'){
+        const sk=(doc.sketches||[]).find(function(s){ return s.id===f.sketchId; }); if(!sk)return;
+        const t=isoThread(f.thread.size); if(!t)return;
+        const P=+f.thread.p||+t[2], N=holeNorm(f), A=holeAxis(f,sk), d=[A.dir.x,A.dir.y,A.dir.z];
+        const off=(N.kind==='cbore'||N.kind==='step')?holeEntryOff(N):0;
+        const len=Math.max(P,+f._thLen||+f.thread.len||N.depth);
+        A.pts.forEach(function(p){
+          const o=[p.x+d[0]*off,p.y+d[1]*off,p.z+d[2]*off], a=onAx(o,d); if(!a.ok)return;
+          const D=+t[1], D1=2*N.r;
+          out.push({int:true,fid:f.id,label:typeof holeThreadLabel==='function'?holeThreadLabel(f.thread):f.thread.size,P:P,D:D,
+            rc:D1/2,depth:Math.max(0.05,(D-D1)/2),z0:a.z,z1:a.z+len*a.dz,lh:!!f.thread.lh,dz:a.dz});
+        });
+      }
+    }catch(e){}
+  });
+  return out;
+}
+function tourGenThread(setup,op){
+  const t=tourOpTool(setup,op), inner=op.cote==='int', sf=tourSafe(setup), S=tourStock(setup);
+  if(t.kind!=='thread'||!!t.int!==inner)return {moves:[],warns:['filetage : choisir un outil à fileter '+(inner?'intérieur':'extérieur')],info:''};
+  const W=[];
+  let T=null;
+  if(op.src!=='man'){
+    const L=tourThreadsOf(setup).filter(function(x){ return x.int===inner; });
+    const k=Math.max(0,Math.min(L.length-1,+op.idx||0));
+    T=L[k]||null;
+    if(T&&T.dz>0){ W.push('filet '+T.label+' commencé côté mandrin : à faire en reprise (posage retourné)'); T=null; }
+    else if(!T)W.push('pas de filet '+(inner?'intérieur (trou taraudé)':'extérieur (fonction Filetage)')+' dans l’axe du tour : saisir le filet');
+  }
+  if(!T){
+    const P=+op.P, D=+op.D;
+    if(!(P>0&&D>0&&isFinite(+op.zA)&&isFinite(+op.zB)&&op.zA!==''&&op.zB!==''))return {moves:[],warns:W,info:''};
+    const dep=inner?0.5413*P:0.6134*P;
+    T={int:inner,label:'Ø'+D+'×'+P,P:P,D:D,rc:inner?D/2-dep:D/2,depth:dep,z0:+op.zA,z1:+op.zB,lh:!!op.lh,dz:-1};
+  }
+  const P=T.P, dep=T.depth, n=+op.n>0?Math.round(+op.n):Math.max(3,Math.ceil(dep/0.1));
+  const nr=Math.max(0,Math.min(5,isFinite(+op.ressort)?Math.round(+op.ressort):1));
+  const zS=Math.max(T.z0,tourFrontZ(setup,op))+Math.max(2,2*P), zE=T.z1;
+  const sg=inner?1:-1; // vers la matière : −x dehors, +x dedans
+  const xc=T.rc, xs=inner?Math.max(0.2,xc-Math.min(1,0.4*xc)):xc+1;
+  if(inner&&2*xs<(+t.dmin||0)-1e-6)W.push('outil pour Ø'+(+t.dmin)+' mini dans un trou Ø'+(+(2*xc).toFixed(2)));
+  const mv=[{rap:1,z:sf.z,x:sf.x}];
+  if(inner)mv.push({rap:1,z:zS,x:sf.x},{rap:1,z:zS,x:xs}); else mv.push({rap:1,z:zS,x:xs});
+  const D=[];
+  for(let k=1;k<=n;k++)D.push(dep*Math.sqrt(k/n));
+  for(let k=0;k<nr;k++)D.push(dep);
+  D.forEach(function(d){
+    const x=xc+sg*d;
+    mv.push({rap:1,z:zS,x:x},{rap:0,z:zE,x:x,thr:P},{rap:1,z:zE,x:xs},{rap:1,z:zS,x:xs});
+  });
+  if(inner)mv.push({rap:1,z:sf.z,x:xs});
+  mv.push({rap:1,z:sf.z,x:sf.x});
+  if(T.lh)W.push('filet à gauche : broche inversée');
+  if(zE-1<S.chuck+1)W.push('le filet va jusqu’au mandrin');
+  return {moves:mv,warns:W,thread:{int:inner,xc:xc,zS:zS,zE:zE,P:P,dep:dep,n:n,nr:nr,B:dep/Math.sqrt(n),A:isFinite(+op.A)?Math.max(0,Math.min(60,+op.A)):30,lh:T.lh,D:T.D,label:T.label},
+    info:T.label+', pas '+P+', Z'+(+T.z0.toFixed(2))+' → '+(+zE.toFixed(2))+', profondeur '+(+dep.toFixed(3))+' mm en '+n+' passe'+(n>1?'s':'')+(nr?' + '+nr+' à vide':'')};
+}
+let tourGenCache=new WeakMap();
+function tourOpGen(setup,op){
+  // Parcours d'une opération (calcul en quelques millisecondes : refait quand l'opération,
+  // l'outil, le posage ou la pièce changent).
+  const t=tourOpTool(setup,op);
+  // dépendances : dressages et perçages placés avant, finitions (gorges), filets du modèle
+  const prev=[];(setup.ops||[]).some(function(o){ if(o===op)return true; if(o&&o.on!==false&&(o.type==='tour_face'||o.type==='tour_drill'))prev.push([o.type,o.laisse||0,o.depth,o.plein,o.q,tourOpTool(setup,o)]); return false; });
+  if(op.type==='tour_groove')(setup.ops||[]).forEach(function(o){ if(o&&o.on!==false&&o.type==='tour_finish')prev.push([o.cote,tourOpTool(setup,o)]); });
+  if(op.type==='tour_thread')prev.push(tourThreadsOf(setup));
+  if(op.type==='tour_cdrill'){ prev.push(tourCHolesOf(setup)); const RP=tourCfg(setup).rep, src=RP?tourSetupById(RP.from):null; prev.push(src?(src.ops||[]).filter(function(o){ return o&&o.on!==false&&o.type==='tour_cdrill'; }).map(function(o){ return [o.dir,o.dsel,tourOpTool(src,o)]; }):0); }
+  if(op.type==='tour_part'){ const RP=tourRepriseOf(setup); prev.push(RP?tourCfg(RP).rep.sur:-1); } // surépaisseur laissée pour la reprise
+  if(op.type==='tour_rough'||op.type==='tour_finish')prev.push((setup.ops||[]).filter(function(o){ return o&&o.on!==false&&o.type==='tour_groove'; }).map(function(o){ return o.cote||'ext'; }));
+  const sig=JSON.stringify([op,t,setup.tour,setup.bodies,prev])+'|'+tourModelSig(setup)+'|'+tourStockSig(setup);
+  const e=tourGenCache.get(op);
+  if(e&&e.sig===sig)return e.r;
+  let r;
+  try{
+    if(op.type==='tour_face')r=tourGenFace(setup,op);
+    else if(op.type==='tour_rough')r=tourGenRough(setup,op);
+    else if(op.type==='tour_finish')r=tourGenFinish(setup,op);
+    else if(op.type==='tour_drill')r=tourGenDrill(setup,op);
+    else if(op.type==='tour_part')r=tourGenPart(setup,op);
+    else if(op.type==='tour_groove')r=tourGenGroove(setup,op);
+    else if(op.type==='tour_thread')r=tourGenThread(setup,op);
+    else if(op.type==='tour_cdrill')r=tourGenCDrill(setup,op);
+    else r={moves:[],warns:[],info:''};
+  }catch(err){ r={moves:[],warns:['calcul : '+((err&&err.message)||err)],info:''}; }
+  const M=tourModel(setup);
+  if(M&&M.warns&&M.warns.length&&op.type!=='tour_face')r.warns=M.warns.concat(r.warns);
+  if((op.type==='tour_rough'||op.type==='tour_finish')&&(setup.ops||[]).some(function(o){ return o&&o!==op&&o.on!==false&&o.type==='tour_groove'&&(o.cote==='int')===(op.cote==='int'); })){
+    // creux repris par une gorge du même côté : plus une alerte
+    const n0=r.warns.length; r=Object.assign({},r,{warns:r.warns.filter(function(w){ return !/creux trop raides/.test(w); })});
+    if(r.warns.length<n0)r.info=(r.info?r.info+' · ':'')+'creux repris par la gorge';
+  }
+  tourGenCache.set(op,{sig:sig,r:r});
+  return r;
+}
+/* ----- temps ----- */
+function tourMoveLen(a,b){
+  if(b.arc){
+    const A=b.arc, a0=Math.atan2(a.x-A.cx,a.z-A.cz), a1=Math.atan2(b.x-A.cx,b.z-A.cz), T=2*Math.PI;
+    let d=a1-a0; if(!A.cw){ while(d<=0)d+=T; } else { while(d>=0)d-=T; }
+    return Math.abs(d)*A.R;
+  }
+  return Math.hypot(b.z-a.z,b.x-a.x);
+}
+function tourOpTime(setup,op,mv){
+  // minutes : coupe en mm/tour à vitesse de coupe constante (bornée par la vitesse maxi)
+  const C=tourCfg(setup), cut=tourCut(setup,op), t=cut.t||{};
+  const rapide=Math.max(500,+setup.rapide||10000);
+  const rpm=function(x){ return Math.min(tourNmax(C,cut),cut.vc*1000/(Math.PI*tourSpinD(cut,x))); };
+  let tm=0, lc=0, lr=0;
+  for(let i=1;i<mv.length;i++){
+    const a=mv[i-1], b=mv[i], l=tourMoveLen(a,b);
+    if(b.rap){ tm+=l/rapide; lr+=l; }
+    else{ const n=rpm((a.x+b.x)/2); tm+=l/Math.max(1e-6,cut.f*n); lc+=l; }
+  }
+  return {tmin:tm,cut:lc,rap:lr};
+}
+function tourStats(setup){
+  let tm=0, lc=0, lr=0, n=0, ch=0, last=null;
+  (setup.ops||[]).forEach(function(op){
+    if(!op||op.on===false)return;
+    const g=tourOpGen(setup,op), e=tourOpTime(setup,op,g.moves);
+    tm+=e.tmin; lc+=e.cut; lr+=e.rap; n++;
+    if(last!==null&&last!==op.toolId)ch++;
+    last=op.toolId;
+  });
+  const tc=ch*(Math.max(0,+setup.toolChg||5)/60);
+  return {n:n,copies:n,cut:lc,rap:lr,groups:ch+(n?1:0),tchg:tc,tmin:tm+tc,missing:0};
+}
+
+/* ----- étape 3 : perçage à l'axe C (outil tournant) ----- */
+// La broche s'arrête et devient l'axe C (positionnée à l'angle du trou), le foret motorisé tourne :
+//  radial : le foret descend en X vers l'axe ; axial : il avance en Z, à X = 2 × rayon du trou.
+// Mouvements : {z, x, c (degrés), live:1} ; x reste le rayon (négatif au-delà de l'axe).
+function tourNmax(C,cut){ return (cut&&cut.t&&cut.t.kind==='ldrill')?C.smaxL:C.smax; }
+function tourCDrillHoles(setup,op){
+  // trous de cette opération : sens, Ø (dsel, sinon celui du foret), côté de ce posage
+  const t=tourOpTool(setup,op)||{}, dir=op.dir==='ax'?'ax':'rad';
+  const all=tourCHolesOf(setup).filter(function(h){ return h.ax===dir; });
+  const d=+op.dsel>0?+op.dsel:+t.d;
+  const sel=all.filter(function(h){ return Math.abs(h.d-d)<0.01; });
+  return {all:all,sel:sel,d:d};
+}
+function tourGenCDrill(setup,op){
+  const C=tourCfg(setup), M=tourModel(setup), S=tourStock(setup), sf=tourSafe(setup), t=tourOpTool(setup,op);
+  const dir=op.dir==='ax'?'ax':'rad', W=[];
+  if(!M||!M.ok)return {moves:[],warns:['pas de pièce'],info:''};
+  if(!C.cax)return {moves:[],warns:['cocher « Outils tournants (axe C) » dans la fiche du posage : le tour doit avoir un axe C et des outils motorisés'],info:''};
+  if(!t||t.kind!=='ldrill'||(t.ax==='ax')!==(dir==='ax'))return {moves:[],warns:['choisir un foret motorisé '+(dir==='ax'?'axial':'radial')],info:''};
+  const HS=tourCDrillHoles(setup,op);
+  let H=HS.sel;
+  if(!HS.all.length)return {moves:[],warns:['aucun trou '+(dir==='ax'?'axial hors de l’axe':'radial')+' dans le modèle (fonction Perçage)'],info:''};
+  if(!H.length){
+    const L=[]; HS.all.forEach(function(h){ if(L.indexOf(h.d)<0)L.push(h.d); });
+    return {moves:[],warns:['aucun trou Ø'+(+HS.d.toFixed(2))+' : trous '+(dir==='ax'?'axiaux':'radiaux')+' Ø'+L.join(', Ø')],info:''};
+  }
+  H.filter(function(h){ return !h.ok; }).forEach(function(h){ W.push('trou Ø'+h.d+' à C'+(+h.c.toFixed(1))+' : '+h.why); });
+  const notes={}; H.forEach(function(h){ if(h.ok&&h.note)notes[h.note]=1; if(h.ok&&h.thr)notes['taraudage '+h.thr+' non fait (perçage seul)']=1; });
+  Object.keys(notes).forEach(function(k){ W.push(k); });
+  H=H.filter(function(h){ return h.ok; });
+  // reprise : les trous radiaux faits au premier posage ne sont pas refaits
+  if(dir==='rad'&&C.rep){
+    const src=tourSetupById(C.rep.from);
+    if(src&&(src.ops||[]).some(function(o){ return o&&o.on!==false&&o.type==='tour_cdrill'&&o.dir!=='ax'&&Math.abs(tourCDrillHoles(src,o).d-HS.d)<0.01; })){
+      return {moves:[],warns:[],info:'trous radiaux Ø'+(+HS.d.toFixed(2))+' déjà percés au posage '+src.name};
+    }
+  }
+  if(!H.length)return {moves:[],warns:W,info:''};
+  const d=+t.d||6, tip=(d/2)/Math.tan(Math.max(30,Math.min(90,(+t.ang||118)/2))*Math.PI/180);
+  if(Math.abs(d-HS.d)>0.01)W.push('foret Ø'+(+d.toFixed(2))+' pour des trous Ø'+(+HS.d.toFixed(2)));
+  const top=function(z){ const r=tourElemsEvalTop(M.elems,z); return r>-1/0?r:0; };
+  const q=Math.max(0,+op.q||0), clr=Math.max(0.5,Math.min(C.clrX,C.clrZ,2));
+  const mv=[], holes=[];
+  const push=function(m){ mv.push(m); };
+  // ordre : radiaux par Z puis C, axiaux par C (le moins de rotation)
+  H=H.slice().sort(function(a,b){ return dir==='rad'?(Math.abs(a.z-b.z)>0.01?b.z-a.z:a.c-b.c):(a.c-b.c||b.rr-a.rr); });
+  let cCur=H[0].c;
+  push({rap:1,z:sf.z,x:sf.x,c:cCur,live:1});
+  const peck=function(a,b,set){ // a = départ (1 mm devant la matière), b = pointe ; set(v) donne le point
+    let nb=0;
+    if(q>0){
+      let v=a; const s=b<a?-1:1;
+      while((b-v)*s>1e-9){
+        const vn=s<0?Math.max(b,v-q):Math.min(b,v+q);
+        if(nb)push(Object.assign({rap:1},set(v-s*0.5)));
+        push(Object.assign({rap:0},set(vn))); nb++;
+        if((b-vn)*s>1e-9)push(Object.assign({rap:1},set(a)));
+        v=vn;
+      }
+    }else{ push(Object.assign({rap:0},set(b))); nb=1; }
+    push(Object.assign({rap:1},set(a)));
+    return nb;
+  };
+  let nPk=0, last=null;
+  H.forEach(function(h){
+    if(dir==='rad'){
+      const xe=Math.max(h.rr,top(h.z)), xa=xe+clr;
+      const xt=h.through?-(top(h.z)+0.5+tip):(h.rr-h.depth-tip);
+      const sameZ=!!last&&Math.abs(last.z-h.z)<=0.01;
+      if(!sameZ){ if(last)push({rap:1,z:last.z,x:sf.x,c:cCur,live:1}); push({rap:1,z:h.z,x:sf.x,c:cCur,live:1}); cCur=h.c; push({rap:1,z:h.z,x:sf.x,c:cCur,live:1}); }
+      else{ cCur=h.c; push({rap:1,z:h.z,x:last.xa,c:cCur,live:1}); }
+      push({rap:1,z:h.z,x:xa,c:cCur,live:1});
+      const n=peck(xa,xt,function(v){ return {z:h.z,x:v,c:cCur,live:1}; }); if(n>1)nPk+=n-1;
+      holes.push({ax:'rad',z:h.z,x0:xe,x1:xt+tip,c:h.c,r:h.r,mi:mv.length-2});
+      last={z:h.z,xa:xa};
+    }else{
+      const za=Math.max(h.z,Math.min(S.face,tourFrontZ(setup,op)))+clr;
+      let zt;
+      if(h.through){
+        // de part en part : jusqu'au bout de la matière à ce rayon
+        let z=h.z; while(z>-M.L-0.01&&top(z-0.05)>h.rr-h.r+1e-6)z-=0.05;
+        zt=Math.max(-M.L,z)-0.5-tip;
+      }else zt=h.z-h.depth-tip;
+      const same=!!last&&Math.abs(last.rr-h.rr)<=0.01&&Math.abs(last.za-za)<=0.01;
+      if(!same){
+        if(last)push({rap:1,z:sf.z,x:last.rr,c:cCur,live:1});
+        cCur=h.c;
+        push({rap:1,z:sf.z,x:last?last.rr:sf.x,c:cCur,live:1}); // rotation C au dégagement
+        push({rap:1,z:sf.z,x:h.rr,c:cCur,live:1});
+      }else cCur=h.c;
+      push({rap:1,z:za,x:h.rr,c:cCur,live:1});
+      const n=peck(za,zt,function(v){ return {z:v,x:h.rr,c:cCur,live:1}; }); if(n>1)nPk+=n-1;
+      holes.push({ax:'ax',z:h.z,z1:zt+tip,x0:h.rr,c:h.c,r:h.r,mi:mv.length-2});
+      last={rr:h.rr,za:za};
+      if(zt<S.chuck+1)W.push('le foret atteint le mandrin');
+    }
+  });
+  if(dir==='rad')push({rap:1,z:last.z,x:sf.x,c:cCur,live:1});
+  else push({rap:1,z:sf.z,x:last.rr,c:cCur,live:1});
+  push({rap:1,z:sf.z,x:sf.x,c:cCur,live:1});
+  const Cs=H.map(function(h){ return +h.c.toFixed(1); });
+  return {moves:mv,warns:W,holes:holes,live:{dir:dir},
+    info:H.length+' trou'+(H.length>1?'s':'')+' '+(dir==='ax'?'axia':'radia')+(H.length>1?'ux':'l')+' Ø'+(+HS.d.toFixed(2))+', C '+Cs.join(' / ')+'°'+(nPk?', '+nPk+' débourrages':'')};
+}
+
+/* ═══════════════ 89-fao-tour-30-post.js — fao tour 30 post ═══════════════ */
+/* ═══ Tournage : programme CN (V1.2.7) ═══
+   Fagor 8065 T et Siemens 840D en tournage : X en DIAMÈTRE (G151 / DIAMON),
+   plan G18, vitesse de coupe constante G96 bornée (G192 S / LIMS=), avance en
+   mm/tour (G95), arcs G2/G3 au rayon (R / CR=). Le point programmé est le coin
+   théorique de la plaquette (voir 89-fao-tour-20), la pointe du foret, le coin
+   avant de la lame de tronçonnage : les correcteurs d'outil de la machine
+   doivent être mesurés sur ces mêmes points. */
+
+function tourAscii(s){
+  // commentaires CN : sans accents ni parenthèses (une parenthèse fermerait le commentaire Fagor)
+  let t=String(s==null?'':s);
+  try{ t=t.normalize('NFD').replace(/[̀-ͯ]/g,''); }catch(e){}
+  return t.replace(/[()]/g,' ').replace(/[Øø]/g,'D').replace(/[«»]/g,'"').replace(/[^\x20-\x7e]/g,' ').replace(/\s+/g,' ').trim();
+}
+function tourFmt(n){ const v=isFinite(+n)?+n:0; let s=(Math.round(v*1000)/1000).toFixed(3); if(s==='-0.000')s='0.000'; return s; }
+function tourFmtF(n){ return (Math.round((+n||0)*1000)/1000).toFixed(3); }
+function tourOpsActive(setup){
+  if(!setup||(typeof faoSetupStruck==='function'&&faoSetupStruck(setup)))return [];
+  return (setup.ops||[]).filter(function(o){ return o&&o.on!==false&&tourOpIs(o); });
+}
+function tourRpm(setup,cut){
+  const C=tourCfg(setup);
+  return Math.max(1,Math.round(Math.min(tourNmax(C,cut),cut.vc*1000/(Math.PI*tourSpinD(cut,0)))));
+}
+// Étape 3 : axe C et outil tournant. Lignes réglables dans la fiche de la machine (live: {...}),
+// repères {N} broche de l'outil tournant, {S} tr/min, {M} 3 ou 4, {C} angle. À valider sur la machine.
+function tourLiveCfg(post){
+  const fag=post.kind!=='siemens', L=post.live||{};
+  const D=fag?{caxOn:['#CAX'],caxOff:['#CAX OFF'],on:['#MASTER S{N}','S{S} M{M}'],off:['M05','#MASTER S1'],c:'G0 C{C}'}
+            :{caxOn:['SPOS=0'],caxOff:[],on:['M{N}={M} S{N}={S}'],off:['M{N}=5'],c:'SPOS={C}'};
+  const arr=function(v,d){ return Array.isArray(v)?v:(typeof v==='string'?[v]:d); };
+  return {caxOn:arr(L.caxOn,D.caxOn),caxOff:arr(L.caxOff,D.caxOff),on:arr(L.on,D.on),off:arr(L.off,D.off),c:typeof L.c==='string'?L.c:D.c};
+}
+function tourPost(job){
+  const post=tourPostOf(job), fag=post.kind!=='siemens', C=tourCfg(job), S=tourStock(job);
+  const name=faoProgName(job.name), wcs=job.wcs||'G54';
+  const NUM=post.numbers; let n=NUM?(+NUM.start||10):0;
+  const L=[], warns=[];
+  const nc=function(s){ if(NUM){ L.push('N'+n+' '+s); n+=+NUM.step||5; } else L.push(s); };
+  const cmt=function(s){ const t=tourAscii(s); if(t)L.push(fag?('( '+t+' )'):('; '+t)); };
+  const ops=tourOpsActive(job);
+  const gens=ops.map(function(op){ const g=tourOpGen(job,op); (g.warns||[]).forEach(function(w){ warns.push(tourOpLabel(op)+' : '+w); }); return g; });
+  const X=function(x){ return 'X'+tourFmt(2*x); }, Z=function(z){ return 'Z'+tourFmt(z); };
+  const tcX=C.tcX, tcZ=C.tcZ;
+  if(fag){
+    L.push('('+name+' - ConceptCAD FAO '+(typeof APP_VER!=='undefined'?APP_VER:'')+' - '+tourAscii(post.label)+' - '+faoToday()+')');
+    L.push('( Tournage : X en diametre, origine '+wcs+' = face avant de la piece finie, sur l axe )');
+    L.push('( Brut D'+tourFmt(S.d)+' sortie '+tourFmt(S.sortie)+' mm, face avant a Z'+tourFmt(S.face)+' )');
+    if(warns.length)cmt('ATTENTION : '+warns.join(' ; '));
+    nc('G71 G90 G18 G151 G40 '+wcs);
+    nc('G192 S'+Math.round(C.smax)); // G192 = limite de broche (sur 8065, G92 = présélection d'origine)
+  }else{
+    L.push('; %_N_'+name+'_MPF');
+    L.push('; ConceptCAD FAO '+(typeof APP_VER!=='undefined'?APP_VER:'')+' - '+tourAscii(post.label)+' - '+faoToday());
+    L.push('; Tournage : X en diametre, origine '+wcs+' = face avant de la piece finie, sur l axe');
+    L.push('; Brut D'+tourFmt(S.d)+' sortie '+tourFmt(S.sortie)+' mm, face avant a Z'+tourFmt(S.face));
+    if(warns.length)cmt('ATTENTION : '+warns.join(' ; '));
+    nc('G71 G90 G18 DIAMON G40 '+wcs);
+    nc('LIMS='+Math.round(C.smax));
+  }
+  const CO=post.coolant||{flood:'M08',off:'M09'};
+  const cool=(job.coolant==='off')?null:(CO.flood||'M08');
+  let toolCur=null, coolOn=false, gCur=null, fCur=null, xCur=null, zCur=null, spinCur='';
+  const lines=function(tpl,T){ (tpl||[]).forEach(function(s){ nc(String(s).replace(/\{T\}/g,String(T))); }); };
+  const LV=tourLiveCfg(post);
+  const lv=function(tpl,V){ (tpl||[]).forEach(function(s){ let t=String(s); Object.keys(V||{}).forEach(function(k){ t=t.split('{'+k+'}').join(String(V[k])); }); if(t.trim())nc(t); }); };
+  let liveOn=false, cCur=null, fOut=0;
+  const liveEnd=function(){ if(!liveOn)return; lv(LV.off,{N:C.liveN}); lv(LV.caxOff,{}); liveOn=false; cCur=null; spinCur=''; };
+  ops.forEach(function(op,k){
+    const g=gens[k], cut=tourCut(job,op), t=cut.t||{};
+    if(!g.moves.length)return;
+    if(toolCur!==t.id){
+      if(toolCur!==null){
+        if(coolOn&&CO.off){ nc(CO.off); coolOn=false; }
+        if(liveOn)liveEnd(); else nc('M05');
+        spinCur='';
+        nc('G0 '+X(tcX/2)+' '+Z(tcZ)); gCur='G0'; xCur=tcX/2; zCur=tcZ;
+      }
+      cmt('T'+t.num+' '+t.name);
+      lines(post.toolChange,t.num);
+      toolCur=t.id; fCur=null;
+    }
+    cmt(tourOpLabel(op)+(g.info?' - '+g.info:''));
+    let sp;
+    const TH=g.thread||null, dir=(TH&&TH.lh)?(C.dir==='M3'?'M4':'M3'):C.dir; // filet à gauche : broche inversée
+    if(t.kind==='ldrill'){
+      // outil tournant : broche arrêtée et passée en axe C, avance en mm/min (G94) au régime du foret
+      const rpm=tourRpm(job,cut);
+      if(!liveOn){ if(spinCur)nc('M05'); spinCur=''; cmt('axe C et outil tournant broche '+C.liveN+' - a valider sur la machine'); lv(LV.caxOn,{N:C.liveN}); liveOn=true; cCur=null; }
+      sp='live '+rpm;
+      if(sp!==spinCur){ lv(LV.on,{N:C.liveN,S:rpm,M:dir==='M4'?4:3}); spinCur=sp; }
+      if(cool&&!coolOn){ nc(cool); coolOn=true; }
+      nc('G94'); fCur=null; gCur=null; fOut=cut.f*rpm;
+    }else{
+    if(liveOn)liveEnd();
+    if(t.kind==='tdrill'||TH)sp='G97 S'+tourRpm(job,cut)+' '+dir;
+    else sp='G96 S'+Math.round(cut.vc)+' '+dir;
+    if(sp!==spinCur){ nc(sp); spinCur=sp; }
+    if(cool&&!coolOn){ nc(cool); coolOn=true; }
+    nc('G95'); fCur=null; gCur=null; fOut=cut.f; // G0 / G1 réécrit au début de chaque opération
+    }
+    let MV=g.moves;
+    if(TH&&fag){
+      // Fagor : cycle G86 (filetage longitudinal) — approche, cycle, sortie ; les passes sont celles du cycle
+      let i1=-1, j1=-1; MV.forEach(function(m,i){ if(m.thr){ if(i1<0)i1=i; j1=i; } });
+      const pre=MV.slice(0,Math.max(1,i1-1)), post=MV.slice(Math.min(MV.length,j1+3));
+      const dS=Math.max(0.2,Math.abs(MV[i1+1].x-TH.xc));
+      MV=pre;
+      g._fagTail={post:post,line:'G86 '+X(TH.xc)+' '+Z(TH.zS)+' Q'+tourFmt(2*TH.xc)+' R'+tourFmt(TH.zE)+' I'+tourFmt(TH.int?-TH.dep:TH.dep)+
+        ' B'+tourFmt(TH.B)+' E0.050 D'+tourFmt(dS)+' L0 C'+tourFmt(TH.P)+' J0 A'+tourFmt(TH.A)+' W0'};
+    }
+    const emit=function(m){
+      let w;
+      if(m.rap){ w='G0'; }
+      else if(m.thr){ w='G33'; }
+      else if(m.arc){ const cw=C.arcInv?!m.arc.cw:m.arc.cw; w=cw?'G2':'G3'; }
+      else w='G1';
+      if(liveOn&&m.c!=null){ const cv=C.cInv?(360-m.c)%360:m.c, cs=tourFmt(cv); if(cs!==cCur){ nc(LV.c.split('{C}').join(cs)); cCur=cs; gCur=null; } }
+      const xs=X(m.x), zs=Z(m.z);
+      let co='';
+      if(m.arc||xCur===null||xs!==X(xCur))co+=' '+xs;
+      if(m.arc||zCur===null||zs!==Z(zCur))co+=' '+zs;
+      if(!co)return; // même position : rien à écrire
+      let s=((w!==gCur||m.arc)?w:'')+co;
+      if(m.arc)s+=(fag?' R':' CR=')+tourFmt(m.arc.R);
+      if(m.thr)s+=' K'+tourFmt(m.thr); // Siemens : G33 Z… K pas
+      else if(!m.rap){ const f=tourFmtF(fOut); if(f!==fCur){ s+=' F'+f; fCur=f; } }
+      gCur=w; xCur=m.x; zCur=m.z;
+      nc(s.trim());
+    };
+    MV.forEach(emit);
+    if(g._fagTail){
+      cmt('cycle de filetage : X Z debut, Q R fin en diametre, I profondeur au rayon, B 1re passe, C pas, A angle de penetration - a valider sur la machine');
+      nc(g._fagTail.line); gCur=null;
+      g._fagTail.post.forEach(emit);
+      delete g._fagTail;
+    }
+  });
+  if(coolOn&&CO.off)nc(CO.off);
+  if(liveOn)liveEnd(); else nc('M05');
+  nc('G0 '+X(tcX/2)+' '+Z(tcZ));
+  (post.end||['M30']).forEach(function(s){ nc(String(s)); });
+  return {code:L.join('\n')+'\n',ext:post.ext||'nc',warns:warns};
+}
+
+/* ═══════════════ 89-fao-tour-40-interface.js — fao tour 40 interface ═══════════════ */
+/* ═══ Tournage : fiches, aperçu, simulation (V1.2.7) ═══ */
+
+/* ----- création ----- */
+function tourNewSetup(){
+  try{
+    const r=faoRoot();
+    faoSnapshot('nouveau posage tour');
+    const s=tourDefaultSetup();
+    let k=1; while(r.setups.some(function(x){return x.name==='TOUR'+k;}))k++;
+    s.name='TOUR'+k;
+    r.setups.push(s); r.activeSetupId=s.id;
+    faoChanged();
+    faoSelectSetup(s.id);
+    return s;
+  }catch(e){ return null; }
+}
+function tourActiveOrNew(){
+  const cur=faoSetup();
+  if(tourIs(cur))return cur;
+  const r=faoRoot();
+  const t=r.setups.filter(tourIs)[0];
+  if(t){ r.activeSetupId=t.id; return t; }
+  return tourNewSetup();
+}
+function tourAddOp(type,setup,cote){
+  try{
+    const s=setup||tourActiveOrNew(); if(!s)return null;
+    const op=tourOpDefaults(type,s,cote); if(!op)return null;
+    faoSnapshot('nouvelle opération « '+tourOpLabel(op)+' »');
+    s.ops.push(op);
+    faoChanged();
+    faoSelectOp(s.id,op.id);
+    return op;
+  }catch(e){ return null; }
+}
+function tourAddAuto(type,setup){
+  // gorge, filetage : extérieur si la pièce en demande un, sinon intérieur
+  const s=setup||tourActiveOrNew(); if(!s)return null;
+  let c='ext';
+  try{
+    if(type==='tour_thread'){ const T=tourThreadsOf(s).filter(function(x){ return x.dz<0; }); if(!T.some(function(x){ return !x.int; })&&T.some(function(x){ return x.int; }))c='int'; }
+    if(type==='tour_groove'){
+      const z=function(k){ const o=tourOpDefaults('tour_groove',s,k), cx=tourCtx(s,o); if(cx.err)return 0; const G=tourGroovesFor(cx,s,0.02); return G.err?0:G.zones.length; };
+      if(!z('ext')&&z('int'))c='int';
+    }
+  }catch(e){}
+  return tourAddOp(type,s,c);
+}
+function tourCDrillGroups(s){
+  // groupes (sens, Ø) des trous hors axe faisables dans ce posage
+  const G=[];
+  try{ tourCHolesOf(s).forEach(function(h){ if(!h.ok||(h.ax!=='rad'&&h.ax!=='ax'))return; if(!G.some(function(g){ return g.dir===h.ax&&Math.abs(g.d-h.d)<0.01; }))G.push({dir:h.ax,d:h.d}); }); }catch(e){}
+  return G.sort(function(a,b){ return (a.dir===b.dir?0:(a.dir==='ax'?1:-1))||a.d-b.d; });
+}
+function tourCDrillOps(s){
+  // une opération par groupe, le foret motorisé au Ø du trou
+  const out=[];
+  if(!s.tour)s.tour={};
+  s.tour.cax=true;
+  tourCDrillGroups(s).forEach(function(g){
+    if((s.ops||[]).some(function(o){ return o&&o.type==='tour_cdrill'&&o.dir===g.dir&&Math.abs(+o.dsel-g.d)<0.01; }))return;
+    const o=tourOpDefaults('tour_cdrill',s,g.dir); const t=tourLiveDrillFor(s,g.dir,g.d); o.toolId=t.id; o.dsel=g.d; out.push(o);
+  });
+  return out;
+}
+function tourAddCDrill(setup){
+  // perçages à l'axe C : un par sens et par Ø de trou hors axe du modèle (active l'axe C du posage)
+  const s=setup||tourActiveOrNew(); if(!s)return null;
+  faoSnapshot('perçage axe C');
+  let L=tourCDrillOps(s);
+  if(!L.length&&!(s.ops||[]).some(function(o){ return o&&o.type==='tour_cdrill'; }))L=[tourOpDefaults('tour_cdrill',s,'rad')];
+  // avant le tronçonnage
+  const ip=s.ops.findIndex(function(o){ return o&&o.type==='tour_part'; });
+  if(ip>=0)s.ops.splice.apply(s.ops,[ip,0].concat(L)); else L.forEach(function(o){ s.ops.push(o); });
+  faoChanged();
+  if(L.length)faoSelectOp(s.id,L[L.length-1].id); else faoSelectSetup(s.id);
+  return L[0]||null;
+}
+function tourAddBoring(setup){
+  // alésage : ébauche et finition intérieures, le perçage d'abord s'il manque
+  const s=setup||tourActiveOrNew(); if(!s)return null;
+  faoSnapshot('alésage');
+  if(!(s.ops||[]).some(function(o){ return o&&o.on!==false&&o.type==='tour_drill'; }))s.ops.push(tourOpDefaults('tour_drill',s));
+  const a=tourOpDefaults('tour_rough',s,'int'), b=tourOpDefaults('tour_finish',s,'int');
+  s.ops.push(a,b);
+  faoChanged(); faoSelectOp(s.id,b.id);
+  return b;
+}
+function tourAddGamme(setup){
+  // ordre d'atelier : dressage, extérieur (ébauche, finition, gorges, filet), perçage, intérieur
+  // (ébauche, alésage, gorges, filet), tronçonnage — chaque opération seulement si la pièce la demande
+  const s=setup||tourActiveOrNew(); if(!s)return;
+  faoSnapshot('gamme de tournage complète');
+  const M=tourModel(s), ok=!!(M&&M.ok), add=function(t,c){ const o=tourOpDefaults(t,s,c); s.ops.push(o); return o; };
+  const grooves=function(c){ const o=tourOpDefaults('tour_groove',s,c), cx=tourCtx(s,o); if(cx.err)return false;
+    const G=tourGroovesFor(cx,s,0.02); return !G.err&&G.zones.length>0; };
+  const thr=ok?tourThreadsOf(s).filter(function(x){ return x.dz<0; }):[];
+  add('tour_face'); add('tour_rough'); add('tour_finish');
+  if(ok&&grooves('ext'))add('tour_groove');
+  if(thr.some(function(x){ return !x.int; }))add('tour_thread');
+  if(ok&&M.bore){
+    add('tour_drill');
+    const d=tourDrillFor(s), I=M.inner;
+    if(I&&d&&I.rmax>d.d/2+0.05){ add('tour_rough','int'); add('tour_finish','int'); if(grooves('int'))add('tour_groove','int'); }
+    if(thr.some(function(x){ return x.int; }))add('tour_thread','int');
+  }
+  if(tourCfg(s).cax)tourCDrillOps(s).forEach(function(o){ s.ops.push(o); }); // outils tournants : trous hors axe
+  if(!tourCfg(s).rep)add('tour_part');
+  faoChanged(); faoSelectSetup(s.id);
+}
+
+function tourAddReprise(setup){
+  // reprise de la 2e face : posage retourné, brut = la pièce sortie de celui-ci,
+  // dressage à la longueur puis chariotage et finition du côté repris
+  try{
+    const src=setup||faoSetup(); if(!tourIs(src))return null;
+    const r=faoRoot();
+    faoSnapshot('reprise de la 2e face');
+    const s=tourDefaultSetup();
+    let k=1; while(r.setups.some(function(x){return x.name==='TOUR'+k;}))k++;
+    s.name='TOUR'+k;
+    s.machine=src.machine; s.wcs=src.wcs==='G54'?'G55':src.wcs; s.bodies=JSON.parse(JSON.stringify(src.bodies||'all'));
+    s.coolant=src.coolant; s.rapide=src.rapide; s.toolChg=src.toolChg;
+    s.tour=JSON.parse(JSON.stringify(src.tour||{}));
+    s.tour.flip=!src.tour.flip; s.tour.d=0; s.tour.face=1; s.tour.sortie=0;
+    s.tour.reprise={from:src.id,sur:1,pince:Math.max(5,Math.min(15,Math.round((tourModel(src)||{}).L/4)||10))};
+    s.tools=JSON.parse(JSON.stringify(src.tools||tourDefaultTools()));
+    r.setups.push(s); r.activeSetupId=s.id;
+    ['tour_face','tour_rough','tour_finish'].forEach(function(t){ s.ops.push(tourOpDefaults(t,s)); });
+    faoChanged();
+    faoSelectSetup(s.id);
+    return s;
+  }catch(e){ return null; }
+}
+
+/* ----- fiche du posage ----- */
+function tourNumRow(p,label,val,fn,unit,title){
+  const r=faoRow(); r.appendChild(faoLab(label));
+  r.appendChild(faoNum(val,fn,56,null,title||label));
+  if(unit)r.appendChild(faoLab(unit));
+  p.appendChild(r); return r;
+}
+function tourChk(label,val,fn,title){
+  const l=document.createElement('label'); l.className='fao-check';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=!!val;
+  c.onchange=function(){ faoSnapshot(title||label); fn(c.checked); faoChanged(); };
+  l.appendChild(c); l.appendChild(document.createTextNode(' '+label));
+  if(title)l.title=title;
+  return l;
+}
+function tourSetupFiche(p,setup){
+  const C=tourCfg(setup), T=setup.tour, M=tourModel(setup), S=tourStock(setup);
+  p.appendChild(faoH('Posage tour · '+setup.name));
+  const rN=faoRow(); rN.appendChild(faoLab('Nom'));
+  rN.appendChild(faoTxt(setup.name,function(v){ setup.name=faoProgName(v)||setup.name; },120));
+  if(faoRoot().setups.length>1)rN.appendChild(faoMini('Supprimer',function(){
+    const r=faoRoot(); r.setups=r.setups.filter(function(s){return s.id!==setup.id;});
+    r.activeSetupId=(r.setups[0]||{}).id||null; try{ sel={kind:null,id:null}; }catch(e){}
+  },'Supprimer ce posage'));
+  p.appendChild(rN);
+  const rM=faoRow(); rM.appendChild(faoLab('Machine'));
+  const P=tourPosts();
+  rM.appendChild(faoSel(Object.keys(P).map(function(k){return [k,P[k].label];}),tourPostOf(setup).id,function(v){ setup.machine=v; },'Commande du tour'));
+  rM.appendChild(faoLab('Origine'));
+  rM.appendChild(faoSel(['G54','G55','G56','G57','G58','G59'].map(function(g){return [g,g];}),setup.wcs||'G54',function(v){ setup.wcs=v; },'Origine pièce'));
+  p.appendChild(rM);
+  p.appendChild(faoHelp('Origine du programme : sur l’axe, à la face avant de la pièce finie (côté opposé au mandrin). X en diamètre.'));
+  // pièce
+  p.appendChild(faoH('Pièce'));
+  const rA=faoRow(); rA.appendChild(faoLab('Axe de rotation'));
+  rA.appendChild(faoSel([['auto','Automatique'],['x','X du modèle'],['y','Y du modèle'],['z','Z du modèle']],C.axis,function(v){ T.axis=v; },'Axe de la pièce autour duquel elle tourne'));
+  rA.appendChild(tourChk('Inverser',C.flip,function(v){ T.flip=v; },'Retourne la pièce : l’autre bout devient la face avant'));
+  p.appendChild(rA);
+  if(M&&M.ok){
+    p.appendChild(faoHelp('Pièce Ø'+(+(2*M.Rmax).toFixed(3))+' × '+(+M.L.toFixed(3))+' mm · axe '+'XYZ'[M.W.indexOf(M.W.find(function(q){return q!==0;}))]+(M.W.some(function(q){return q<0;})?' (inversé)':'')
+      +' · profil '+(M.src==='exact'?'exact ('+M.elems.length+' éléments)':'pris sur le maillage')
+      +(M.bore?(' · alésage Ø'+(+(2*M.bore.r).toFixed(2))+(M.bore.through?' débouchant':' sur '+(+M.bore.full.toFixed(2))+' mm')):'')
+      +(M.inner&&M.inner.rmax>M.inner.rmin+0.01?(' · intérieur Ø'+(+(2*M.inner.rmin).toFixed(2))+' à Ø'+(+(2*M.inner.rmax).toFixed(2))):'')
+      +(function(){ const T=tourThreadsOf(setup); return T.length?' · filet'+(T.length>1?'s':'')+' '+T.map(function(x){ return x.label+(x.int?' int.':''); }).join(', '):''; })()));
+    (M.warns||[]).forEach(function(w){ const h=faoHelp('⚠ '+w); h.style.color='#ff9f0a'; p.appendChild(h); });
+  }else{
+    const h=faoHelp('⚠ '+(((M&&M.warns)||[]).join(' ; ')||'aucune pièce')); h.style.color='#ff9f0a'; p.appendChild(h);
+  }
+  // brut
+  if(C.rep){
+    // reprise de la 2e face : le brut est la pièce sortie du posage d'origine, retournée
+    const src=tourSetupById(C.rep.from);
+    p.appendChild(faoH('Reprise de la 2e face'));
+    p.appendChild(faoHelp('Brut = la pièce sortie du posage '+(src?src.name:'(introuvable)')+', retournée dans le mandrin et tenue sur la partie déjà tournée.'));
+    tourNumRow(p,'Surépaisseur sur la face',C.rep.sur,function(v){ T.reprise.sur=Math.max(0,v); },'mm','Matière laissée derrière la pièce au tronçonnage du premier posage, enlevée ici par le dressage à la longueur');
+    tourNumRow(p,'Longueur tenue',C.rep.pince,function(v){ T.reprise.pince=Math.max(1,v); },'mm','Longueur de la pièce serrée dans les mors (côté déjà tourné)');
+    if(S.rep)p.appendChild(faoHelp('Pièce Ø'+(+S.d.toFixed(2))+' maxi, face à reprendre à Z'+(+S.face.toFixed(2))+', mors à Z'+(+S.chuck.toFixed(2))+(S.rep.rin0>0?', trou Ø'+(+(2*S.rep.rin0).toFixed(2))+' déjà fait':'')+'.'));
+    else{ const h=faoHelp('⚠ posage d’origine sans simulation possible : brut inconnu'); h.style.color='#ff9f0a'; p.appendChild(h); }
+  }else{
+    p.appendChild(faoH('Brut'));
+    tourNumRow(p,'Ø du brut',C.d||S.d,function(v){ T.d=Math.max(0,v); },'mm','Diamètre de la barre (0 = Ø de la pièce arrondi au mm, + 2 mm)');
+    tourNumRow(p,'Surépaisseur en bout',C.face,function(v){ T.face=Math.max(0,v); },'mm','Matière devant la face avant de la pièce, enlevée par le dressage');
+    tourNumRow(p,'Sortie du mandrin',C.sortie||S.sortie,function(v){ T.sortie=Math.max(0,v); },'mm','Longueur de barre qui dépasse des mors (0 = longueur de la pièce + 15 mm)');
+    p.appendChild(faoHelp('Barre Ø'+(+S.d.toFixed(2))+', mors du mandrin à Z'+(+S.chuck.toFixed(2))+'.'));
+  }
+  // machine
+  p.appendChild(faoH('Broche et déplacements'));
+  tourNumRow(p,'Vitesse maxi',C.smax,function(v){ T.smax=Math.max(1,v); },'tr/min','Limite de broche en vitesse de coupe constante (G192 S / LIMS=)');
+  const rD=faoRow(); rD.appendChild(faoLab('Sens de broche'));
+  rD.appendChild(faoSel([['M3','M3'],['M4','M4']],C.dir,function(v){ T.dir=v; },'Sens de rotation de la broche pour ces outils'));
+  rD.appendChild(tourChk('Inverser G2 / G3',C.arcInv,function(v){ T.arcInv=v; },'Arcs vus Z à droite, X en haut (outil au-dessus de l’axe) ; à cocher si la machine les voit dans l’autre sens'));
+  p.appendChild(rD);
+  tourNumRow(p,'Dégagement radial',C.clrX,function(v){ T.clrX=Math.max(0.5,v); },'mm','Au-dessus du brut (sur le rayon) pour les rapides');
+  tourNumRow(p,'Dégagement axial',C.clrZ,function(v){ T.clrZ=Math.max(0.5,v); },'mm','Devant la face du brut pour les approches');
+  const rT=faoRow(); rT.appendChild(faoLab('Changement d’outil X'));
+  rT.appendChild(faoNum(C.tcX,function(v){ T.tcX=v; },56,null,'Point de changement d’outil : X en diamètre'));
+  rT.appendChild(faoLab('Z')); rT.appendChild(faoNum(C.tcZ,function(v){ T.tcZ=v; },56,null,'Point de changement d’outil : Z'));
+  p.appendChild(rT);
+  const rR=faoRow(); rR.appendChild(faoLab('Rapide'));
+  rR.appendChild(faoNum(+setup.rapide||10000,function(v){ setup.rapide=Math.max(500,v); },64,null,'Vitesse des G0 (estimation du temps)'));
+  rR.appendChild(faoLab('mm/min'));
+  rR.appendChild(faoLab('Arrosage'));
+  rR.appendChild(faoSel([['flood','Oui'],['off','Non']],setup.coolant==='off'?'off':'flood',function(v){ setup.coolant=v; },'Arrosage (M08 / M09)'));
+  p.appendChild(rR);
+  // outils tournants (étape 3)
+  p.appendChild(faoH('Outils tournants (axe C)'));
+  const rC=faoRow(); rC.appendChild(tourChk('Le tour a un axe C et des outils motorisés',C.cax,function(v){ T.cax=v; },'Permet les perçages hors de l’axe : broche positionnée en angle (axe C), foret motorisé radial ou axial'));
+  p.appendChild(rC);
+  { const H=tourCHolesOf(setup), nr=H.filter(function(h){ return h.ax==='rad'; }).length, na=H.filter(function(h){ return h.ax==='ax'; }).length, nx=H.filter(function(h){ return !h.ok; }).length;
+    p.appendChild(faoHelp(H.length?('Trous hors axe du modèle : '+[nr?nr+' radia'+(nr>1?'ux':'l'):'',na?na+' axia'+(na>1?'ux':'l'):''].filter(Boolean).join(', ')+(nx?' ('+nx+' impossible'+(nx>1?'s':'')+' ici)':'')+'.'):'Aucun trou hors axe dans le modèle (fonction Perçage).')); }
+  if(C.cax){
+    tourNumRow(p,'N° de broche de l’outil tournant',C.liveN,function(v){ T.liveN=Math.max(1,Math.round(v)); },'','Numéro de la broche motorisée dans la commande (souvent 2 ; voir le manuel du tour) : N du Fagor, M2= / S2= du Siemens');
+    tourNumRow(p,'Vitesse maxi outil tournant',C.smaxL,function(v){ T.smaxL=Math.max(1,v); },'tr/min','Régime maxi de la broche motorisée');
+    const rI=faoRow(); rI.appendChild(tourChk('Inverser le sens de C',C.cInv,function(v){ T.cInv=v; },'Angles écrits 360 − C : à cocher si la machine tourne C dans l’autre sens')); p.appendChild(rI);
+    p.appendChild(faoHelp('C = 0 : côté du profil dessiné (direction U du modèle). Les lignes de l’axe C et de l’outil tournant se règlent dans la fiche de la machine (PostPro). À valider sur la machine.'));
+  }
+  // outils
+  p.appendChild(faoH('Outils'));
+  (setup.tools||[]).forEach(function(t,i){ p.appendChild(tourToolCard(setup,t,i)); });
+  const rTo=faoRow();
+  [['turn','+ Plaquette'],['bore','+ Barre d’alésage'],['tdrill','+ Foret'],['part','+ Tronçonnage'],['groove','+ Gorge'],['groovei','+ Gorge int.'],['thread','+ Filetage'],['threadi','+ Filetage int.']].concat(C.cax?[['ldrillr','+ Foret motorisé radial'],['ldrilla','+ Foret motorisé axial']]:[]).forEach(function(a){
+    rTo.appendChild(faoMini(a[1],function(){ setup.tools.push(tourToolNew(a[0],setup)); },'Ajouter un outil de tour'));
+  });
+  p.appendChild(rTo);
+  // opérations
+  p.appendChild(faoH('Opérations'));
+  const rO=faoRow();
+  TOUR_OP_TYPES.filter(function(ty){ return ty!=='tour_cdrill'; }).map(function(ty){ return [ty,'ext',TOUR_OP_NAMES[ty]]; }).concat(Object.keys(TOUR_OP_NAMES_INT).map(function(ty){ return [ty,'int',TOUR_OP_NAMES_INT[ty]]; })).forEach(function(a){
+    const b=document.createElement('button'); b.className='fao-mini'; b.textContent='+ '+a[2];
+    b.title='Ajouter « '+a[2]+' » à ce posage';
+    b.onclick=function(){ tourAddOp(a[0],setup,a[1]); };
+    rO.appendChild(b);
+  });
+  { const bc=document.createElement('button'); bc.className='fao-mini'; bc.textContent='+ Perçage axe C';
+    bc.title='Trous hors de l’axe (radiaux ou axiaux) au foret motorisé : un perçage par sens et par Ø (active l’axe C du posage)';
+    bc.onclick=function(){ tourAddCDrill(setup); }; rO.appendChild(bc); }
+  const bg=document.createElement('button'); bg.className='fao-mini'; bg.textContent='+ Gamme complète';
+  bg.title='Dressage, chariotage, finition, gorges et filet extérieurs, perçage, intérieur (ébauche, alésage, gorges, filet), tronçonnage : ce que la pièce demande, dans cet ordre';
+  bg.onclick=function(){ tourAddGamme(setup); };
+  rO.appendChild(bg);
+  if(!C.rep){
+    const br=document.createElement('button'); br.className='fao-mini'; br.textContent='+ Reprise 2e face';
+    br.title='Nouveau posage : la pièce tronçonnée, retournée dans le mandrin, pour usiner l’autre bout (brut = résultat de ce posage)';
+    br.onclick=function(){ tourAddReprise(setup); };
+    rO.appendChild(br);
+  }
+  p.appendChild(rO);
+  const rX=faoRow();
+  const bs=document.createElement('button'); bs.textContent='▶ Simulation'; bs.className='primary';
+  bs.title='Fait tourner la barre et enlève la matière opération par opération (Échap pour sortir)';
+  bs.onclick=function(){ tourSimToggle(); };
+  rX.appendChild(bs);
+  const be=document.createElement('button'); be.textContent='Exporter le programme';
+  be.title='Programme CN de ce posage ('+tourPostOf(setup).label+')';
+  be.onclick=function(){ try{ faoExportSetups([setup]); }catch(e){} };
+  rX.appendChild(be);
+  p.appendChild(rX);
+  const st=tourStats(setup);
+  const sd=document.createElement('div'); sd.className='fao-note';
+  sd.textContent=st.n+' op · coupe '+(st.cut/1000).toFixed(2)+' m · rapides '+(st.rap/1000).toFixed(2)+' m · ≈'+st.tmin.toFixed(1)+' min';
+  p.appendChild(sd);
+  const note=document.createElement('div'); note.className='fao-note';
+  note.textContent='Tour 2 axes : G0 / G1 / G2 / G3, filetage G86 (Fagor) ou G33 (Siemens), X en diamètre. Point programmé : coin théorique de la plaquette ou de la barre, pointe du foret et de l’outil à fileter, coin avant de la lame. Validez toujours le premier programme à vide sur la machine.';
+  p.appendChild(note);
+}
+function tourToolCard(setup,t,i){
+  const d=faoCard();
+  const r=faoRow();
+  r.appendChild(faoLab('T'));
+  r.appendChild(faoNum(+t.num||i+1,function(v){ t.num=Math.max(1,Math.round(v)); },36,null,'Numéro d’outil (tourelle) et de correcteur'));
+  r.appendChild(faoTxt(t.name||'',function(v){ t.name=v; },150,'Nom de l’outil'));
+  r.appendChild(faoLab((TOUR_KIND_LABEL[t.kind]||t.kind)+(t.int?' int.':'')));
+  if((setup.tools||[]).length>1)r.appendChild(faoMini('✕',function(){
+    setup.tools=setup.tools.filter(function(x){return x!==t;});
+    (setup.ops||[]).forEach(function(o){ if(o.toolId===t.id)o.toolId=tourToolEnsure(setup,o.type,tourOpCote(o)).id; });
+  },'Supprimer cet outil'));
+  d.appendChild(r);
+  const g=faoRow();
+  const N=function(lab,k,unit,title,min){ g.appendChild(faoLab(lab)); g.appendChild(faoNum(+t[k],function(v){ t[k]=Math.max(min||0,v); },48,null,title)); if(unit)g.appendChild(faoLab(unit)); };
+  if(t.kind==='turn'||t.kind==='bore'){
+    N('rε','re','mm','Rayon de bec de la plaquette',0.01);
+    N('ε','eps','°','Angle de la plaquette (80 : C, 55 : D, 35 : V)',20);
+    N('κ','kap','°','Angle d’attaque de l’arête principale (95 : épaulement à angle droit)',60);
+    N('arête','l','mm','Longueur d’arête de coupe',2);
+  }else if(t.kind==='tdrill'||t.kind==='ldrill'){
+    N('Ø','d','mm','Diamètre du foret',0.5);
+    N('pointe','ang','°','Angle de pointe',60);
+    if(t.kind==='ldrill'){ g.appendChild(faoSel([['rad','radial'],['ax','axial']],t.ax==='ax'?'ax':'rad',function(v){ t.ax=v; },'Radial : le foret vise l’axe du tour ; axial : parallèle à l’axe, sur la face')); }
+  }else if(t.kind==='part'){
+    N('largeur','w','mm','Largeur de la lame',0.5);
+    N('prof. utile','h','mm','Profondeur maximale de coupe de la lame',1);
+  }else if(t.kind==='groove'){
+    N('largeur','w','mm','Largeur de la plaquette à gorge',0.3);
+    N('prof. utile','h','mm','Profondeur maximale de gorge',0.5);
+    N('r coin','rc','mm','Rayon des deux coins de la plaquette',0);
+  }else if(t.kind==='thread'){
+    N('angle','ang','°','Angle du filet (60 : métrique ISO)',29);
+  }
+  if(t.kind==='bore'||t.int){ const h=faoRow(); h.appendChild(faoLab('Ø mini')); h.appendChild(faoNum(+t.dmin||0,function(v){ t.dmin=Math.max(0,v); },48,null,'Plus petit trou où la barre passe')); h.appendChild(faoLab('mm')); d.appendChild(g); d.appendChild(h); }
+  else d.appendChild(g);
+  const c=faoRow();
+  c.appendChild(faoLab('Vc')); c.appendChild(faoNum(+t.vc||0,function(v){ t.vc=Math.max(1,v); },48,null,'Vitesse de coupe (m/min)')); c.appendChild(faoLab('m/min'));
+  if(t.kind!=='thread'){ c.appendChild(faoLab('f')); c.appendChild(faoNum(+t.f||0,function(v){ t.f=Math.max(0.001,v); },48,null,'Avance par tour (mm/tr)')); c.appendChild(faoLab('mm/tr')); }
+  else c.appendChild(faoLab('avance = pas du filet'));
+  d.appendChild(c);
+  d.appendChild(tourToolSvg(t));
+  return d;
+}
+function tourToolSvg(t){
+  // petit dessin de l'outil, à l'échelle
+  const NS='http://www.w3.org/2000/svg';
+  const sv=document.createElementNS(NS,'svg');
+  sv.setAttribute('width','120'); sv.setAttribute('height','64');
+  try{
+    let pts=[];
+    if(t.kind==='turn')pts=tourInsertGeo(t,0).poly;
+    else if(t.kind==='bore')pts=tourInsertGeo(t,0).poly.map(function(p){ return [p[0],-p[1]]; }).concat([[8,-2],[8,-6]]);
+    else if(t.kind==='thread'){ const a=((+t.ang||60)/2)*Math.PI/180, h=3; pts=[[0,0],[h*Math.tan(a),t.int?-h:h],[h*Math.tan(a),(t.int?-1:1)*(h+6)],[-h*Math.tan(a),(t.int?-1:1)*(h+6)],[-h*Math.tan(a),t.int?-h:h]]; }
+    else if(t.kind==='groove'){ const w=+t.w||2, h=Math.min(+t.h||4,6*w)+w, s=t.int?-1:1; pts=[[0,0],[0,s*h],[-w,s*h],[-w,0]]; }
+    else if(t.kind==='tdrill'){ const r=(+t.d||10)/2, tp=r/Math.tan(((+t.ang||118)/2)*Math.PI/180); pts=[[0,0],[tp,r],[tp+4*r,r],[tp+4*r,-r],[tp,-r]]; }
+    else { const w=+t.w||3, h=Math.min(+t.h||20,8*w); pts=[[0,0],[0,h],[-w,h],[-w,0]]; }
+    let x0=1/0,x1=-1/0,y0=1/0,y1=-1/0; pts.forEach(function(p){ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); y0=Math.min(y0,p[1]); y1=Math.max(y1,p[1]); });
+    const sc=Math.min(110/(x1-x0||1),56/(y1-y0||1));
+    const poly=document.createElementNS(NS,'polygon');
+    poly.setAttribute('points',pts.map(function(p){ return (5+(p[0]-x0)*sc).toFixed(1)+','+(60-(p[1]-y0)*sc).toFixed(1); }).join(' '));
+    poly.setAttribute('fill','#ff9f0a'); poly.setAttribute('fill-opacity','.35'); poly.setAttribute('stroke','#ff9f0a');
+    sv.appendChild(poly);
+  }catch(e){}
+  return sv;
+}
+/* ----- fiche d'une opération ----- */
+function tourOpFiche(p,setup,op,i){
+  p.appendChild(faoH('Opération · '+setup.name));
+  const d=faoCard();
+  if(op.on===false)d.style.opacity='0.55';
+  const r=faoRow();
+  const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=op.on!==false;
+  cb.title='Décocher = ignorer cette opération (aperçu, temps, programme)';
+  cb.onchange=function(){ faoSnapshot('activer/désactiver « '+tourOpLabel(op)+' »'); op.on=cb.checked; faoChanged(); };
+  r.appendChild(cb);
+  const tt=document.createElement('span'); tt.className='fao-opnum'; tt.textContent=(i+1)+'. '+tourOpLabel(op); r.appendChild(tt);
+  const kind=tourToolKind(op.type,tourOpCote(op));
+  r.appendChild(faoSel((setup.tools||[]).filter(function(t){return tourToolMatch(t,kind);}).map(function(t){ return [t.id,'T'+t.num+' '+t.name]; }),op.toolId,function(v){ op.toolId=v; },'Outil de cette opération'));
+  r.appendChild(faoMini('↑',function(){ if(i>0){ setup.ops.splice(i,1); setup.ops.splice(i-1,0,op); } },'Usinée plus tôt'));
+  r.appendChild(faoMini('↓',function(){ if(i<setup.ops.length-1){ setup.ops.splice(i,1); setup.ops.splice(i+1,0,op); } },'Usinée plus tard'));
+  r.appendChild(faoMini('✕',function(){ setup.ops.splice(i,1); try{ sel={kind:'faoSetup',id:setup.id}; }catch(e){} },'Supprimer cette opération'));
+  d.appendChild(r);
+  const S=tourStock(setup), M=tourModel(setup);
+  const N=function(lab,val,fn,unit,title){ tourNumRow(d,lab,val,fn,unit,title); };
+  if(op.type==='tour_face'){
+    N('Profondeur par passe',+op.ap||1,function(v){ op.ap=Math.max(0.05,v); },'mm','Épaisseur enlevée à chaque passe de dressage');
+    N('Laisse sur la face',+op.laisse||0,function(v){ op.laisse=Math.max(0,v); },'mm','Matière laissée devant Z0 pour une reprise');
+  }else if(op.type==='tour_rough'){
+    N('Profondeur par passe',+op.ap||2,function(v){ op.ap=Math.max(0.1,v); },'mm','Profondeur de passe sur le rayon');
+    N('Laisse radiale',isFinite(+op.sx)?+op.sx:0.3,function(v){ op.sx=Math.max(0,v); },'mm','Matière laissée sur les diamètres pour la finition (sur le rayon)');
+    N('Laisse axiale',isFinite(+op.sz)?+op.sz:0.1,function(v){ op.sz=Math.max(0,v); },'mm','Matière laissée sur les faces pour la finition');
+    const rp=faoRow(); rp.appendChild(tourChk('Passe de profil à la fin',op.profil!==false,function(v){ op.profil=v; },'Une passe le long du profil enlève les marches laissées entre les passes')); d.appendChild(rp);
+    N('Z de fin',tourOpZEnd(setup,op),function(v){ op.zEnd=v; },'mm',op.cote==='int'?'Limite arrière dans l’alésage (par défaut : le fond, ou 1 mm derrière la pièce si débouchant)':'Limite arrière de la pointe (par défaut 1 mm derrière la pièce)');
+  }else if(op.type==='tour_finish'){
+    N('Laisse',+op.laisse||0,function(v){ op.laisse=Math.max(0,v); },'mm','0 = à la cote');
+    N('Z de fin',tourOpZEnd(setup,op),function(v){ op.zEnd=v; },'mm',op.cote==='int'?'Limite arrière dans l’alésage (par défaut : le fond, ou 1 mm derrière la pièce si débouchant)':'Limite arrière de la pointe (par défaut 1 mm derrière la pièce)');
+  }else if(op.type==='tour_drill'){
+    const B=M&&M.ok?M.bore:null;
+    N('Profondeur',+op.depth>0?+op.depth:(B?(B.through?+(M.L+0.5).toFixed(3):+(op.plein!==false?B.full:B.end).toFixed(3)):0),function(v){ op.depth=Math.max(0,v); },'mm','Depuis la face avant (0 = celle de l’alésage du modèle)');
+    const rp=faoRow(); rp.appendChild(tourChk('Profondeur au Ø plein',op.plein!==false,function(v){ op.plein=v; },'Coché : la profondeur est celle du Ø plein, la pointe va plus loin ; décoché : profondeur à la pointe')); d.appendChild(rp);
+    N('Débourrage tous les',+op.q||0,function(v){ op.q=Math.max(0,v); },'mm','0 = d’un trait ; sinon le foret ressort à chaque fois pour vider les copeaux');
+  }else if(op.type==='tour_part'){
+    N('Z de coupe',(isFinite(+op.z)&&op.z!==null&&op.z!=='')?+op.z:-(M&&M.ok?M.L:S.L),function(v){ op.z=v; },'mm','Position du coin avant de la lame (par défaut la face arrière de la pièce)');
+    N('Jusqu’au Ø',+op.dEnd||0,function(v){ op.dEnd=Math.max(0,v); },'mm','0 = jusqu’au trou percé de part en part, sinon jusqu’au centre (la pièce tombe)');
+    N('Brise-copeau tous les',+op.q||0,function(v){ op.q=Math.max(0,v); },'mm','0 = d’un trait');
+  }else if(op.type==='tour_groove'){
+    d.appendChild(faoHelp('Gorges trouvées seules : là où la plaquette de finition '+(op.cote==='int'?'intérieure':'extérieure')+' laisse de la matière.'));
+    N('Laisse',+op.laisse||0,function(v){ op.laisse=Math.max(0,v); },'mm','Matière laissée sur le fond et les parois (0 = à la cote)');
+    N('Passe de fond',isFinite(+op.fin)?+op.fin:0.1,function(v){ op.fin=Math.max(0,v); },'mm','Les plongées s’arrêtent à cette distance du fond, une passe le long du fond le termine (0 = plongées seules)');
+    N('Brise-copeau tous les',+op.q||0,function(v){ op.q=Math.max(0,v); },'mm','0 = d’un trait');
+  }else if(op.type==='tour_cdrill'){
+    const rs=faoRow(); rs.appendChild(faoLab('Trous'));
+    rs.appendChild(faoSel([['rad','radiaux (vers l’axe)'],['ax','axiaux (sur la face)']],op.dir==='ax'?'ax':'rad',function(v){ op.dir=v; op.toolId=tourToolEnsure(setup,op.type,v).id; },'Sens des trous percés par cette opération'));
+    const HS=tourCDrillHoles(setup,op), Ls=[]; HS.all.forEach(function(h){ if(Ls.indexOf(h.d)<0)Ls.push(h.d); });
+    if(Ls.length){ rs.appendChild(faoLab('Ø')); rs.appendChild(faoSel([['0','celui du foret']].concat(Ls.sort(function(a,b){ return a-b; }).map(function(x){ return [String(x),'Ø'+x+' ('+HS.all.filter(function(h){ return h.d===x; }).length+')']; })),String(+op.dsel>0?+op.dsel:0),function(v){ op.dsel=+v; if(+v>0){ const t=tourLiveDrillFor(setup,op.dir==='ax'?'ax':'rad',+v); op.toolId=t.id; } },'Ø des trous du modèle percés ici')); }
+    d.appendChild(rs);
+    N('Débourrage tous les',+op.q||0,function(v){ op.q=Math.max(0,v); },'mm','0 = d’un trait ; sinon le foret ressort à chaque fois pour vider les copeaux');
+    if(!tourCfg(setup).cax){ const h=faoHelp('⚠ Le posage n’a pas d’axe C : cochez « Outils tournants (axe C) » dans sa fiche.'); h.style.color='#ff9f0a'; d.appendChild(h); }
+  }else if(op.type==='tour_thread'){
+    const L=tourThreadsOf(setup).filter(function(x){ return x.int===(op.cote==='int'); });
+    const rs=faoRow(); rs.appendChild(faoLab('Filet'));
+    const opts=L.map(function(x,k){ return ['m'+k,x.label+' · Z'+(+x.z0.toFixed(2))+' → '+(+x.z1.toFixed(2))+(x.dz>0?' (côté mandrin)':'')]; }).concat([['man','Saisi ici']]);
+    rs.appendChild(faoSel(opts,op.src==='man'||!L.length?'man':'m'+Math.max(0,Math.min(L.length-1,+op.idx||0)),function(v){ if(v==='man')op.src='man'; else { op.src='auto'; op.idx=+v.slice(1); } },'Filet pris sur le modèle (fonction Filetage, trou taraudé) ou saisi'));
+    d.appendChild(rs);
+    if(op.src==='man'||!L.length){
+      N('Ø nominal',+op.D||0,function(v){ op.D=Math.max(0,v); },'mm','Ø du filet (M10 : 10)');
+      N('Pas',+op.P||0,function(v){ op.P=Math.max(0,v); },'mm','Pas du filet');
+      N('Z de début',isFinite(+op.zA)&&op.zA!==''&&op.zA!=null?+op.zA:0,function(v){ op.zA=v; },'mm','Bout libre du filet, côté face avant');
+      N('Z de fin',isFinite(+op.zB)&&op.zB!==''&&op.zB!=null?+op.zB:0,function(v){ op.zB=v; },'mm','Fin du filet, côté mandrin');
+      const rl=faoRow(); rl.appendChild(tourChk('Filet à gauche',!!op.lh,function(v){ op.lh=v; },'Broche inversée')); d.appendChild(rl);
+    }
+    N('Passes',+op.n||0,function(v){ op.n=Math.max(0,Math.round(v)); },'','Nombre de passes de coupe, à section constante (0 = une passe par 0,1 mm de profondeur, 3 au moins)');
+    N('Passes à vide',isFinite(+op.ressort)?+op.ressort:1,function(v){ op.ressort=Math.max(0,Math.min(5,Math.round(v))); },'','Passes répétées au fond, sans prise de passe');
+    N('Angle de pénétration',isFinite(+op.A)?+op.A:30,function(v){ op.A=Math.max(0,Math.min(60,v)); },'°','Cycle G86 du Fagor (A) : pénétration le long du flanc ; les passes G33 du Siemens pénètrent en radial');
+  }
+  // conditions de coupe (vides = celles de l'outil)
+  const cut=tourCut(setup,op);
+  const rc=faoRow();
+  rc.appendChild(faoLab('Vc')); rc.appendChild(faoNum(cut.vc,function(v){ op.vc=Math.max(1,v); },48,null,'Vitesse de coupe (m/min) de cette opération'));
+  rc.appendChild(faoLab('m/min'));
+  if(op.type!=='tour_thread'){ rc.appendChild(faoLab('f')); rc.appendChild(faoNum(cut.f,function(v){ op.f=Math.max(0.001,v); },48,null,'Avance (mm/tr) de cette opération'));
+  rc.appendChild(faoLab(op.type==='tour_cdrill'?'mm/tr du foret (G94 en mm/min)':'mm/tr')); }
+  else rc.appendChild(faoLab('avance = pas, broche constante (G97)'));
+  if(isFinite(+op.vc)||isFinite(+op.f))rc.appendChild(faoMini('Outil',function(){ delete op.vc; delete op.f; },'Reprendre les conditions de coupe de l’outil'));
+  d.appendChild(rc);
+  const g=tourOpGen(setup,op), e=tourOpTime(setup,op,g.moves);
+  const info=document.createElement('div'); info.className='fao-note';
+  info.textContent=(g.info?g.info+' · ':'')+g.moves.length+' mouvements · coupe '+(e.cut/1000).toFixed(2)+' m · ≈'+e.tmin.toFixed(2)+' min';
+  d.appendChild(info);
+  (g.warns||[]).forEach(function(w){ const h=faoHelp('⚠ '+w); h.style.color='#ff9f0a'; d.appendChild(h); });
+  p.appendChild(d);
+  const back=faoRow();
+  const bb=document.createElement('button'); bb.textContent='← Posage '+setup.name; bb.style.fontSize='.72rem';
+  bb.onclick=function(){ faoSelectSetup(setup.id); };
+  back.appendChild(bb);
+  p.appendChild(back);
+}
+
+/* ----- aperçu 3D ----- */
+function tourUc(M,c){ if(!c)return M.U; const a=c*Math.PI/180, k=Math.cos(a), s=Math.sin(a); return [k*M.U[0]+s*M.V[0],k*M.U[1]+s*M.V[1],k*M.U[2]+s*M.V[2]]; }
+function tourW(M,z,x,c){ const U=tourUc(M,c); return [M.Pf[0]+M.W[0]*z+U[0]*x,M.Pf[1]+M.W[1]*z+U[1]*x,M.Pf[2]+M.W[2]*z+U[2]*x]; }
+function tourBasis(M){
+  // repère local (X → U, Y → axe, Z → U × axe) : LatheGeometry tourne autour de son Y
+  const U=M.U, W=M.W, Z=[U[1]*W[2]-U[2]*W[1],U[2]*W[0]-U[0]*W[2],U[0]*W[1]-U[1]*W[0]];
+  const m=new THREE.Matrix4().makeBasis(new THREE.Vector3(U[0],U[1],U[2]),new THREE.Vector3(W[0],W[1],W[2]),new THREE.Vector3(Z[0],Z[1],Z[2]));
+  m.setPosition(M.Pf[0],M.Pf[1],M.Pf[2]);
+  return m;
+}
+function tourMovePts(a,b){ // points (z, x) d'un mouvement, arcs développés
+  if(!b.arc)return [[b.z,b.x]];
+  const A=b.arc, T=2*Math.PI, a0=Math.atan2(a.x-A.cx,a.z-A.cz), a1=Math.atan2(b.x-A.cx,b.z-A.cz);
+  let d=a1-a0; if(!A.cw){ while(d<=0)d+=T; } else { while(d>=0)d-=T; }
+  const n=Math.max(2,Math.ceil(Math.abs(d)/(Math.PI/48))), out=[];
+  for(let i=1;i<=n;i++){ const q=a0+d*i/n; out.push([A.cz+A.R*Math.cos(q),A.cx+A.R*Math.sin(q)]); }
+  return out;
+}
+function tourPreviewDraw(g,setup){
+  const M=tourModel(setup); if(!M||!M.ok)return 0;
+  const S=tourStock(setup);
+  let selOp=null; try{ if(sel&&sel.kind==='faoOp')selOp=(setup.ops||[]).filter(function(o){return o.id===sel.id;})[0]||null; }catch(e){}
+  const B=tourBasis(M);
+  // brut (barre) et mors
+  try{
+    const cy=new THREE.CylinderGeometry(S.R,S.R,S.sortie,64,1,true);
+    cy.translate(0,S.face-S.sortie/2,0);
+    const mm=new THREE.Mesh(cy,new THREE.MeshBasicMaterial({color:0xffb340,transparent:true,opacity:.10,depthWrite:false,side:THREE.DoubleSide}));
+    mm.applyMatrix4(B); mm.raycast=function(){}; mm.renderOrder=5; g.add(mm);
+    const ch=new THREE.CylinderGeometry(S.R+18,S.R+18,30,48);
+    ch.translate(0,S.chuck-15,0);
+    const cm=new THREE.Mesh(ch,new THREE.MeshBasicMaterial({color:0x5b6170,transparent:true,opacity:.35,depthWrite:false}));
+    cm.applyMatrix4(B); cm.raycast=function(){}; g.add(cm);
+    const ax=new THREE.BufferGeometry().setFromPoints([tourW(M,S.chuck-30,0),tourW(M,S.face+15,0)].map(function(q){return new THREE.Vector3(q[0],q[1],q[2]);}));
+    const al=new THREE.Line(ax,new THREE.LineDashedMaterial({color:0x9aa3b2,dashSize:3,gapSize:2}));
+    try{ al.computeLineDistances(); }catch(e){}
+    al.raycast=function(){}; g.add(al);
+  }catch(e){}
+  let n=0;
+  (setup.ops||[]).forEach(function(op){
+    if(!op||op.on===false||op.hidden===true)return;
+    const gen=tourOpGen(setup,op), mv=gen.moves; if(!mv.length)return;
+    const t=tourOpTool(setup,op)||{}, re=t.kind==='turn'?(+t.re||0.4):0;
+    const cut=[], rap=[];
+    for(let i=1;i<mv.length;i++){
+      const a=mv[i-1], b=mv[i], L=b.rap?rap:cut;
+      let pz=a.z, px=a.x;
+      tourMovePts(a,b).forEach(function(q){
+        const p0=tourW(M,pz+re,px+re,a.c||b.c), p1=tourW(M,q[0]+re,q[1]+re,b.c);
+        L.push(p0[0],p0[1],p0[2],p1[0],p1[1],p1[2]); pz=q[0]; px=q[1];
+      });
+    }
+    n+=mv.length;
+    const dim=selOp&&selOp!==op;
+    const add=function(arr,col,op2){
+      if(!arr.length)return;
+      const bg=new THREE.BufferGeometry(); bg.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));
+      // par-dessus la pièce : le parcours est dans le plan de l'axe, au ras du profil (caché sinon)
+      const l=new THREE.LineSegments(bg,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:op2,depthTest:false}));
+      l.raycast=function(){}; l.renderOrder=20; g.add(l);
+    };
+    add(cut,0x2f80ff,dim?0.25:1);
+    add(rap,typeof FAO_COL_RAPIDE!=='undefined'?FAO_COL_RAPIDE:0xffd60a,dim?0.12:0.55);
+  });
+  return n;
+}
+
+/* ----- simulation ----- */
+let tourSim=null, tourSimBar=null, tourSimEsc=false;
+function tourSimToggle(){ if(tourSim){ tourSimClose(); return false; } return tourSimOpen(); }
+function tourSimBuild(setup){
+  const M=tourModel(setup); if(!M||!M.ok)return null;
+  const S=tourStock(setup), C=tourCfg(setup), rapide=Math.max(500,+setup.rapide||10000);
+  const segs=[], holes=[]; let T=0;
+  tourOpsActive(setup).forEach(function(op){
+    const g=tourOpGen(setup,op), mv=g.moves, cut=tourCut(setup,op), t=cut.t||{};
+    for(let i=1;i<mv.length;i++){
+      const a=mv[i-1], b=mv[i];
+      let pz=a.z, px=a.x;
+      tourMovePts(a,b).forEach(function(q){
+        const l=Math.hypot(q[0]-pz,q[1]-px);
+        let dt;
+        if(b.rap)dt=l/rapide;
+        else{ const D=tourSpinD(cut,(px+q[1])/2);
+          const n=Math.min(tourNmax(C,cut),cut.vc*1000/(Math.PI*D)); dt=l/Math.max(1e-6,cut.f*n); }
+        segs.push({op:op,t:t,z0:pz,x0:px,z1:q[0],x1:q[1],c:b.c||0,rap:!!b.rap,ta:T,tb:T+dt*60});
+        T+=dt*60; pz=q[0]; px=q[1];
+      });
+      (g.holes||[]).forEach(function(h){ if(h.mi===i)holes.push(Object.assign({t:T},h)); }); // trou fini au bout de ce mouvement
+    }
+  });
+  if(!segs.length)return null;
+  // reprise : la pièce du premier posage, retournée, entière (la partie tenue dans le mandrin aussi)
+  const g=0.05, z0=S.rep?Math.min(S.chuck,S.rep.zb):S.chuck, n=Math.max(2,Math.ceil((S.face-z0)/g));
+  const r0=new Float64Array(n).fill(S.R), i0=new Float64Array(n);
+  if(S.rep)for(let k=0;k<n;k++){ const zc=z0+(k+0.5)*g, ro=S.rep.Rat(zc); r0[k]=ro>0?ro:0; i0[k]=ro>0?Math.min(ro,S.rep.RIat(zc)):0; }
+  return {setup:setup,M:M,S:S,segs:segs,T:T,t:0,k:0,g:g,z0:z0,n:n,r0:r0,i0:i0,
+    rout:Float64Array.from(r0),rin:Float64Array.from(i0),geo:new Map(),crash:0,playing:false,speed:20,dirty:true,holes:holes,nHoles:-1};
+}
+function tourSimToolApply(sm,t,z,x,rap){
+  // enlève la matière sous l'outil placé à (z, x) (point programmé)
+  const g=sm.g, z0=sm.z0, n=sm.n, RO=sm.rout, RI=sm.rin;
+  let cut=0;
+  const col=function(zz){ return Math.floor((zz-z0)/g); };
+  if(t.kind==='ldrill')return; // foret motorisé : trous dessinés à part (la matière tournée n'est pas touchée)
+  if(t.kind==='tdrill'){
+    const r=(+t.d||10)/2, tn=Math.tan(Math.max(30,Math.min(90,(+t.ang||118)/2))*Math.PI/180);
+    for(let k=Math.max(0,col(z));k<n;k++){
+      const zc=z0+(k+0.5)*g, rd=Math.min(r,(zc-z)*tn); if(rd<=0)continue;
+      if(rd>RI[k]&&RO[k]>RI[k]){ cut+=Math.min(rd,RO[k])-RI[k]; RI[k]=Math.min(rd,RO[k]); if(RI[k]>=RO[k]-1e-6){ RI[k]=0; RO[k]=0; } }
+    }
+  }else if(t.kind==='thread'){
+    return; // le filet n'est pas creusé dans la simulation (passes visibles)
+  }else if((t.kind==='part'||t.kind==='groove')&&t.int){
+    // lame intérieure : coin avant côté paroi, la lame vers l'axe
+    const w=+t.w||2;
+    for(let k=Math.max(0,col(z-w));k<=Math.min(n-1,col(z));k++){
+      if(RO[k]>RI[k]&&x>RI[k]){ cut+=Math.min(x,RO[k])-RI[k]; RI[k]=Math.min(x,RO[k]); if(RI[k]>=RO[k]-1e-6){ RO[k]=0; RI[k]=0; } }
+    }
+  }else if(t.kind==='part'||t.kind==='groove'){
+    const w=+t.w||3, xb=Math.max(0,x);
+    for(let k=Math.max(0,col(z-w));k<=Math.min(n-1,col(z));k++){
+      if(RO[k]>xb&&RO[k]>RI[k]){ cut+=RO[k]-Math.max(xb,RI[k]); RO[k]=xb; if(RO[k]<=RI[k]+1e-6){ RO[k]=0; RI[k]=0; } }
+    }
+  }else if(t.kind==='bore'){
+    // barre d'alésage : plaquette vue en miroir (centre du bec à x − rε), la matière sous elle vers l'axe
+    let G=sm.geo.get(t); if(!G){ G=tourInsertGeo(t,0); sm.geo.set(t,G); }
+    const re=G.re, cz=z+re, cx=x-re;
+    for(let k=Math.max(0,col(cz+G.x0));k<=Math.min(n-1,col(cz+G.x1));k++){
+      const zc=z0+(k+0.5)*g, lw=G.low(zc-cz); if(!(lw<1/0))continue;
+      const v=cx-lw;
+      if(v>RI[k]&&RO[k]>RI[k]){ cut+=Math.min(v,RO[k])-RI[k]; RI[k]=Math.min(v,RO[k]); if(RI[k]>=RO[k]-1e-6){ RI[k]=0; RO[k]=0; } }
+    }
+  }else{
+    let G=sm.geo.get(t); if(!G){ G=tourInsertGeo(t,0); sm.geo.set(t,G); }
+    const re=G.re, cz=z+re, cx=x+re;
+    for(let k=Math.max(0,col(cz+G.x0));k<=Math.min(n-1,col(cz+G.x1));k++){
+      const zc=z0+(k+0.5)*g, lw=G.low(zc-cz); if(!(lw<1/0))continue;
+      const v=Math.max(0,cx+lw);
+      if(v<RO[k]&&RO[k]>RI[k]){ cut+=RO[k]-Math.max(v,RI[k]); RO[k]=v; if(RO[k]<=RI[k]+1e-6){ RO[k]=0; RI[k]=0; } }
+    }
+  }
+  if(cut>0)sm.dirty=true;
+  if(rap&&cut>0.05)sm.crash++;
+}
+function tourSimAdvance(sm,tNew){
+  if(tNew<sm.t){ sm.rout.set(sm.r0); sm.rin.set(sm.i0); sm.t=0; sm.k=0; sm.crash=0; sm.dirty=true; }
+  const segs=sm.segs;
+  while(sm.k<segs.length&&segs[sm.k].ta<tNew){
+    const s=segs[sm.k];
+    const ua=Math.max(0,(sm.t-s.ta)/Math.max(1e-9,s.tb-s.ta)), ub=Math.min(1,(tNew-s.ta)/Math.max(1e-9,s.tb-s.ta));
+    const l=Math.hypot(s.z1-s.z0,s.x1-s.x0)*(ub-ua), steps=Math.max(1,Math.ceil(l/0.05));
+    for(let i=1;i<=steps;i++){ const u=ua+(ub-ua)*i/steps; tourSimToolApply(sm,s.t,s.z0+(s.z1-s.z0)*u,s.x0+(s.x1-s.x0)*u,s.rap); }
+    if(ub>=1)sm.k++; else break;
+  }
+  sm.t=tNew;
+}
+function tourSimPos(sm){
+  const segs=sm.segs; let s=segs[Math.min(sm.k,segs.length-1)];
+  if(!s)return null;
+  const u=Math.max(0,Math.min(1,(sm.t-s.ta)/Math.max(1e-9,s.tb-s.ta)));
+  return {t:s.t,op:s.op,z:s.z0+(s.z1-s.z0)*u,x:s.x0+(s.x1-s.x0)*u,c:s.c||0};
+}
+function tourSimMatter(sm){
+  // matière : une révolution par morceau continu (après le tronçonnage, la pièce et la barre)
+  const g=sm.g, z0=sm.z0, n=sm.n, RO=sm.rout, RI=sm.rin, out=[];
+  let k=0;
+  while(k<n){
+    while(k<n&&!(RO[k]-RI[k]>1e-3))k++;
+    if(k>=n)break;
+    const a=k; while(k<n&&RO[k]-RI[k]>1e-3)k++;
+    const b=k-1;
+    const top=[], bot=[];
+    for(let j=a;j<=b;j++){ top.push([z0+j*g,RO[j]],[z0+(j+1)*g,RO[j]]); bot.push([z0+j*g,RI[j]],[z0+(j+1)*g,RI[j]]); }
+    const T2=tourSimplify(top,0.005), B2=tourSimplify(bot,0.005).reverse();
+    // contour (r, z) ; points confondus retirés : LatheGeometry en tirerait des normales NaN
+    const raw=[[B2[B2.length-1][1],B2[B2.length-1][0]]];
+    T2.forEach(function(p){ raw.push([p[1],p[0]]); });
+    B2.forEach(function(p){ raw.push([p[1],p[0]]); });
+    const q=raw.filter(function(p,i){ return !i||Math.hypot(p[0]-raw[i-1][0],p[1]-raw[i-1][1])>1e-6; });
+    if(q.length>2&&Math.hypot(q[0][0]-q[q.length-1][0],q[0][1]-q[q.length-1][1])<=1e-6)q.pop();
+    if(q.length>=3)out.push(q.map(function(p){ return new THREE.Vector2(p[0],p[1]); }));
+  }
+  return out;
+}
+function tourSimRender(sm){
+  if(!sm.grp)return;
+  // trous des forets motorisés déjà percés : cylindres sombres
+  const nh=(sm.holes||[]).filter(function(h){ return h.t<=sm.t+1e-9; }).length;
+  if(nh!==sm.nHoles){
+    sm.nHoles=nh;
+    if(sm.hg){ sm.grp.remove(sm.hg); sm.hg.traverse(function(o){ if(o.geometry)o.geometry.dispose(); }); sm.hg=null; }
+    if(nh){
+      const G=new THREE.Group(), mat=sm.holeMat||(sm.holeMat=new THREE.MeshPhongMaterial({color:0x1f2937,side:THREE.DoubleSide}));
+      sm.holes.slice(0,nh).forEach(function(h){
+        const a=h.ax==='rad'?tourW(sm.M,h.z,h.x0+0.3,h.c):tourW(sm.M,h.z+0.3,h.x0,h.c), b=h.ax==='rad'?tourW(sm.M,h.z,h.x1,h.c):tourW(sm.M,h.z1,h.x0,h.c);
+        const A=new THREE.Vector3(a[0],a[1],a[2]), B=new THREE.Vector3(b[0],b[1],b[2]), L=A.distanceTo(B); if(!(L>1e-6))return;
+        const m=new THREE.Mesh(new THREE.CylinderGeometry(h.r,h.r,L,24),mat);
+        m.position.copy(A.clone().add(B).multiplyScalar(0.5));
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),B.clone().sub(A).normalize());
+        m.raycast=function(){}; G.add(m);
+      });
+      sm.hg=G; sm.grp.add(G);
+    }
+  }
+  if(sm.dirty){
+    sm.dirty=false;
+    if(sm.mat){ sm.grp.remove(sm.mat); sm.mat.traverse(function(o){ if(o.geometry)o.geometry.dispose(); }); }
+    const G=new THREE.Group(), B=tourBasis(sm.M);
+    tourSimMatter(sm).forEach(function(pts){
+      // les points sont en (r, z) relatifs au repère du tour : z → Y local
+      const geo=new THREE.LatheGeometry(pts,72);
+      const m=new THREE.Mesh(geo,sm.matMat); m.applyMatrix4(B); m.raycast=function(){}; G.add(m);
+    });
+    sm.mat=G; sm.grp.add(G);
+  }
+  const P=tourSimPos(sm);
+  if(P){
+    if(!sm.tool||sm.toolT!==P.t){
+      if(sm.tool){ sm.grp.remove(sm.tool); try{ sm.tool.geometry.dispose(); }catch(e){} }
+      sm.tool=tourSimToolMesh(P.t); sm.toolT=P.t; sm.grp.add(sm.tool);
+    }
+    const re=(P.t.kind==='turn'||P.t.kind==='bore')?(+P.t.re||0.4):0;
+    const w=tourW(sm.M,P.z+re,P.x+(P.t.kind==='bore'?-re:re),P.c); // centre du bec (barre : vers l'axe)
+    const U=tourUc(sm.M,P.c), W=sm.M.W, N2=[W[1]*U[2]-W[2]*U[1],W[2]*U[0]-W[0]*U[2],W[0]*U[1]-W[1]*U[0]];
+    const m=new THREE.Matrix4().makeBasis(new THREE.Vector3(W[0],W[1],W[2]),new THREE.Vector3(U[0],U[1],U[2]),new THREE.Vector3(N2[0],N2[1],N2[2]));
+    m.setPosition(w[0],w[1],w[2]);
+    sm.tool.matrixAutoUpdate=false; sm.tool.matrix.copy(m); sm.tool.matrixWorldNeedsUpdate=true;
+  }
+  tourSimBarSync(sm,P);
+}
+function tourSimToolMesh(t){
+  // outil dans son plan : x local = le long de l'axe (z), y local = rayon
+  let shape=null;
+  const sh=function(pts){ const s=new THREE.Shape(); pts.forEach(function(p,i){ if(i)s.lineTo(p[0],p[1]); else s.moveTo(p[0],p[1]); }); return s; };
+  if(t.kind==='turn')shape=sh(tourInsertGeo(t,0).poly);
+  else if(t.kind==='bore')shape=sh(tourInsertGeo(t,0).poly.map(function(p){ return [p[0],-p[1]]; }).reverse()); // barre : plaquette tournée vers la paroi
+  else if(t.kind==='thread'){ const a=((+t.ang||60)/2)*Math.PI/180, h=3, s=t.int?-1:1; shape=sh(s>0?[[0,0],[h*Math.tan(a),h],[h*Math.tan(a),h+15],[-h*Math.tan(a),h+15],[-h*Math.tan(a),h]]:[[0,0],[-h*Math.tan(a),-h],[-h*Math.tan(a),-h-15],[h*Math.tan(a),-h-15],[h*Math.tan(a),-h]]); }
+  else if(t.int){ const w=+t.w||2, h=(+t.h||3)+6; shape=sh([[0,0],[-w,0],[-w,-h],[0,-h]]); } // lame intérieure : vers l'axe
+  else if(t.kind==='tdrill'||(t.kind==='ldrill'&&t.ax==='ax')){ const r=(+t.d||10)/2, tp=r/Math.tan(((+t.ang||118)/2)*Math.PI/180); shape=sh([[0,0],[tp,r],[tp+60,r],[tp+60,-r],[tp,-r]]); }
+  else if(t.kind==='ldrill'){ const r=(+t.d||6)/2, tp=r/Math.tan(((+t.ang||118)/2)*Math.PI/180); shape=sh([[0,0],[r,tp],[r,tp+40],[-r,tp+40],[-r,tp]]); } // radial : pointe vers l'axe
+  else { const w=+t.w||3, h=(+t.h||20)+10; shape=sh([[0,0],[0,h],[-w,h],[-w,0]]); }
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:4,bevelEnabled:false});
+  geo.translate(0,0,-2);
+  const m=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:0xff9f0a,side:THREE.DoubleSide}));
+  m.raycast=function(){};
+  return m;
+}
+function tourSimOpen(){
+  try{
+    const setup=faoSetup();
+    if(!tourIs(setup)){ faoViewerMsg('Tournage : choisissez un posage tour.'); return false; }
+    const sm=tourSimBuild(setup);
+    if(!sm){ faoViewerMsg('Tournage : aucune trajectoire à simuler — ajoutez une opération.'); return false; }
+    tourSim=sm;
+    sm.grp=new THREE.Group(); sm.grp.name='tourSim';
+    sm.matMat=new THREE.MeshPhongMaterial({color:0xb9bec7,side:THREE.DoubleSide,shininess:60});
+    faoAdd3D(sm.grp);
+    sm.hidden=[];
+    try{ (typeof bodies!=='undefined'?bodies:[]).forEach(function(b){ if(b&&b.mesh&&b.mesh.visible!==false){ b.mesh.visible=false; sm.hidden.push(b); } }); }catch(e){}
+    try{ if(faoPrevGroup){ sm.prevVis=faoPrevGroup.visible!==false; faoPrevGroup.visible=false; } }catch(e){}
+    tourSimBarShow();
+    tourSimRender(sm);
+    tourSimPlay();
+    if(!tourSimEsc&&typeof window!=='undefined'&&window.addEventListener){
+      tourSimEsc=true;
+      window.addEventListener('keydown',function(e){ if(e.key==='Escape'&&tourSim){ tourSimClose(); } });
+    }
+    faoViewerMsg('Tournage : simulation en cours (Échap ou ✕ pour sortir).');
+    return true;
+  }catch(e){ faoViewerMsg('Simulation tour : '+((e&&e.message)||e)); return false; }
+}
+function tourSimClose(){
+  const sm=tourSim; tourSim=null;
+  if(!sm)return;
+  sm.playing=false;
+  try{ if(sm.grp){ faoDel3D(sm.grp); sm.grp.traverse(function(o){ if(o.geometry)o.geometry.dispose(); }); } }catch(e){}
+  try{ sm.hidden.forEach(function(b){ if(b.mesh)b.mesh.visible=true; }); }catch(e){}
+  try{ if(faoPrevGroup)faoPrevGroup.visible=sm.prevVis!==false; }catch(e){}
+  try{ if(tourSimBar)tourSimBar.style.display='none'; }catch(e){}
+}
+function tourSimPlay(){
+  const sm=tourSim; if(!sm)return;
+  if(sm.t>=sm.T)tourSimAdvance(sm,0);
+  sm.playing=true;
+  let last=null;
+  const step=function(ts){
+    if(tourSim!==sm||!sm.playing)return;
+    if(last===null)last=ts;
+    const dt=Math.min(0.1,(ts-last)/1000); last=ts;
+    tourSimAdvance(sm,Math.min(sm.T,sm.t+dt*sm.speed));
+    tourSimRender(sm);
+    if(sm.t>=sm.T){ sm.playing=false; tourSimBarSync(sm,tourSimPos(sm)); return; }
+    requestAnimationFrame(step);
+  };
+  try{ requestAnimationFrame(step); }catch(e){}
+}
+function tourSimSeek(u){
+  const sm=tourSim; if(!sm)return;
+  tourSimAdvance(sm,Math.max(0,Math.min(1,u))*sm.T);
+  tourSimRender(sm);
+}
+function tourSimFmt(s){ s=Math.round(s); const m=Math.floor(s/60); return m+':'+((s%60)<10?'0':'')+(s%60); }
+function tourSimBarShow(){
+  if(tourSimBar){ tourSimBar.style.display='flex'; return; }
+  try{
+    const host=document.getElementById('vpwrap')||document.body;
+    const bar=document.createElement('div'); bar.id='tourSimBar';
+    bar.style.cssText='position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;'
+      +'background:rgba(18,20,24,.94);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;'
+      +'z-index:30;font-size:.78rem;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45);max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center;';
+    const mk=function(t,title,fn){ const b=document.createElement('button'); b.textContent=t; b.title=title; b.style.fontSize='.85rem'; b.onclick=fn; bar.appendChild(b); return b; };
+    mk('▶','Lecture',function(){ tourSimPlay(); });
+    mk('⏸','Pause',function(){ if(tourSim)tourSim.playing=false; });
+    mk('⏹','Retour au début',function(){ if(tourSim){ tourSim.playing=false; tourSimSeek(0); } });
+    const rg=document.createElement('input'); rg.type='range'; rg.min='0'; rg.max='1000'; rg.value='0'; rg.style.width='220px';
+    rg.title='Avancer / reculer dans le programme';
+    rg.oninput=function(){ if(tourSim){ tourSim.playing=false; tourSimSeek(+rg.value/1000); } };
+    bar.appendChild(rg);
+    const sp=document.createElement('select'); sp.title='Vitesse de lecture';
+    [[1,'×1'],[5,'×5'],[20,'×20'],[100,'×100']].forEach(function(o){ const e=document.createElement('option'); e.value=o[0]; e.textContent=o[1]; sp.appendChild(e); });
+    sp.value='20'; sp.onchange=function(){ if(tourSim)tourSim.speed=+sp.value; };
+    bar.appendChild(sp);
+    const lb=document.createElement('span'); lb.style.minWidth='220px'; bar.appendChild(lb);
+    mk('✕','Quitter la simulation (Échap aussi)',function(){ tourSimClose(); });
+    host.appendChild(bar);
+    tourSimBar=bar; bar._rg=rg; bar._lb=lb; bar._sp=sp;
+  }catch(e){}
+}
+function tourSimBarSync(sm,P){
+  if(!tourSimBar)return;
+  try{
+    if(tourSimBar._sp)tourSimBar._sp.value=String(sm.speed);
+    tourSimBar._rg.value=String(Math.round(1000*sm.t/Math.max(1e-9,sm.T)));
+    tourSimBar._lb.textContent=tourSimFmt(sm.t)+' / '+tourSimFmt(sm.T)+(P?(' · '+tourOpLabel(P.op)+' T'+P.t.num+' · X'+tourFmt(2*P.x)+' Z'+tourFmt(P.z)):'')
+      +(sm.crash?(' · ⚠ '+sm.crash+' rapide'+(sm.crash>1?'s':'')+' dans la matière'):'');
+  }catch(e){}
 }
 
 /* ═══════════════ 90-10-selection-mesure.js — 10 selection mesure ═══════════════ */
@@ -95664,6 +98368,24 @@ function mfFiTable(){
   const OZ=ficXY(-15,15,7);
   F('Posage/Posage','Posage','Décrit comment la pièce est tenue dans la machine et où se trouve le point zéro de l’usinage.',[],BKW(),VISE()+ficBox(-15,-15,-10,15,15,6,'w')+ficAr(50,27,69,35,RE,1.3)+ficAr(50,27,31,35,GR,1.3)+ficAr(50,27,50,7,'#3b82f6',1.3),null,'La matière','Tenue, avec son zéro');
   const MILL=(x,c)=>ficR(x-3.5,10,7,24,'#4b5563',.8,'#cbd5e1')+ficD('M'+(x-3.5)+' 34h7v26l-3.5 4-3.5-4z','#8a5200',.8,null,c||'#f6a623');
+  // V1.2.7 : tournage — barre vue de côté (axe horizontal, mandrin à gauche)
+  const TB=(x1)=>ficR(6,22,10,32,'#4b5563',.9,'#94a3b8')+ficR(16,26,(x1||84)-16,24,'#7a5528',1,'#fde7c2')+ficD('M2 38h94','#64748b',.8,'3 2');
+  const TP=(d)=>ficD(d,'#1e3a8a',1.1,null,'#cbd5e1');
+  const INS=(x,y)=>ficD('M'+x+' '+y+'l6-9h8l-6 9z','#8a5200',.9,null,'#f6a623');
+  F('Mode/Fraisage','Fraisage','Le ruban montre les icônes de la fraiseuse : posages, opérations de fraisage, limites. Choisir un posage de fraisage y revient tout seul.',[],MILL(36)+MILL(64,'#94a3b8'),MILL(50)+ficR(20,64,60,10,'#7a5528',1,'#fde7c2'),null,'Les fraises','En fraisage');
+  F('Mode/Tournage','Tournage','Le ruban montre les icônes du tour : dressage, chariotage, finition, perçage, gorges, filetage, axe C. Choisir un posage tour y revient tout seul.',[],TB(),TB()+ficT(60,66,'tour',7,'#334155'),null,'La barre','En tournage');
+  F('Posage/Posage tour','Posage tour','La pièce tourne dans le mandrin autour de son axe ; le profil est lu tout seul sur le modèle.',[],TB(),TB()+TP('M16 30h30q6 0 6 4v-0h20v8H16z')+ficT(60,66,'X en Ø · Z0 en bout',7,'#334155'),null,'La barre','Le profil à tourner');
+  F('Tournage/Dressage','Dressage','La plaquette descend le long de la face avant : la barre est mise à longueur, face plane.',[],TB(86)+INS(86,26),TB(80)+INS(82,38)+ficD('M83 24v14','#2563eb',1.2,'2 1.5'),null,'Bout brut','Face dressée');
+  F('Tournage/Chariotage','Chariotage','Enlève le gros de la matière en passes le long de l’axe, en laissant un peu pour la finition.',[],TB(),ficR(6,22,10,32,'#4b5563',.9,'#94a3b8')+ficR(16,30,68,16,'#7a5528',1,'#fde7c2')+ficD('M84 26H30M84 30H40','#2563eb',1.1,'2 1.5')+INS(30,30),null,'Barre brute','Passes d’ébauche');
+  F('Tournage/Finition','Finition','Une passe le long du profil exact, arcs compris, pour la cote et l’état de surface.',[],ficR(6,22,10,32,'#4b5563',.9,'#94a3b8')+ficD('M16 29h24l6 0 4 3h30v12H16z','#7a5528',1,null,'#fde7c2'),ficR(6,22,10,32,'#4b5563',.9,'#94a3b8')+TP('M16 30h26q6 0 6 4h32v8H16z')+ficD('M80 34H48q-6 0-6-4H30','#2563eb',1.3)+INS(28,30),null,'Après chariotage','Profil fini');
+  F('Tournage/Perçage','Perçage en bout','Un foret entre dans l’axe par la face avant.',[],TB(80),TB(80)+ficD('M50 35h30v6H50z','#334155',.8,null,'#fff')+ficD('M94 35H56l-5 3 5 3h38','#1f2937',1,null,'#9ca3af'),null,'Face pleine','Trou dans l’axe');
+  // V1.2.7, étape 2 : intérieur, gorges, filetage, reprise
+  F('Tournage/Alésage','Alésage','Une barre d’alésage entre dans le trou percé et tourne sa paroi : ébauche, puis finition à la cote.',[],TB(84)+ficR(16,35,68,6,'#334155',.8,'#fff'),TB(84)+ficR(16,32,30,12,'#334155',.8,'#fff')+ficR(46,35,38,6,'#334155',.8,'#fff')+ficD('M94 37H40l-4 -4h4','#1f2937',1.1,null,'#9ca3af'),null,'Trou percé','Paroi alésée');
+  F('Tournage/Gorge','Gorge','Là où la plaquette de finition ne passe pas, l’outil à gorge plonge, puis termine le fond.',[],TB(84)+ficR(44,26,8,3,'#7a5528',1,'#fde7c2'),TB(84)+ficR(44,26,8,4,'#334155',.8,'#fff')+ficR(46,6,4,23,'#1f2937',1,'#9ca3af'),null,'Après finition','Gorge creusée');
+  F('Tournage/Filetage','Filetage','Le filet du modèle (pas, Ø, longueur) est tourné en plusieurs passes, broche à vitesse constante.',[],TB(84),TB(84)+ficD('M50 26l2 3 2-3 2 3 2-3 2 3 2-3 2 3 2-3 2 3 2-3 2 3 2-3 2 3 2-3 2 3 2-3','#1e3a8a',1)+ficD('M80 12l3 11 3-11z','#1f2937',1,null,'#9ca3af'),null,'Diamètre tourné','Filet');
+  F('Tournage/Perçage axe C','Perçage axe C','La broche s’arrête à l’angle du trou (axe C) et un foret motorisé perce hors de l’axe : radial ou sur la face.',[],TB(84),TB(84)+ficR(44,26,6,10,'#1f2937',.8,'#334155')+ficR(44,6,6,18,'#1f2937',1,'#9ca3af')+ficD('M47 24l-3 2h6z','#1f2937',1,null,'#9ca3af'),null,'Pièce tournée','Trou radial');
+  F('Tournage/Reprise','Reprise de la 2e face','La pièce tronçonnée est retournée dans le mandrin, tenue sur la partie déjà faite, pour usiner l’autre bout.',[],TB(60),ficR(6,22,10,32,'#4b5563',.9,'#94a3b8')+ficR(16,30,20,16,'#7a5528',1,'#fde7c2')+ficR(36,26,40,24,'#7a5528',1,'#fde7c2')+ficD('M78 8a10 10 0 0 1 0 14','#2563eb',1.3),null,'1er côté fait','Pièce retournée');
+  F('Tournage/Tronçonnage','Tronçonnage','Une lame plongée jusqu’au centre sépare la pièce finie de la barre.',[],TB(84)+ficR(52,6,4,20,'#1f2937',1,'#9ca3af'),ficR(6,22,10,32,'#4b5563',.9,'#94a3b8')+ficR(16,26,34,24,'#7a5528',1,'#fde7c2')+ficR(58,26,26,24,'#7a5528',1,'#fde7c2')+ficR(52,6,4,32,'#1f2937',1,'#9ca3af'),null,'Pièce sur la barre','Pièce séparée');
   F('Posage/Outils','Outils','La liste des fraises et forets disponibles : forme, diamètre, vitesses.',[],MILL(22)+MILL(50,'#94a3b8')+MILL(78,'#60a5fa'),MILL(36)+COTE(32.5,39.5,70,'')+ficT(46,72,'Ø 8',7,GR,'start')+ficT(52,26,'3 dents',7,'#334155','start')+ficT(52,38,'6000 tr/min',7,'#334155','start'),null,'Bibliothèque','Fiche d’un outil');
   F('Limites/Esquisse','Esquisse d’usinage','Dessine une zone interdite ou utile, visible seulement en FAO.',['Dessinez sur le plan du posage'],BKW(),BKW()+PROF(9,7));
   F('Limites/Extrusion','Mur interdit','Transforme la dernière esquisse FAO en mur : aucun outil n’a le droit de le traverser. Idéal pour protéger une bride.',[],BKW()+PROF(7,7),BKW()+ficBox(-7,-7,7,7,7,22,'g')+ficT(84,14,'⛔',11,RE));
@@ -96460,6 +99182,8 @@ function mfCss(){
   'body.ui-modern #faoTreeWrap .fao-dup{display:none!important}',
   // vue d'assemblage : seuls les groupes d'assemblage, pas de bandeau de timeline (fil de PIÈCE)
   'body.ui-modern[data-asm="1"] #mfRibbon .mfCao:not(.mfAsmG),body[data-asm="1"] #mfTl{display:none!important}'+
+  // V1.2.7 : FAO en deux modes — Fraisage ou Tournage : le ruban ne montre que les icônes du mode (tous les thèmes lisent ce ruban)
+  'body[data-fao-proc="tournage"] #mfRibbon .mfFrais,body:not([data-fao-proc="tournage"]) #mfRibbon .mfTour{display:none!important}',
   'body.ui-modern[data-ws="cao"] #mfRibbon .mfFao,body.ui-modern[data-ws="cao"] #mfRibbon .mfPlan,body.ui-modern[data-ws="fao"] #mfRibbon .mfCao,body.ui-modern[data-ws="fao"] #mfRibbon .mfPlan,body.ui-modern[data-ws="plan"] #mfRibbon .mfCao,body.ui-modern[data-ws="plan"] #mfRibbon .mfFao{display:none}',
   // groupe Composants : en modélisation, seul « Assembler » ; en assemblage, tout, et le bouton devient « Modéliser »
   // V0.21.11 : FAO = espace de PIÈCE — grisé sans pièce active en Modéliser (mfFaoGate)
@@ -96669,6 +99393,19 @@ const MF_IC={
   /* V0.99.86 : Découpe 3 tailles — disque sur son col, rainure tirée tout droit */
   slotcut:'<path d="M17 2v10"/><ellipse cx="17" cy="13" rx="5" ry="1.6"/><path d="M2 13h7" stroke-dasharray="2 1.6"/><path d="M2 18h20"/>',
   drill:'<path d="M10 3h4v9l-2 5-2-5z"/><path d="M10 6.5l4 1.5M10 9.5l4 1.5"/><path d="M5 21h14"/>',
+  // V1.2.7 : tournage (barre vue de côté, axe en pointillés)
+  mill:'<path d="M9 2h6v4H9z"/><path d="M10 6h4v10l-2 3-2-3z"/><path d="M10 9l4 2M10 12.5l4 2"/><path d="M3 21h18"/>',
+  lathe:'<path d="M2 5v14M2 8h3v8H2"/><path d="M5 9h15v6H5"/><path d="M1 12h22" stroke-dasharray="2 1.5"/><ellipse cx="20" cy="12" rx="1.2" ry="3"/>',
+  tface:'<path d="M3 7h11v10H3"/><path d="M14 7v10"/><path d="M18 3l-4 4 3 1z"/><path d="M17 8v8" stroke-dasharray="1.6 1.4"/>',
+  trough:'<path d="M3 6h18v12H3"/><path d="M8 9h13M11 12h10M14 15h7" stroke-dasharray="2 1.4"/><path d="M8 6v3h3v3h3v3h3v3"/>',
+  tfinish:'<path d="M3 6h7c3 0 4 3 4 6h7v6H3z"/><path d="M15 3l3 3-3 1z"/>',
+  tdrill:'<path d="M3 6h14v12H3z"/><path d="M22 10.5h-9l-2 1.5 2 1.5h9"/>',
+  tpart:'<path d="M3 6h8v12H3zM14 6h7v12h-7"/><path d="M11.5 2v10"/><path d="M11 2h2v9h-2"/>',
+  tbore:'<path d="M3 5h18v14H3z"/><path d="M3 9h12v6H3" stroke-dasharray="2 1.4"/><path d="M22 11h-8l-2 2h3"/>',
+  tgroove:'<path d="M3 7h7v3h4V7h7v10H3z"/><path d="M10.5 1v8h3V1"/>',
+  tthread:'<path d="M3 7h18v10H3z"/><path d="M5 7l2 2 2-2 2 2 2-2 2 2 2-2"/><path d="M10 1l2 5 2-5"/>',
+  tcax:'<path d="M3 8h14v8H3z"/><path d="M10 1v5M8.5 4h3"/><path d="M9 8v3h2V8"/><path d="M20 7a5 5 0 0 1 0 10"/><path d="M20 17l-2-1.3M20 17l.8-2.3"/>',
+  trep:'<path d="M2 6v12M2 9h3v6H2"/><path d="M5 9h9v6H5"/><path d="M17 7a5 5 0 0 1 0 10"/><path d="M17 17l-2-1.5M17 17l1-2.2"/>',
   rough3d:'<path d="M3 19l5-8 4 5 3-4 6 7z"/><path d="M3 14h4M14 9h7" stroke-dasharray="2 2"/>',
   finish:'<path d="M3 15c2-5 4-5 6 0s4 5 6 0 4-5 6 0"/><path d="M3 9h18" stroke-dasharray="2 2"/>',
   /* 2026-10-21-003 : Géodésique — surface (triangle arrondi) et passes concentriques
@@ -96759,9 +99496,41 @@ const MF_CAO=[
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd'],['export','Dossier','btnExportPack']]]
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',slotcut:'slotcut',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
+// V1.2.7 : mode de la FAO (Fraisage / Tournage) — suit le posage choisi, ou le bouton du ruban
+let mfFaoProcV='fraisage', mfFaoProcSid=null;
+function mfFaoProcApply(){
+  try{document.body.setAttribute('data-fao-proc',mfFaoProcV);}catch(e){}
+  try{document.querySelectorAll('#mfRibbon .mfRb[data-proc]').forEach(b=>b.classList.toggle('mfOn',b.dataset.proc===mfFaoProcV));}catch(e){}
+}
+function mfFaoProc(p){
+  // bouton Fraisage / Tournage : change les icônes, et prend un posage de ce genre s'il y en a un
+  mfFaoProcV=p==='tournage'?'tournage':'fraisage';
+  try{
+    const r=faoRoot(), cur=faoSetup(), tour=mfFaoProcV==='tournage';
+    if(!cur||tourIs(cur)!==tour){ const s=(r.setups||[]).find(x=>tourIs(x)===tour); if(s){ mfFaoProcSid=s.id; faoSelectSetup(s.id); } }
+  }catch(e){}
+  mfFaoProcApply();
+}
+function mfFaoProcSync(){
+  // un autre posage devient actif : le mode suit son genre
+  try{
+    const r=faoRoot(), id=r&&r.activeSetupId, s=faoSetup();
+    if(id!==mfFaoProcSid){ mfFaoProcSid=id; if(s)mfFaoProcV=tourIs(s)?'tournage':'fraisage'; }
+  }catch(e){}
+  mfFaoProcApply();
+}
+function mfFaoMillSetup(){
+  // posage de fraisage pour une opération de fraisage : l'actif, sinon le premier, sinon un nouveau
+  const r=faoRoot(), cur=faoSetup();
+  if(cur&&!tourIs(cur))return cur;
+  let s=(r.setups||[]).find(x=>!tourIs(x));
+  if(!s){ const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>x.textContent.trim()==='+ Posage'); if(b)b.click(); s=faoSetup(); if(s&&tourIs(s))s=null; }
+  if(s&&s.id!==r.activeSetupId)r.activeSetupId=s.id;
+  return s;
+}
 function mfFaoAdd(type,nm){
   if(type==='pattern'){ try{faoPatternNew();}catch(e){} return; } // V0.95.3 : reprend les opérations sélectionnées
-  try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
+  try{const op=faoOpDefaults(type);if(!op)return;const s=mfFaoMillSetup();if(!s)return;faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
     // V0.33.2 : Perçage sur des trous sélectionnés → gamme posée d'office (src/89-fao-percage.js)
     const g=op.type==='drill'&&typeof faoDrillFromSel==='function'?faoDrillFromSel(s,op):null;
     faoChanged();faoSelectOp(s.id,(g&&g.length?g[0]:op).id);}catch(e){}
@@ -96796,12 +99565,28 @@ function mfRibbon(){
     ['asmMag','Aimants',()=>magDlg(),'Bibliothèque d’aimants permanents (disques, cylindres, cubes, pavés, anneaux, cônes ; aimantation axiale ou diamétrale), articles réels avec leurs caractéristiques. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ',asmO],
     ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
-  grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');
+  // V1.2.7 : deux onglets, Fraisage et Tournage — chacun ne montre que ses icônes
+  grp('Mode',[['mill','Fraisage',()=>mfFaoProc('fraisage'),'Fraisage : posages de fraiseuse, opérations 2D / 3D, limites','mfFaoTab'],
+    ['lathe','Tournage',()=>mfFaoProc('tournage'),'Tournage : posages de tour, dressage, chariotage, finition, perçage, gorges, filetage, axe C','mfFaoTab']],'mfFao mfFaoMode');
+  rb.lastChild.querySelectorAll('.mfRb').forEach((b,i)=>{b.dataset.proc=i?'tournage':'fraisage';});
+  grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>x.textContent.trim()==='+ Posage');if(b)b.click();},'Ajouter un posage de fraisage','mfFrais'],
+    ['lathe','Posage tour',()=>{try{tourNewSetup();}catch(e){}},'Ajouter un posage de tournage (tour 2 axes) : la pièce tourne autour de son axe','mfTour'],['tools','Outils','faoToolsBtn',null,'mfIcR mfFrais']],'mfFao');
+  // V1.2.7 : tournage (89-fao-tour-*) — dans le posage tour actif, ou un nouveau
+  grp('Tournage',[['tface','Dressage',()=>{try{tourAddOp('tour_face');}catch(e){}},'Dressage de la face avant : la barre est mise à longueur'],
+    ['trough','Chariotage',()=>{try{tourAddOp('tour_rough');}catch(e){}},'Ébauche du profil, passe après passe le long de l’axe, en laissant la surépaisseur de finition'],
+    ['tfinish','Finition',()=>{try{tourAddOp('tour_finish');}catch(e){}},'Une passe le long du profil exact de la pièce (droites et arcs)'],
+    ['tdrill','Perçage',()=>{try{tourAddOp('tour_drill');}catch(e){}},'Perçage dans l’axe, en bout de pièce'],
+    ['tpart','Tronçonnage',()=>{try{tourAddOp('tour_part');}catch(e){}},'Sépare la pièce finie de la barre'],
+    ['tbore','Alésage',()=>{try{tourAddBoring();}catch(e){}},'Intérieur à la barre d’alésage : ébauche puis finition de la paroi du trou (perçage ajouté avant s’il manque)'],
+    ['tgroove','Gorge',()=>{try{tourAddAuto('tour_groove');}catch(e){}},'Gorges extérieures ou intérieures, trouvées seules là où la finition ne passe pas'],
+    ['tthread','Filetage',()=>{try{tourAddAuto('tour_thread');}catch(e){}},'Filet pris sur le modèle (fonction Filetage, trou taraudé) : pas, Ø et longueur'],
+    ['tcax','Perçage axe C',()=>{try{tourAddCDrill();}catch(e){}},'Trous hors de l’axe (radiaux ou axiaux) au foret motorisé, broche positionnée en angle (axe C)'],
+    ['trep','Reprise',()=>{try{tourAddReprise(tourActiveOrNew());}catch(e){}},'Reprise de la 2e face : la pièce tronçonnée, retournée dans le mandrin, pour usiner l’autre bout']],'mfFao mfTour');
   // V0.23.20 : esquisses et corps FAO (murs infranchissables) — src/89-fao-murs.js
   grp('Limites',[['sketch','Esquisse',()=>faoSkNew(),'Nouvelle esquisse FAO sur le plan XY du posage (visible seulement en FAO)'],
-    ['extrude','Extrusion',()=>faoWallNew(),'Corps FAO : extrusion de la dernière esquisse FAO — mur infranchissable pour toutes les opérations du posage']],'mfFao');
+    ['extrude','Extrusion',()=>faoWallNew(),'Corps FAO : extrusion de la dernière esquisse FAO — mur infranchissable pour toutes les opérations du posage']],'mfFao mfFrais');
   let ops=[];try{ops=faoAddOpsSpec();}catch(e){}
-  grp('Opérations',ops.map(a=>{const nm=String(a[1]).replace(/^\+ /,'');return [MF_FAO_ICON[a[0]]||'pocket',nm,()=>mfFaoAdd(a[0],nm),'Ajouter « '+nm+' » au posage courant'];}),'mfFao');
+  grp('Opérations',ops.map(a=>{const nm=String(a[1]).replace(/^\+ /,'');return [MF_FAO_ICON[a[0]]||'pocket',nm,()=>mfFaoAdd(a[0],nm),'Ajouter « '+nm+' » au posage courant'];}),'mfFao mfFrais');
   grp('Simulation',[['play','Usinage','faoVwBtn',null,'mfIcG'],['rapid','Rapides','faoRapBtn']],'mfFao');
   grp('Calcul',[['regen','Régénérer','faoGenBtn','Tout régénérer','mfIcR']],'mfFao');
   grp('Export',[['gcode','G-code','faoExportBtn',null,'mfIcB']],'mfFao');
@@ -96850,6 +99635,7 @@ function mfRibbon(){
     ['pPdf','PDF',()=>{try{mepPrint(true);}catch(e){}},'PDF vectoriel au format exact de la planche (« Enregistrer au format PDF »)'],
     ['print','Imprimer',()=>{try{mepPrint();}catch(e){}},'Imprimer la planche']],'mfPlan');
   mfRbPinApply(rb);
+  setTimeout(()=>{try{mfFaoProcSync();}catch(e){}},0);
   return rb;
 }
 /* V0.76.0 : groupes du ruban comme Fusion 360 — le nom du groupe est un bouton (▾) qui liste

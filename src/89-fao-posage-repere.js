@@ -80,7 +80,8 @@ function faoPoseSync(){
   // le sol miroir suit le brut affiché : recalé à chaque apparition / disparition / changement
   if(!setup){if(faoPoseGrp){faoPoseClear();faoPoseSig='';if(faoPoseTriad)faoPoseTriad.visible=false;try{refreshMirror();}catch(e){}}return;}
   const st=setup.stock;
-  if(!faoStockValid(st)){if(faoPoseGrp){faoPoseClear();try{refreshMirror();}catch(e){}}faoPoseSig='';return;}
+  if(setup.proc==='tour'||!faoStockValid(st)){ // V1.2.7 : le tour dessine sa barre et son mandrin dans l'aperçu (tourPreviewDraw)
+    if(faoPoseTriad)faoPoseTriad.visible=false;if(faoPoseGrp){faoPoseClear();try{refreshMirror();}catch(e){}}faoPoseSig='';return;}
   const spec=faoOriginSpec(setup),O=faoOrient(setup);
   // opération sélectionnée avec son repère propre (3+2) : son repère est dessiné aussi
   let selOp=null;try{if(sel.kind==='faoOp')selOp=(setup.ops||[]).filter(o=>o.id===sel.id)[0]||null;}catch(e){}

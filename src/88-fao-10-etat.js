@@ -64,6 +64,9 @@ function faoMigrateSetup(flat){
   return s;
 }
 function faoSanitiseOps(s){
+  // V1.2.7 : posage de tournage = son propre modèle (89-fao-tour-10) ; ailleurs, aucune opération de tour
+  if(s&&typeof tourIs==='function'&&tourIs(s)){ tourSanitise(s); return; }
+  if(s&&Array.isArray(s.ops))for(let i=s.ops.length-1;i>=0;i--)if(s.ops[i]&&/^tour_/.test(String(s.ops[i].type||'')))s.ops.splice(i,1);
   // 2026-10-06-004 : « Débourrage » (pocket3d) SUPPRIMÉ de l'application —
   // les anciennes opérations sont retirées du document à la lecture (migration,
   // comme `strategie`/`laisse`) : plus de fiche, plus de bouton, plus de
